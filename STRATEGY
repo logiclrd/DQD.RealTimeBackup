@@ -19,3 +19,7 @@
 * ZFS snapshots can be shared if they were taken within the same snapshot sharing interval => timestamp the creation, reuse if the age is < AgeLimit
   => Reference counter will be needed for ZFS snapshots to ensure that they aren't deleted until no processes are using them
 * Restrict number of concurrent tasks (separately for small vs. large files)
+
+* Periodically scan all files to check that their hashes match
+  * Ignore files whose size and last-modified date are unchanged
+  * Delay before the next scan equal to length of current scan, but no less than 2 hours and no more than 24 hours
