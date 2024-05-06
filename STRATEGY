@@ -1,0 +1,19 @@
+﻿Backup strategy:
+* Submit file procedure:
+  => Given a ZFS snapshot
+  => If the file is small (say, <100 MB), copy it to /tmp then delete the snapshot, and upload it from /tmp
+  => If the file is large, upload it from the snapshot then delete the snapshot
+* Handle file update procedure:
+  => Poll every 2 seconds as long as there are open file handles
+     * When there are no open file handles, create/locate a ZFS snapshot and then run Submit file procedure.
+     * If the file is still open after 30 seconds, switch to a new polling method:
+       1. Create/locate a ZFS snapshot
+       2. If the file has no open file handles, then run Submit file procedure and exit.
+       3. Wait 30 seconds
+       4. Create/locate a ZFS snapshot
+       5. Compare the file in the old and new snapshots.
+       6. Drop the old snapshot, the new snapshot becomes the new old snapshot.
+       7. If the snapshots are identical or the retry limit has been reached, then run Submit file procedure and exit, otherwise go to step 2.
+* ZFS snapshots can be shared if they were taken within the same snapshot sharing interval => timestamp the creation, reuse if the age is < AgeLimit
+  => Reference counter will be needed for ZFS snapshots to ensure that they aren't deleted until no processes are using them
+* Restrict number of concurrent tasks (separately for small vs. large files)
