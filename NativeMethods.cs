@@ -52,6 +52,9 @@ class NativeMethods
 
   public const int F_OK = 0;
 
+  public const int SIGINT = 2;
+  public const int EINTR = 4;
+
   [DllImport("c")]
   public static extern int fanotify_init(int flags, int event_flags);
   [DllImport("c")]
@@ -80,7 +83,12 @@ class NativeMethods
   [DllImport("c")]
   public static extern int endmntent(IntPtr fp);
 
-  public static void DecodeMountEntry(IntPtr mount, out string? mnt_fsname, out string? mnt_dir, out string? mnt_type, out string? mnt_opts, out int mnt_freq, out int mnt_passno)
+  [DllImport("pthread")]
+  public static extern int pthread_self();
+  [DllImport("pthread")]
+  public static extern int pthread_kill(int thread, int sig);
+
+  public static void DecodeMountEntry(IntPtr mount, out string mnt_fsname, out string mnt_dir, out string? mnt_type, out string? mnt_opts, out int mnt_freq, out int mnt_passno)
   {
     unsafe
     {
@@ -113,8 +121,8 @@ class NativeMethods
       mnt_freq = reader.ReadInt32();
       mnt_passno = reader.ReadInt32();
 
-      mnt_fsname = (mnt_fsname_addr == IntPtr.Zero) ? null : Marshal.PtrToStringAuto(mnt_fsname_addr);
-      mnt_dir = (mnt_dir_addr == IntPtr.Zero) ? null : Marshal.PtrToStringAuto(mnt_dir_addr);
+      mnt_fsname = (mnt_fsname_addr == IntPtr.Zero) ? "" : Marshal.PtrToStringAuto(mnt_fsname_addr)!;
+      mnt_dir = (mnt_dir_addr == IntPtr.Zero) ? "" : Marshal.PtrToStringAuto(mnt_dir_addr)!;
       mnt_type = (mnt_type_addr == IntPtr.Zero) ? null : Marshal.PtrToStringAuto(mnt_type_addr);
       mnt_opts = (mnt_opts_addr == IntPtr.Zero) ? null : Marshal.PtrToStringAuto(mnt_opts_addr);
     }
