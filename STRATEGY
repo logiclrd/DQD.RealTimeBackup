@@ -23,3 +23,10 @@
 * Periodically scan all files to check that their hashes match
   * Ignore files whose size and last-modified date are unchanged
   * Delay before the next scan equal to length of current scan, but no less than 2 hours and no more than 24 hours
+
+How to use B2 API (I think):
+* Authenticate
+* Call b2_get_upload_url
+* Upload multiple files to the returned URL, as needed
+* If uploading files in parallel, obtain a different upload URL for each thread
+* Renaming files is not supported, so instead each time a new file is started, it needs to be assigned a unique ID. If the client side detects a rename, it remaps the ID. Changes to the ID mappings need to be uploaded. Should probably do this in incremental chunks, and consolidate them periodically. The current state is always the result of merging all current state files, in order, so making a new file with the entire current state and then deleting all the previous files will not affect the mappings. Do this once a month or something.
