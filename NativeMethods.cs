@@ -22,6 +22,40 @@ class NativeMethods
     public int ProcessID;
   }
 
+  public delegate void SignalHandler(int signal);
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct sigaction_t
+  {
+    public SignalHandler? sa_handler;
+    public long sa_mask_0;
+    public long sa_mask_1;
+    public long sa_mask_2;
+    public long sa_mask_3;
+    public long sa_mask_4;
+    public long sa_mask_5;
+    public long sa_mask_6;
+    public long sa_mask_7;
+    public long sa_mask_8;
+    public long sa_mask_9;
+    public long sa_mask_10;
+    public long sa_mask_11;
+    public long sa_mask_12;
+    public long sa_mask_13;
+    public long sa_mask_14;
+    public long sa_mask_15;
+    public int sa_flags;
+    public Action? sa_restorer;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct PollFD
+  {
+    public int FileDescriptor;
+    public short RequestedEvents;
+    public short ReturnedEvents;
+  }
+
   public const int FileAccessNotifyClass_Notification = 0x00000000;
 
   public const int FileAccessNotifyReport_UniqueFileID = 0x00000200;
@@ -52,8 +86,9 @@ class NativeMethods
 
   public const int F_OK = 0;
 
-  public const int SIGINT = 2;
-  public const int EINTR = 4;
+  public const int POLLIN = 1;
+
+  public const int INFTIM = -1;
 
   [DllImport("c")]
   public static extern int fanotify_init(int flags, int event_flags);
@@ -64,11 +99,17 @@ class NativeMethods
   [DllImport("c")]
   public static extern int access(string pathname, int mode);
   [DllImport("c")]
+  public static extern int pipe(int[] pipeFDs);
+  [DllImport("c")]
   public static extern int open(string pathname, int flags);
   [DllImport("c")]
   public static extern int open_by_handle_at(int dirfd, IntPtr handle, int flags);
   [DllImport("c")]
+  public static extern int poll(PollFD[] fds, int nfds, int timeout);
+  [DllImport("c")]
   public static extern int read(int fd, IntPtr buf, IntPtr count);
+  [DllImport("c")]
+  public static extern int write(int fd, byte[] buf, IntPtr count);
   [DllImport("c")]
   public static extern int close(int fd);
   [DllImport("c")]
@@ -83,10 +124,16 @@ class NativeMethods
   [DllImport("c")]
   public static extern int endmntent(IntPtr fp);
 
-  [DllImport("pthread")]
+  /*
+  [DllImport("libpthread.so.0")]
   public static extern int pthread_self();
-  [DllImport("pthread")]
+  [DllImport("libpthread.so.0")]
   public static extern int pthread_kill(int thread, int sig);
+
+  [DllImport("c")]
+  public static extern int sigaction(int signum, ref sigaction_t act, IntPtr oldact);
+  */
+
 
   public static void DecodeMountEntry(IntPtr mount, out string mnt_fsname, out string mnt_dir, out string? mnt_type, out string? mnt_opts, out int mnt_freq, out int mnt_passno)
   {
