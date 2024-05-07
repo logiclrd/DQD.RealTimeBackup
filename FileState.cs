@@ -4,6 +4,7 @@ public class FileState
 {
   public string Path;
   public long FileSize;
+  public DateTime LastModifiedUTC;
   public string Checksum;
 
   private FileState()
@@ -17,6 +18,7 @@ public class FileState
     var ret = new FileState();
 
     ret.Path = path;
+    ret.LastModifiedUTC = File.GetLastWriteTimeUtc(path);
 
     using (var stream = File.OpenRead(path))
     {
@@ -70,7 +72,8 @@ public class FileState
 
     var ret = new FileState();
 
-    ret.Path = parts[2];
+    ret.Path = parts[3];
+    ret.LastModifiedUTC = new DateTime(ticks: long.Parse(parts[2]), DateTimeKind.Utc);
     ret.Checksum = parts[0];
     ret.FileSize = long.Parse(parts[1]);
 
@@ -82,7 +85,7 @@ public class FileState
     if (Path.IndexOf('\n') >= 0)
       throw new Exception("Sanity failure: Path contains a newline character.");
 
-    return $"{Checksum} {FileSize} {Path}";
+    return $"{Checksum} {FileSize} {LastModifiedUTC.Ticks} {Path}";
   }
 }
 
