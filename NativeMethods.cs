@@ -6,44 +6,6 @@ class NativeMethods
 {
   public const int MAX_PATH = 4096;
 
-  [StructLayout(LayoutKind.Sequential, Pack = 1)]
-  public struct fanotify_event_metadata
-  {
-    public byte Version;
-    public byte Reserved;
-    public short MetadataLength;
-    public int _Alignment;
-    public long Mask;
-    public int FileDescriptor;
-    public int ProcessID;
-  }
-
-  public delegate void SignalHandler(int signal);
-
-  [StructLayout(LayoutKind.Sequential)]
-  public struct sigaction_t
-  {
-    public SignalHandler? sa_handler;
-    public long sa_mask_0;
-    public long sa_mask_1;
-    public long sa_mask_2;
-    public long sa_mask_3;
-    public long sa_mask_4;
-    public long sa_mask_5;
-    public long sa_mask_6;
-    public long sa_mask_7;
-    public long sa_mask_8;
-    public long sa_mask_9;
-    public long sa_mask_10;
-    public long sa_mask_11;
-    public long sa_mask_12;
-    public long sa_mask_13;
-    public long sa_mask_14;
-    public long sa_mask_15;
-    public int sa_flags;
-    public Action? sa_restorer;
-  }
-
   [StructLayout(LayoutKind.Sequential)]
   public struct PollFD
   {
@@ -60,11 +22,9 @@ class NativeMethods
 
   public const int FAN_ACCESS = 1;
   public const int FAN_MODIFY = 2;
-  public const int FAN_CLOSE_WRITE = 8;
   public const int FAN_MOVED_FROM = 64;
   public const int FAN_MOVED_TO = 128;
   public const int FAN_MOVE = FAN_MOVED_FROM | FAN_MOVED_TO;
-  public const int FAN_CREATE = 256;
   public const int FAN_DELETE = 512;
 
   public const int FAN_MARK_ADD = 1;
@@ -119,17 +79,6 @@ class NativeMethods
   public static extern IntPtr getmntent(IntPtr fp);
   [DllImport("c")]
   public static extern int endmntent(IntPtr fp);
-
-  /*
-  [DllImport("libpthread.so.0")]
-  public static extern int pthread_self();
-  [DllImport("libpthread.so.0")]
-  public static extern int pthread_kill(int thread, int sig);
-
-  [DllImport("c")]
-  public static extern int sigaction(int signum, ref sigaction_t act, IntPtr oldact);
-  */
-
 
   public static void DecodeMountEntry(IntPtr mount, out string mnt_fsname, out string mnt_dir, out string? mnt_type, out string? mnt_opts, out int mnt_freq, out int mnt_passno)
   {
