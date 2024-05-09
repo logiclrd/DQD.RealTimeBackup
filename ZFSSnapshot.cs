@@ -21,4 +21,9 @@ public class ZFSSnapshot : ZFS, IZFSSnapshot, IDisposable
       _disposed = true;
     }
   }
+
+  public string BuildPath()
+  {
+    return Path.Combine(_mountPoint, ".zfs", "snapshot", _snapshotName);
+  }
 }

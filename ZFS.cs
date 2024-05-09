@@ -6,15 +6,27 @@ public class ZFS : IZFS
   const string ZFSBinaryPath = "/usr/sbin/zfs";
 
   protected string _deviceName;
+  protected string _mountPoint;
+
+  public string DeviceName => _deviceName;
+  public string MountPoint => _mountPoint;
 
   public ZFS(string deviceName)
+    : this(FindVolume(deviceName))
   {
-    _deviceName = deviceName;
   }
 
   public ZFS(ZFSVolume volume)
-    : this(volume.DeviceName ?? throw new ArgumentNullException("volume.DeviceName"))
+    : this(
+        volume.DeviceName ?? throw new ArgumentNullException("volume.DeviceName"),
+        volume.MountPoint ?? throw new ArgumentNullException("volume.MountPoint"))
   {
+  }
+
+  ZFS(string deviceName, string mountPoint)
+  {
+    _deviceName = deviceName;
+    _mountPoint = mountPoint;
   }
 
   protected static void ExecuteZFSCommand(string command)
@@ -55,6 +67,17 @@ public class ZFS : IZFS
   public IZFSSnapshot CreateSnapshot(string snapshotName)
   {
     return new ZFSSnapshot(_deviceName, snapshotName);
+  }
+
+  public static ZFSVolume FindVolume(string deviceName)
+  {
+    var zfs = new ZFS("dummy", "dummy");
+
+    foreach (var volume in zfs.EnumerateVolumes())
+      if (volume.DeviceName == deviceName)
+        return volume;
+
+    throw new Exception("Unable to locate ZFS volume with device name " + deviceName);
   }
 
   public IEnumerable<ZFSVolume> EnumerateVolumes()

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-public class RemoteFileStateCache
+public class RemoteFileStateCache : IRemoteFileStateCache
 {
   // Objectives:
   // 1. Maintain a look-up based on file full paths that report back the file size and MD5 checksum of each file stored on the server

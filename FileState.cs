@@ -46,7 +46,7 @@ public class FileState
     }
   }
 
-  static string ComputeChecksum(Stream stream)
+  public static string ComputeChecksum(Stream stream)
   {
     using (var md5 = MD5.Create())
     {
