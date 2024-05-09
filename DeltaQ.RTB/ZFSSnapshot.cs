@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+
 public class ZFSSnapshot : ZFS, IZFSSnapshot, IDisposable
 {
   string _snapshotName;

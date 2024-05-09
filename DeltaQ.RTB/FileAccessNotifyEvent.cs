@@ -1,3 +1,5 @@
+using System;
+
 public class FileAccessNotifyEvent
 {
   public FileAccessNotifyEventMetadata Metadata { get; set; }

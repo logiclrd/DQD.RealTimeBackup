@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 class MountTable
 {
   public static MountHandle OpenMountForFileSystem(string mountPointPath)
