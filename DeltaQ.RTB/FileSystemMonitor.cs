@@ -7,8 +7,12 @@ using System.Threading.Tasks;
 
 public class FileSystemMonitor : IFileSystemMonitor
 {
-  public FileSystemMonitor()
+  IMountTable _mountTable;
+
+  public FileSystemMonitor(IMountTable mountTable)
   {
+    _mountTable = mountTable;
+
     _shutdownSource = new CancellationTokenSource();
   }
 
@@ -98,11 +102,11 @@ public class FileSystemMonitor : IFileSystemMonitor
 
     _fileAccessNotify.MarkPath("/");
 
-    var openMount = MountTable.OpenMountForFileSystem("/");
+    var openMount = _mountTable.OpenMountForFileSystem("/");
 
     MountDescriptorByFileSystemID[openMount.FileSystemID] = openMount.FileDescriptor;
 
-    foreach (var mount in MountTable.EnumerateMounts())
+    foreach (var mount in _mountTable.EnumerateMounts())
     {
       if (mount.Type != "zfs")
       {
@@ -114,7 +118,7 @@ public class FileSystemMonitor : IFileSystemMonitor
       {
         _fileAccessNotify.MarkPath(mount.MountPoint);
 
-        openMount = MountTable.OpenMountForFileSystem(mount.MountPoint);
+        openMount = _mountTable.OpenMountForFileSystem(mount.MountPoint);
 
         MountDescriptorByFileSystemID[openMount.FileSystemID] = openMount.FileDescriptor;
       }

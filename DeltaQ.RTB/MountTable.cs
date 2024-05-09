@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 
-class MountTable
+public class MountTable : IMountTable
 {
-  public static MountHandle OpenMountForFileSystem(string mountPointPath)
+  public MountHandle OpenMountForFileSystem(string mountPointPath)
   {
     int fd = NativeMethods.open(mountPointPath, NativeMethods.O_RDONLY | NativeMethods.O_NOFOLLOW);
 
@@ -13,7 +13,7 @@ class MountTable
     return new MountHandle(fd, mountPointPath);
   }
 
-  public static IEnumerable<Mount> EnumerateMounts()
+  public IEnumerable<Mount> EnumerateMounts()
   {
     IntPtr mounts = NativeMethods.setmntent("/proc/self/mounts", "r");
     if (mounts == IntPtr.Zero)

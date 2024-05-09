@@ -4,7 +4,7 @@ class Program
 {
   static void Main()
   {
-    var monitor = new FileSystemMonitor();
+    var monitor = new FileSystemMonitor(new MountTable());
 
     monitor.PathUpdate +=
       (sender, e) =>

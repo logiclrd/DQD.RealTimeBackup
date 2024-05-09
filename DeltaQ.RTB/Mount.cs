@@ -1,4 +1,4 @@
-class Mount
+public class Mount
 {
   string _deviceName;
   string _mountPoint;
