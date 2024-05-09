@@ -1,7 +1,9 @@
-class ZFSSnapshot : ZFS, IDisposable
+public class ZFSSnapshot : ZFS, IZFSSnapshot, IDisposable
 {
   string _snapshotName;
   bool _disposed;
+
+  public string SnapshotName => _snapshotName;
 
   public ZFSSnapshot(string deviceName, string snapshotName)
     : base(deviceName)

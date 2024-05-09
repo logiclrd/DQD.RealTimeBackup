@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-public class FileSystemMonitor
+public class FileSystemMonitor : IFileSystemMonitor
 {
   public FileSystemMonitor()
   {

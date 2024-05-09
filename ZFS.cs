@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 
-class ZFS
+public class ZFS : IZFS
 {
   const string ZFSBinaryPath = "/usr/sbin/zfs";
 
@@ -52,12 +52,12 @@ class ZFS
     }
   }
 
-  public ZFSSnapshot CreateSnapshot(string snapshotName)
+  public IZFSSnapshot CreateSnapshot(string snapshotName)
   {
     return new ZFSSnapshot(_deviceName, snapshotName);
   }
 
-  public static IEnumerable<ZFSVolume> EnumerateVolumes()
+  public IEnumerable<ZFSVolume> EnumerateVolumes()
   {
     foreach (string line in ExecuteZFSCommandOutput("list -Hp"))
     {

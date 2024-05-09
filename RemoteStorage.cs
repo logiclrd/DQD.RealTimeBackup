@@ -1,6 +1,8 @@
-public abstract class RemoteStorage
+using System.IO;
+
+public interface IRemoteStorage
 {
-  public abstract void UploadFile(string serverPath, Stream content);
-  public abstract void DeleteFile(string serverPath);
+  public void UploadFile(string serverPath, Stream content);
+  public void DeleteFile(string serverPath);
 }
 

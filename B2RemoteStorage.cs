@@ -1,10 +1,12 @@
-public class B2RemoteStorage : RemoteStorage
+using System.IO;
+
+public class B2RemoteStorage : IRemoteStorage
 {
-  public override void UploadFile(string serverPath, Stream content)
+  public void UploadFile(string serverPath, Stream content)
   {
   }
 
-  public override void DeleteFile(string serverPath)
+  public void DeleteFile(string serverPath)
   {
   }
 }

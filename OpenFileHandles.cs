@@ -1,11 +1,11 @@
 using System;
 using System.Diagnostics;
 
-public class OpenFileHandles
+public class OpenFileHandles : IOpenFileHandles
 {
   const string LSOFPath = "/usr/bin/lsof";
 
-  public static IEnumerable<OpenFileHandle> Enumerate(string path)
+  public IEnumerable<OpenFileHandle> Enumerate(string path)
   {
     var psi = new ProcessStartInfo();
 

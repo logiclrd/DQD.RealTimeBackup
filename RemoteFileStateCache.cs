@@ -14,7 +14,7 @@ public class RemoteFileStateCache
   //                        discard 0.
   const int BatchUploadConsolidationDelaySeconds = 30;
 
-  RemoteStorage _remoteStorage;
+  IRemoteStorage _remoteStorage;
   string _statePath;
   Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
   List<FileState> _currentBatch = new List<FileState>();
@@ -22,7 +22,7 @@ public class RemoteFileStateCache
   StreamWriter? _currentBatchWriter;
   Timer? _batchUploadTimer;
 
-  public RemoteFileStateCache(RemoteStorage remoteStorage, string statePath)
+  public RemoteFileStateCache(IRemoteStorage remoteStorage, string statePath)
   {
     _remoteStorage = remoteStorage;
     _statePath = statePath;

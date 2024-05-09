@@ -1,4 +1,4 @@
-class ZFSVolume
+public class ZFSVolume
 {
   public string? DeviceName;
   public long UsedBytes;
