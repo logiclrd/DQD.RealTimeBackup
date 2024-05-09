@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
 
 public class RemoteFileStateCache
 {
@@ -14,16 +13,18 @@ public class RemoteFileStateCache
   //                        discard 0.
   const int BatchUploadConsolidationDelaySeconds = 30;
 
+  ITimer _timer;
   IRemoteStorage _remoteStorage;
   string _statePath;
   Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
   List<FileState> _currentBatch = new List<FileState>();
   int _currentBatchNumber;
   StreamWriter? _currentBatchWriter;
-  Timer? _batchUploadTimer;
+  ITimerInstance? _batchUploadTimer;
 
-  public RemoteFileStateCache(IRemoteStorage remoteStorage, string statePath)
+  public RemoteFileStateCache(ITimer timer, IRemoteStorage remoteStorage, string statePath)
   {
+    _timer = timer;
     _remoteStorage = remoteStorage;
     _statePath = statePath;
 
@@ -98,11 +99,7 @@ public class RemoteFileStateCache
 
       if (_batchUploadTimer == null)
       {
-        _batchUploadTimer = new Timer(
-          BatchUploadTimerElapsed,
-          default,
-          TimeSpan.FromSeconds(BatchUploadConsolidationDelaySeconds),
-          Timeout.InfiniteTimeSpan);
+        _batchUploadTimer = _timer.ScheduleAction(TimeSpan.FromSeconds(BatchUploadConsolidationDelaySeconds), BatchUploadTimerElapsed);
       }
 
       if (_currentBatchWriter == null)
@@ -115,7 +112,7 @@ public class RemoteFileStateCache
     }
   }
 
-  void BatchUploadTimerElapsed(object? state)
+  void BatchUploadTimerElapsed()
   {
     lock (this)
     {
