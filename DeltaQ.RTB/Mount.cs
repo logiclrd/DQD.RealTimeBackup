@@ -27,7 +27,7 @@ public class Mount
   public bool TestDeviceAccess()
   {
     if (_deviceName != null)
-      return (NativeMethods.access(_deviceName, NativeMethods.F_OK) != 0);
+      return (NativeMethods.access(_deviceName, NativeMethods.F_OK) == 0);
     else
       return false;
   }
