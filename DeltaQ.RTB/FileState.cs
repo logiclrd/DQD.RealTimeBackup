@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.IO;
 using System.Security.Cryptography;
 
@@ -9,7 +10,8 @@ public class FileState
   public DateTime LastModifiedUTC;
   public string Checksum;
 
-  private FileState()
+  [EditorBrowsable(EditorBrowsableState.Never)]
+  public FileState()
   {
     // Dummy constructor.
     Path = Checksum = "";
