@@ -31,8 +31,10 @@ public class FileStateTests
 
       File.SetLastWriteTimeUtc(file.Path, lastWriteTimeUtc);
 
+      var checksum = new MD5Checksum();
+
       // Act
-      var fileState = FileState.FromFile(file.Path);
+      var fileState = FileState.FromFile(file.Path, checksum);
 
       // Assert
       fileState.Path.Should().Be(file.Path);
@@ -57,6 +59,8 @@ public class FileStateTests
 
       File.SetLastWriteTimeUtc(file.Path, lastWriteTimeUtc);
 
+      var checksum = new MD5Checksum();
+
       var sut = new FileState();
 
       sut.Path = file.Path;
@@ -65,7 +69,7 @@ public class FileStateTests
       sut.Checksum = ExpectedMD5Sum;
 
       // Act
-      var result = sut.IsMatch();
+      var result = sut.IsMatch(checksum);
 
       // Assert
       result.Should().BeTrue();
@@ -87,6 +91,8 @@ public class FileStateTests
 
       File.SetLastWriteTimeUtc(file.Path, lastWriteTimeUtc);
 
+      var checksum = new MD5Checksum();
+
       var sut = new FileState();
 
       sut.Path = file.Path;
@@ -95,7 +101,7 @@ public class FileStateTests
       sut.Checksum = ExpectedMD5Sum;
 
       // Act
-      var result = sut.IsMatch();
+      var result = sut.IsMatch(checksum);
 
       // Assert
       result.Should().BeFalse();
@@ -117,6 +123,8 @@ public class FileStateTests
 
       File.SetLastWriteTimeUtc(file.Path, lastWriteTimeUtc);
 
+      var checksum = new MD5Checksum();
+
       var sut = new FileState();
 
       sut.Path = file.Path;
@@ -125,26 +133,11 @@ public class FileStateTests
       sut.Checksum = NotExpectedMD5Sum;
 
       // Act
-      var result = sut.IsMatch();
+      var result = sut.IsMatch(checksum);
 
       // Assert
       result.Should().BeFalse();
     }
-  }
-
-  [TestCase("", "d41d8cd98f00b204e9800998ecf8427e")]
-  [TestCase("hello\n", "b1946ac92492d2347c6235b4d2611184")]
-  [TestCase("To condense fact from the vapor of nuance.", "db0d0a118cb460ebc48a4780d6a78064")]
-  public void ComputeChecksum_should_return_correct_MD5_checksums(string content, string expectedMD5Sum)
-  {
-    // Arrange
-    var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
-
-    // Act
-    var actualMD5Sum = FileState.ComputeChecksum(stream);
-
-    // Assert
-    actualMD5Sum.Should().Be(expectedMD5Sum);
   }
 
   [Repeat(25)]

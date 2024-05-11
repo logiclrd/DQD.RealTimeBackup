@@ -17,6 +17,7 @@ public class BackupAgent : IBackupAgent
   bool _stopping = false;
   
   ITimer _timer;
+  IChecksum _checksum;
   IFileSystemMonitor _monitor;
   IOpenFileHandles _openFileHandles;
   IZFS _zfs;
@@ -24,11 +25,12 @@ public class BackupAgent : IBackupAgent
   IRemoteFileStateCache _remoteFileStateCache;
   IRemoteStorage _storage;
 
-  public BackupAgent(OperatingParameters parameters, ITimer timer, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
+  public BackupAgent(OperatingParameters parameters, ITimer timer, IChecksum checksum, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
   {
     _parameters = parameters;
 
     _timer = timer;
+    _checksum = checksum;
     _monitor = monitor;
     _openFileHandles = openFileHandles;
     _zfs = zfs;
@@ -97,7 +99,7 @@ public class BackupAgent : IBackupAgent
   object _openFilesSync = new object();
   List<SnapshotReferenceWithTimeout> _openFiles = new List<SnapshotReferenceWithTimeout>();
 
-  void QueuePathForOpenFilesCheck(SnapshotReference reference)
+  internal void QueuePathForOpenFilesCheck(SnapshotReference reference)
   {
     lock (_openFilesSync)
     {
@@ -112,12 +114,17 @@ public class BackupAgent : IBackupAgent
 
   object _openFileHandlePollingSync = new object();
 
-  void PollOpenFilesThread()
+  void StartPollOpenFilesThread()
+  {
+    new Thread(PollOpenFilesThreadProc).Start();
+  }
+
+  void PollOpenFilesThreadProc()
   {
     var openFilesCached = new List<SnapshotReferenceWithTimeout>();
     var filesToPromote = new List<SnapshotReferenceWithTimeout>();
 
-    while (true)
+    while (!_stopping)
     {
       bool haveOpenFiles = false;
 
@@ -153,7 +160,7 @@ public class BackupAgent : IBackupAgent
           openFilesCached.AddRange(_openFiles);
       }
 
-      for (int i = openFilesCached.Count; i >= 0; i--)
+      for (int i = openFilesCached.Count - 1; i >= 0; i--)
       {
         var fileReference = openFilesCached[i];
 
@@ -170,13 +177,7 @@ public class BackupAgent : IBackupAgent
           foreach (var reference in filesToPromote)
             _openFiles.Remove(reference);
 
-        lock (_backupQueueSync)
-        {
-          foreach (var reference in filesToPromote)
-            _backupQueue.Add(reference.SnapshotReference);
-
-          Monitor.PulseAll(_backupQueueSync);
-        }
+        AddFilesToBackupQueue(filesToPromote.Select(reference => reference.SnapshotReference));
 
         filesToPromote.Clear();
       }
@@ -227,9 +228,25 @@ public class BackupAgent : IBackupAgent
   object _backupQueueSync = new object();
   List<SnapshotReference> _backupQueue = new List<SnapshotReference>();
 
-  void ProcessBackupQueue()
+  void AddFilesToBackupQueue(IEnumerable<SnapshotReference> filesToPromote)
   {
-    while (true)
+    lock (_backupQueueSync)
+    {
+      _backupQueue.AddRange(filesToPromote);
+      Monitor.PulseAll(_backupQueueSync);
+    }
+  }
+
+  internal IEnumerable<SnapshotReference> BackupQueue => _backupQueue.Select(x => x);
+
+  void StartProcessBackupQueueThread()
+  {
+    new Thread(ProcessBackupQueueThreadProc).Start();
+  }
+
+  void ProcessBackupQueueThreadProc()
+  {
+    while (!_stopping)
     {
       SnapshotReference reference;
 
@@ -237,85 +254,54 @@ public class BackupAgent : IBackupAgent
       {
         while (_backupQueue.Count == 0)
         {
-          Monitor.Wait(_backupQueueSync);
-
           if (_stopping)
             return;
+
+          Monitor.Wait(_backupQueueSync);
         }
+
+        if (_stopping)
+          return;
 
         reference = _backupQueue[_backupQueue.Count - 1];
         _backupQueue.RemoveAt(_backupQueue.Count - 1);
       }
 
-      FileReference fileReference;
-
-      var stream = File.OpenRead(reference.SnapshottedPath);
-
-      var backedUpFileState = _remoteFileStateCache.GetFileState(reference.Path);
-      var currentLocalFileChecksum = FileState.ComputeChecksum(stream);
-
-      if ((backedUpFileState == null) || (currentLocalFileChecksum != backedUpFileState.Checksum))
-      {
-        if (stream.Length >= _parameters.MaximumFileSizeForStagingCopy)
-          fileReference = new FileReference(reference, stream);
-        else
-        {
-          var stagedCopy = _staging.StageFile(reference.SnapshottedPath);
-
-          stream.Dispose();
-
-          fileReference = new FileReference(reference.Path, stagedCopy);
-        }
-
-        lock (_uploadQueueSync)
-        {
-          _uploadQueue.Add(fileReference);
-          Monitor.PulseAll(_uploadQueueSync);
-        }
-      }
-      // TODO: check the file's hash
-  /*
-* Submit file procedure:
-  => Given a ZFS snapshot
-  => If the file is small (say, <100 MB), copy it to /tmp then delete the snapshot, and upload it from /tmp
-  => If the file is large, upload it from the snapshot then delete the snapshot
-* Restrict number of concurrent tasks (separately for small vs. large files)
-
-   * */
+      ProcessBackupQueueReference(reference);
     }
   }
 
-  class FileReference : IDisposable
+  internal void ProcessBackupQueueReference(SnapshotReference reference)
   {
-    public string Path;
-    public SnapshotReference? SnapshotReference;
-    public IStagedFile? StagedFile;
+    FileReference fileReference;
 
-    public Stream Stream;
+    var stream = File.OpenRead(reference.SnapshottedPath);
 
-    public FileReference(SnapshotReference snapshotReference, Stream stream)
+    var backedUpFileState = _remoteFileStateCache.GetFileState(reference.Path);
+    var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);
+
+    if ((backedUpFileState == null) || (currentLocalFileChecksum != backedUpFileState.Checksum))
     {
-      this.Path = snapshotReference.Path;
-      this.SnapshotReference = snapshotReference;
-      this.Stream = stream;
-    }
+      if (stream.Length > _parameters.MaximumFileSizeForStagingCopy)
+        fileReference = new FileReference(reference, stream);
+      else
+      {
+        var stagedCopy = _staging.StageFile(stream);
 
-    public FileReference(string path, IStagedFile stagedFile)
-    {
-      this.Path = path;
-      this.StagedFile = stagedFile;
-      this.Stream = File.OpenRead(stagedFile.Path);
-    }
+        stream.Dispose();
 
-    public void Dispose()
-    {
-      SnapshotReference?.Dispose();
-      StagedFile?.Dispose();
+        fileReference = new FileReference(reference.Path, stagedCopy);
 
-      Stream.Dispose();
+        reference.Dispose();
+      }
+
+      AddFileReferenceToUploadQueue(fileReference);
     }
+  /*
+* Restrict number of concurrent tasks (separately for small vs. large files)
+   * */
   }
- 
+
   void StartUploadThreads()
   {
     for (int i=0; i < _parameters.UploadThreadCount; i++)
@@ -324,6 +310,17 @@ public class BackupAgent : IBackupAgent
 
   object _uploadQueueSync = new object();
   List<FileReference> _uploadQueue = new List<FileReference>();
+
+  internal IEnumerable<FileReference> UploadQueue => _uploadQueue.Select(x => x);
+
+  internal void AddFileReferenceToUploadQueue(FileReference fileReference)
+  {
+    lock (_uploadQueueSync)
+    {
+      _uploadQueue.Add(fileReference);
+      Monitor.PulseAll(_uploadQueueSync);
+    }
+  }
 
   void UploadThreadProc()
   {
@@ -357,6 +354,10 @@ public class BackupAgent : IBackupAgent
   {
     _stopping = false;
     _monitor.Start();
+
+    StartPollOpenFilesThread();
+    StartProcessBackupQueueThread();
+    StartUploadThreads();
   }
 
   public void Stop()

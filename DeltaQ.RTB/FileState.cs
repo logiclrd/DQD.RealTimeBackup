@@ -1,7 +1,6 @@
 using System;
 using System.ComponentModel;
 using System.IO;
-using System.Security.Cryptography;
 
 public class FileState
 {
@@ -17,7 +16,7 @@ public class FileState
     Path = Checksum = "";
   }
 
-  public static FileState FromFile(string path)
+  public static FileState FromFile(string path, IChecksum checksum)
   {
     var ret = new FileState();
 
@@ -27,13 +26,13 @@ public class FileState
     using (var stream = File.OpenRead(path))
     {
       ret.FileSize = stream.Length;
-      ret.Checksum = ComputeChecksum(stream);
+      ret.Checksum = checksum.ComputeChecksum(stream);
     }
 
     return ret;
   }
 
-  public bool IsMatch()
+  public bool IsMatch(IChecksum checksum)
   {
     if (!File.Exists(Path))
       return false;
@@ -43,30 +42,10 @@ public class FileState
       if (stream.Length != FileSize)
         return false;
 
-      if (ComputeChecksum(stream) != Checksum)
+      if (checksum.ComputeChecksum(stream) != Checksum)
         return false;
 
       return true;
-    }
-  }
-
-  public static string ComputeChecksum(Stream stream)
-  {
-    using (var md5 = MD5.Create())
-    {
-      var checksumBytes = md5.ComputeHash(stream);
-
-      char[] checksumChars = new char[checksumBytes.Length * 2];
-
-      for (int i=0; i < checksumBytes.Length; i++)
-      {
-        byte b = checksumBytes[i];
-
-        checksumChars[i + i] = "0123456789abcdef"[b >> 4];
-        checksumChars[i+i+1] = "0123456789abcdef"[b & 15];
-      }
-
-      return new string(checksumChars);
     }
   }
 
