@@ -1,9 +1,12 @@
 using System;
 using System.IO;
 
-public interface IStaging
+namespace DeltaQ.RTB
 {
-  IStagedFile StageFile(string path);
-  IStagedFile StageFile(Stream path);
+  public interface IStaging
+  {
+    IStagedFile StageFile(string path);
+    IStagedFile StageFile(Stream path);
+  }
 }
 

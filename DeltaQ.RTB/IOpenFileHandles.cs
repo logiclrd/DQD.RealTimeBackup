@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 
-public interface IOpenFileHandles
+namespace DeltaQ.RTB
 {
-  IEnumerable<OpenFileHandle> Enumerate(string path);
+  public interface IOpenFileHandles
+  {
+    IEnumerable<OpenFileHandle> Enumerate(string path);
+  }
 }
 

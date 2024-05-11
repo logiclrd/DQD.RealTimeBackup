@@ -1,28 +1,31 @@
 using System.Threading;
 
-public class SnapshotReferenceTracker
+namespace DeltaQ.RTB
 {
-  public readonly IZFSSnapshot Snapshot;
-  public int ReferenceCount;
-
-  public SnapshotReferenceTracker(IZFSSnapshot snapshot)
+  public class SnapshotReferenceTracker
   {
-    this.Snapshot = snapshot;
-  }
+    public readonly IZFSSnapshot Snapshot;
+    public int ReferenceCount;
 
-  public SnapshotReference AddReference(string path)
-  {
-    Interlocked.Increment(ref ReferenceCount);
+    public SnapshotReferenceTracker(IZFSSnapshot snapshot)
+    {
+      this.Snapshot = snapshot;
+    }
 
-    return new SnapshotReference(this, path);
-  }
+    public SnapshotReference AddReference(string path)
+    {
+      Interlocked.Increment(ref ReferenceCount);
 
-  public void Release()
-  {
-    Interlocked.Decrement(ref ReferenceCount);
+      return new SnapshotReference(this, path);
+    }
 
-    if (ReferenceCount == 0)
-      Snapshot.Dispose();
+    public void Release()
+    {
+      Interlocked.Decrement(ref ReferenceCount);
+
+      if (ReferenceCount == 0)
+        Snapshot.Dispose();
+    }
   }
 }
 

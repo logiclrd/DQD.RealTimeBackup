@@ -2,73 +2,76 @@ using System;
 using System.ComponentModel;
 using System.IO;
 
-public class FileState
+namespace DeltaQ.RTB
 {
-  public string Path;
-  public long FileSize;
-  public DateTime LastModifiedUTC;
-  public string Checksum;
-
-  [EditorBrowsable(EditorBrowsableState.Never)]
-  public FileState()
+  public class FileState
   {
-    // Dummy constructor.
-    Path = Checksum = "";
-  }
+    public string Path;
+    public long FileSize;
+    public DateTime LastModifiedUTC;
+    public string Checksum;
 
-  public static FileState FromFile(string path, IChecksum checksum)
-  {
-    var ret = new FileState();
-
-    ret.Path = path;
-    ret.LastModifiedUTC = File.GetLastWriteTimeUtc(path);
-
-    using (var stream = File.OpenRead(path))
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public FileState()
     {
-      ret.FileSize = stream.Length;
-      ret.Checksum = checksum.ComputeChecksum(stream);
+      // Dummy constructor.
+      Path = Checksum = "";
     }
 
-    return ret;
-  }
-
-  public bool IsMatch(IChecksum checksum)
-  {
-    if (!File.Exists(Path))
-      return false;
-
-    using (var stream = File.OpenRead(Path))
+    public static FileState FromFile(string path, IChecksum checksum)
     {
-      if (stream.Length != FileSize)
-        return false;
+      var ret = new FileState();
 
-      if (checksum.ComputeChecksum(stream) != Checksum)
-        return false;
+      ret.Path = path;
+      ret.LastModifiedUTC = File.GetLastWriteTimeUtc(path);
 
-      return true;
+      using (var stream = File.OpenRead(path))
+      {
+        ret.FileSize = stream.Length;
+        ret.Checksum = checksum.ComputeChecksum(stream);
+      }
+
+      return ret;
     }
-  }
 
-  public static FileState Parse(string serialized)
-  {
-    string[] parts = serialized.Split(' ', 3);
+    public bool IsMatch(IChecksum checksum)
+    {
+      if (!File.Exists(Path))
+        return false;
 
-    var ret = new FileState();
+      using (var stream = File.OpenRead(Path))
+      {
+        if (stream.Length != FileSize)
+          return false;
 
-    ret.Path = parts[3];
-    ret.LastModifiedUTC = new DateTime(ticks: long.Parse(parts[2]), DateTimeKind.Utc);
-    ret.Checksum = parts[0];
-    ret.FileSize = long.Parse(parts[1]);
+        if (checksum.ComputeChecksum(stream) != Checksum)
+          return false;
 
-    return ret;
-  }
+        return true;
+      }
+    }
 
-  public override string ToString()
-  {
-    if (Path.IndexOf('\n') >= 0)
-      throw new Exception("Sanity failure: Path contains a newline character.");
+    public static FileState Parse(string serialized)
+    {
+      string[] parts = serialized.Split(' ', 4);
 
-    return $"{Checksum} {FileSize} {LastModifiedUTC.Ticks} {Path}";
+      var ret = new FileState();
+
+      ret.Path = parts[3];
+      ret.LastModifiedUTC = new DateTime(ticks: long.Parse(parts[2]), DateTimeKind.Utc);
+      ret.Checksum = parts[0];
+      ret.FileSize = long.Parse(parts[1]);
+
+      return ret;
+    }
+
+    public override string ToString()
+    {
+      if (Path.IndexOf('\n') >= 0)
+        throw new Exception("Sanity failure: Path contains a newline character.");
+
+      return $"{Checksum} {FileSize} {LastModifiedUTC.Ticks} {Path}";
+    }
   }
 }
 

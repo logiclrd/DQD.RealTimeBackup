@@ -1,7 +1,10 @@
 using System.IO;
 
-public interface IChecksum
+namespace DeltaQ.RTB
 {
-  string ComputeChecksum(Stream stream);
-  string ComputeChecksum(string path);
+  public interface IChecksum
+  {
+    string ComputeChecksum(Stream stream);
+    string ComputeChecksum(string path);
+  }
 }

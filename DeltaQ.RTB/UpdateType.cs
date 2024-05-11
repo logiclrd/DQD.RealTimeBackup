@@ -1,5 +1,9 @@
-﻿public enum UpdateType
+﻿namespace DeltaQ.RTB
 {
-  ContentUpdated,
-  ChildRemoved,
+  public enum UpdateType
+  {
+    ContentUpdated,
+    ChildRemoved,
+  }
 }
+

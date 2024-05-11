@@ -1,7 +1,10 @@
 using System;
 
-public interface ITimerInstance : IDisposable
+namespace DeltaQ.RTB
 {
-  DateTime DueTime { get; }
+  public interface ITimerInstance : IDisposable
+  {
+    DateTime DueTime { get; }
+  }
 }
 

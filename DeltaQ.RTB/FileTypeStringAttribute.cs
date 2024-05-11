@@ -1,15 +1,17 @@
 using System;
 
-[AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
-public class FileTypeStringAttribute : Attribute
+namespace DeltaQ.RTB
 {
-  string _tag;
-
-  public FileTypeStringAttribute(string tag)
+  [AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
+  public class FileTypeStringAttribute : Attribute
   {
-    _tag = tag;
+    string _tag;
+
+    public FileTypeStringAttribute(string tag)
+    {
+      _tag = tag;
+    }
+
+    public string Tag => _tag;
   }
-
-  public string Tag => _tag;
 }
-

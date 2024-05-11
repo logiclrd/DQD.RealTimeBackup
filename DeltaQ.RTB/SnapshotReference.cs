@@ -1,24 +1,27 @@
 using System;
 using System.Threading;
 
-public class SnapshotReference : IDisposable
+namespace DeltaQ.RTB
 {
-  SnapshotReferenceTracker? _tracker;
-  string _path;
-
-  public SnapshotReference(SnapshotReferenceTracker tracker, string path)
+  public class SnapshotReference : IDisposable
   {
-    _tracker = tracker;
-    _path = path;
-  }
+    SnapshotReferenceTracker? _tracker;
+    string _path;
 
-  public void Dispose()
-  {
-    _tracker?.Release();
-    _tracker = null;
-  }
+    public SnapshotReference(SnapshotReferenceTracker tracker, string path)
+    {
+      _tracker = tracker;
+      _path = path;
+    }
 
-  public string Path => _path;
-  public string SnapshottedPath => System.IO.Path.Combine(_tracker?.Snapshot.BuildPath() ?? "", _path.TrimStart('/'));
+    public void Dispose()
+    {
+      _tracker?.Release();
+      _tracker = null;
+    }
+
+    public string Path => _path;
+    public string SnapshottedPath => System.IO.Path.Combine(_tracker?.Snapshot.BuildPath() ?? "", _path.TrimStart('/'));
+  }
 }
 

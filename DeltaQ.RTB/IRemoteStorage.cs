@@ -1,8 +1,11 @@
 using System.IO;
 
-public interface IRemoteStorage
+namespace DeltaQ.RTB
 {
-  public void UploadFile(string serverPath, Stream content);
-  public void DeleteFile(string serverPath);
+  public interface IRemoteStorage
+  {
+    public void UploadFile(string serverPath, Stream content);
+    public void DeleteFile(string serverPath);
+  }
 }
 

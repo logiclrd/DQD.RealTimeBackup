@@ -2,52 +2,55 @@ using NUnit.Framework;
 
 using FluentAssertions;
 
-[TestFixture]
-public class MountTableTests
+namespace DeltaQ.RTB.Tests
 {
-  [Test]
-  public void OpenMountForFileSystem_should_work_with_root()
+  [TestFixture]
+  public class MountTableTests
   {
-    // Arrange
-    var sut = new MountTable();
+    [Test]
+    public void OpenMountForFileSystem_should_work_with_root()
+    {
+      // Arrange
+      var sut = new MountTable();
 
-    // Act
-    var result = sut.OpenMountForFileSystem("/");
+      // Act
+      var result = sut.OpenMountForFileSystem("/");
 
-    // Assert
-    result.FileDescriptor.Should().NotBe(0);
-  }
+      // Assert
+      result.FileDescriptor.Should().NotBe(0);
+    }
 
-  [Test]
-  public void EnumerateMounts_should_return_multiple_entries()
-  {
-    // Arrange
-    var sut = new MountTable();
+    [Test]
+    public void EnumerateMounts_should_return_multiple_entries()
+    {
+      // Arrange
+      var sut = new MountTable();
 
-    // Act
-    var enumerable = sut.EnumerateMounts();
+      // Act
+      var enumerable = sut.EnumerateMounts();
 
-    var enumeration = enumerable.GetEnumerator();
+      var enumeration = enumerable.GetEnumerator();
 
-    var hasFirstItem = enumeration.MoveNext();
-    var firstItem = enumeration.Current;
+      var hasFirstItem = enumeration.MoveNext();
+      var firstItem = enumeration.Current;
 
-    var hasSecondItem = enumeration.MoveNext();
-    var secondItem = enumeration.Current;
+      var hasSecondItem = enumeration.MoveNext();
+      var secondItem = enumeration.Current;
 
-    while (enumeration.MoveNext())
-      ;
+      while (enumeration.MoveNext())
+        ;
 
-    // Assert
-    hasFirstItem.Should().BeTrue();
-    firstItem.DeviceName.Should().NotBeNullOrWhiteSpace();
-    firstItem.MountPoint.Should().NotBeNullOrWhiteSpace();
-    firstItem.Type.Should().NotBeNullOrWhiteSpace();
+      // Assert
+      hasFirstItem.Should().BeTrue();
+      firstItem.DeviceName.Should().NotBeNullOrWhiteSpace();
+      firstItem.MountPoint.Should().NotBeNullOrWhiteSpace();
+      firstItem.Type.Should().NotBeNullOrWhiteSpace();
 
-    hasSecondItem.Should().BeTrue();
-    secondItem.DeviceName.Should().NotBeNullOrWhiteSpace();
-    secondItem.MountPoint.Should().NotBeNullOrWhiteSpace();
-    secondItem.Type.Should().NotBeNullOrWhiteSpace();
+      hasSecondItem.Should().BeTrue();
+      secondItem.DeviceName.Should().NotBeNullOrWhiteSpace();
+      secondItem.MountPoint.Should().NotBeNullOrWhiteSpace();
+      secondItem.Type.Should().NotBeNullOrWhiteSpace();
+    }
   }
 }
 

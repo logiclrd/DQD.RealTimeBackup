@@ -1,5 +1,8 @@
-﻿public enum MoveType
+﻿namespace DeltaQ.RTB
 {
-  From,
-  To,
+  public enum MoveType
+  {
+    From,
+    To,
+  }
 }

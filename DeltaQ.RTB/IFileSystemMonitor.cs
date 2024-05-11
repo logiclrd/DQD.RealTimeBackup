@@ -1,10 +1,14 @@
 ﻿using System;
 
-public interface IFileSystemMonitor
+namespace DeltaQ.RTB
 {
-  event EventHandler<PathUpdate>? PathUpdate;
-  event EventHandler<PathMove>? PathMove;
+  public interface IFileSystemMonitor
+  {
+    event EventHandler<PathUpdate>? PathUpdate;
+    event EventHandler<PathMove>? PathMove;
 
-  void Start();
-  void Stop();
+    void Start();
+    void Stop();
+  }
 }
+

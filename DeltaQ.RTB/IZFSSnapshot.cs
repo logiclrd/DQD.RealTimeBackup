@@ -1,8 +1,12 @@
 using System;
 
-public interface IZFSSnapshot : IDisposable
+namespace DeltaQ.RTB
 {
-  string SnapshotName { get; }
+  public interface IZFSSnapshot : IDisposable
+  {
+    string SnapshotName { get; }
 
-  string BuildPath();
+    string BuildPath();
+  }
 }
+

@@ -1,4 +1,6 @@
-public interface IBackupAgent
+namespace DeltaQ.RTB
 {
+  public interface IBackupAgent
+  {
+  }
 }
-

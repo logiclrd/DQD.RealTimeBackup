@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 
-public interface IZFS
+namespace DeltaQ.RTB
 {
-  IZFSSnapshot CreateSnapshot(string snapshotName);
-  IEnumerable<ZFSVolume> EnumerateVolumes();
+  public interface IZFS
+  {
+    IZFSSnapshot CreateSnapshot(string snapshotName);
+    IEnumerable<ZFSVolume> EnumerateVolumes();
 
-  string DeviceName { get; }
-  string MountPoint { get; }
+    string DeviceName { get; }
+    string MountPoint { get; }
+  }
 }
 

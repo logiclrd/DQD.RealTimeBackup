@@ -1,13 +1,17 @@
-﻿public class PathMove
+﻿namespace DeltaQ.RTB
 {
-  public string ContainerPath;
-  public MoveType MoveType;
-
-  public PathMove() { ContainerPath = ""; }
-
-  public PathMove(string path, MoveType moveType)
+  public class PathMove
   {
-    ContainerPath = path;
-    MoveType = moveType;
+    public string ContainerPath;
+    public MoveType MoveType;
+
+    public PathMove() { ContainerPath = ""; }
+
+    public PathMove(string path, MoveType moveType)
+    {
+      ContainerPath = path;
+      MoveType = moveType;
+    }
   }
 }
+

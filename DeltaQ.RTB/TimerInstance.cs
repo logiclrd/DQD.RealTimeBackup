@@ -2,22 +2,25 @@ using System;
 
 using TimerProvider = System.Threading.Timer;
 
-public class TimerInstance : ITimerInstance
+namespace DeltaQ.RTB
 {
-  TimerProvider _timer;
-
-  public DateTime DueTime { get; }
-
-  public TimerInstance(DateTime dueTime, TimerProvider timer)
+  public class TimerInstance : ITimerInstance
   {
-    DueTime = dueTime;
+    TimerProvider _timer;
 
-    _timer = timer;
-  }
+    public DateTime DueTime { get; }
 
-  public void Dispose()
-  {
-    _timer.Dispose();
+    public TimerInstance(DateTime dueTime, TimerProvider timer)
+    {
+      DueTime = dueTime;
+
+      _timer = timer;
+    }
+
+    public void Dispose()
+    {
+      _timer.Dispose();
+    }
   }
 }
 

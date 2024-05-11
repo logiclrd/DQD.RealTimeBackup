@@ -5,54 +5,57 @@ using NUnit.Framework;
 
 using FluentAssertions;
 
-[TestFixture]
-public class TimerTests
+namespace DeltaQ.RTB.Tests
 {
-  static Random s_rnd = new Random();
-
-  [Test]
-  [Repeat(5)]
-  public void ScheduleAction_with_TimeSpan_should_work()
+  [TestFixture]
+  public class TimerTests
   {
-    // Arrange
-    bool actionExecuted = false;
-    Action action = () => { actionExecuted = true; };
-    TimeSpan delay = TimeSpan.FromMilliseconds(s_rnd.Next(50, 250));
+    static Random s_rnd = new Random();
 
-    var sut = new Timer();
+    [Test]
+    [Repeat(5)]
+    public void ScheduleAction_with_TimeSpan_should_work()
+    {
+      // Arrange
+      bool actionExecuted = false;
+      Action action = () => { actionExecuted = true; };
+      TimeSpan delay = TimeSpan.FromMilliseconds(s_rnd.Next(50, 250));
 
-    // Act
-    sut.ScheduleAction(delay, action);
-    Thread.Sleep(delay - TimeSpan.FromMilliseconds(50));
-    bool earlyActionExecuted = actionExecuted;
-    Thread.Sleep(TimeSpan.FromMilliseconds(100));
+      var sut = new Timer();
 
-    // Assert
-    earlyActionExecuted.Should().BeFalse();
-    actionExecuted.Should().BeTrue();
-  }
+      // Act
+      sut.ScheduleAction(delay, action);
+      Thread.Sleep(delay - TimeSpan.FromMilliseconds(50));
+      bool earlyActionExecuted = actionExecuted;
+      Thread.Sleep(TimeSpan.FromMilliseconds(100));
 
-  [Test]
-  [Repeat(5)]
-  public void ScheduleAction_with_DateTime_should_work()
-  {
-    // Arrange
-    bool actionExecuted = false;
-    Action action = () => { actionExecuted = true; };
-    TimeSpan delay = TimeSpan.FromMilliseconds(s_rnd.Next(50, 250));
-    DateTime deadlineUTC = DateTime.UtcNow + delay;
+      // Assert
+      earlyActionExecuted.Should().BeFalse();
+      actionExecuted.Should().BeTrue();
+    }
 
-    var sut = new Timer();
+    [Test]
+    [Repeat(5)]
+    public void ScheduleAction_with_DateTime_should_work()
+    {
+      // Arrange
+      bool actionExecuted = false;
+      Action action = () => { actionExecuted = true; };
+      TimeSpan delay = TimeSpan.FromMilliseconds(s_rnd.Next(50, 250));
+      DateTime deadlineUTC = DateTime.UtcNow + delay;
 
-    // Act
-    sut.ScheduleAction(deadlineUTC, action);
-    Thread.Sleep(delay - TimeSpan.FromMilliseconds(50));
-    bool earlyActionExecuted = actionExecuted;
-    Thread.Sleep(TimeSpan.FromMilliseconds(100));
+      var sut = new Timer();
 
-    // Assert
-    earlyActionExecuted.Should().BeFalse();
-    actionExecuted.Should().BeTrue();
+      // Act
+      sut.ScheduleAction(deadlineUTC, action);
+      Thread.Sleep(delay - TimeSpan.FromMilliseconds(50));
+      bool earlyActionExecuted = actionExecuted;
+      Thread.Sleep(TimeSpan.FromMilliseconds(100));
+
+      // Assert
+      earlyActionExecuted.Should().BeFalse();
+      actionExecuted.Should().BeTrue();
+    }
   }
 }
 

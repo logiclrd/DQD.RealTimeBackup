@@ -1,12 +1,15 @@
 using System.IO;
 
-public class B2RemoteStorage : IRemoteStorage
+namespace DeltaQ.RTB
 {
-  public void UploadFile(string serverPath, Stream content)
+  public class B2RemoteStorage : IRemoteStorage
   {
-  }
+    public void UploadFile(string serverPath, Stream content)
+    {
+    }
 
-  public void DeleteFile(string serverPath)
-  {
+    public void DeleteFile(string serverPath)
+    {
+    }
   }
 }

@@ -1,7 +1,10 @@
 using System;
 
-public interface IStagedFile : IDisposable
+namespace DeltaQ.RTB
 {
-  string Path { get; }
+  public interface IStagedFile : IDisposable
+  {
+    string Path { get; }
+  }
 }
 

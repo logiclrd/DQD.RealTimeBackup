@@ -1,6 +1,9 @@
-public interface IRemoteFileStateCache
+namespace DeltaQ.RTB
 {
-  FileState? GetFileState(string path);
-  void UpdateFileState(string path, FileState newFileState);
+  public interface IRemoteFileStateCache
+  {
+    FileState? GetFileState(string path);
+    void UpdateFileState(string path, FileState newFileState);
+  }
 }
 

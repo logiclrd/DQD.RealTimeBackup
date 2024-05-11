@@ -1,28 +1,31 @@
 using System;
 
-public class MountHandle
+namespace DeltaQ.RTB
 {
-  int _fd;
-  string _mountPointPath;
-
-  public MountHandle(int fd, string mountPointPath)
+  public class MountHandle
   {
-    _fd = fd;
-    _mountPointPath = mountPointPath;
-  }
+    int _fd;
+    string _mountPointPath;
 
-  public int FileDescriptor => _fd;
-
-  public long FileSystemID
-  {
-    get
+    public MountHandle(int fd, string mountPointPath)
     {
-      byte[] s = new byte[128];
+      _fd = fd;
+      _mountPointPath = mountPointPath;
+    }
 
-      if (NativeMethods.fstatfs(_fd, s) < 0)
-        throw new Exception($"Failed to stat mount point: {_mountPointPath}");
+    public int FileDescriptor => _fd;
 
-      return BitConverter.ToInt64(s, 56);
+    public long FileSystemID
+    {
+      get
+      {
+        byte[] s = new byte[128];
+
+        if (NativeMethods.fstatfs(_fd, s) < 0)
+          throw new Exception($"Failed to stat mount point: {_mountPointPath}");
+
+        return BitConverter.ToInt64(s, 56);
+      }
     }
   }
 }

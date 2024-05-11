@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 
-public interface IMountTable
+namespace DeltaQ.RTB
 {
-  MountHandle OpenMountForFileSystem(string mountPointPath);
-  IEnumerable<Mount> EnumerateMounts();
+  public interface IMountTable
+  {
+    MountHandle OpenMountForFileSystem(string mountPointPath);
+    IEnumerable<Mount> EnumerateMounts();
+  }
 }
 

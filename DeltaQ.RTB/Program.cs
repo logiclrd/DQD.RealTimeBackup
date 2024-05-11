@@ -1,30 +1,34 @@
 ﻿using System;
 
-class Program
+namespace DeltaQ.RTB
 {
-  static void Main()
+  class Program
   {
-    var monitor = new FileSystemMonitor(new MountTable());
+    static void Main()
+    {
+      var monitor = new FileSystemMonitor(new MountTable());
 
-    monitor.PathUpdate +=
-      (sender, e) =>
-      {
-        Console.WriteLine("{0}: {1}", e.UpdateType, e.Path);
-      };
+      monitor.PathUpdate +=
+        (sender, e) =>
+        {
+          Console.WriteLine("{0}: {1}", e.UpdateType, e.Path);
+        };
 
-    monitor.PathMove +=
-      (sender, e) =>
-      {
-        Console.WriteLine("{0}: {1}", e.MoveType, e.ContainerPath);
-      };
+      monitor.PathMove +=
+        (sender, e) =>
+        {
+          Console.WriteLine("{0}: {1}", e.MoveType, e.ContainerPath);
+        };
 
-    Console.WriteLine("Starting monitor...");
-    monitor.Start();
+      Console.WriteLine("Starting monitor...");
+      monitor.Start();
 
-    Console.WriteLine("Press enter to stop");
-    Console.ReadLine();
+      Console.WriteLine("Press enter to stop");
+      Console.ReadLine();
 
-    Console.WriteLine("Stopping monitor...");
-    monitor.Stop();
+      Console.WriteLine("Stopping monitor...");
+      monitor.Stop();
+    }
   }
 }
+

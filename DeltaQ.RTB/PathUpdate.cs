@@ -1,14 +1,17 @@
-﻿public class PathUpdate
+﻿namespace DeltaQ.RTB
 {
-  public string Path;
-  public UpdateType UpdateType;
-
-  public PathUpdate() { Path = ""; }
-
-  public PathUpdate(string path, UpdateType updateType)
+  public class PathUpdate
   {
-    Path = path;
-    UpdateType = updateType;
+    public string Path;
+    public UpdateType UpdateType;
+
+    public PathUpdate() { Path = ""; }
+
+    public PathUpdate(string path, UpdateType updateType)
+    {
+      Path = path;
+      UpdateType = updateType;
+    }
   }
 }
 
