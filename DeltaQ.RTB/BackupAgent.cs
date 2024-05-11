@@ -114,7 +114,7 @@ public class BackupAgent : IBackupAgent
 
   object _openFileHandlePollingSync = new object();
 
-  void StartPollOpenFilesThread()
+  internal void StartPollOpenFilesThread()
   {
     new Thread(PollOpenFilesThreadProc).Start();
   }

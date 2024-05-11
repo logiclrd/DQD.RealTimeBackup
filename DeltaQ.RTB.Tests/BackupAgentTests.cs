@@ -79,7 +79,7 @@ public class BackupAgentTests
 
     try
     {
-      sut.Start();
+      sut.StartPollOpenFilesThread();
 
       // Act
       sut.QueuePathForOpenFilesCheck(reference);
@@ -145,7 +145,7 @@ public class BackupAgentTests
 
     var reference = new SnapshotReference(referenceTracker, filePath);
 
-    sut.Start();
+    sut.StartPollOpenFilesThread();
 
     try
     {
