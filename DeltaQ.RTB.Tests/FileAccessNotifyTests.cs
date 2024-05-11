@@ -65,7 +65,7 @@ namespace DeltaQ.RTB.Tests
         try
         {
           // Act
-          for (int i=0; i < 10; i++)          
+          for (int i=0; i < 100; i++)          
             using (var writeStream = File.OpenWrite(Path.Join(testPath, "testfile")))
               writeStream.Write(_faker.Random.Bytes(100), 0, 100);
 
