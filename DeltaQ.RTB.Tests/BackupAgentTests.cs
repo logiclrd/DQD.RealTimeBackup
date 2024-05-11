@@ -395,7 +395,7 @@ namespace DeltaQ.RTB.Tests
 
         for (int i=0; i < 10; i++)
         {
-          if (sut.UploadQueue.Count() == fileReferences.Length)
+          if (sut.UploadQueue.Count() == 0)
             break;
 
           Thread.Sleep(50);
