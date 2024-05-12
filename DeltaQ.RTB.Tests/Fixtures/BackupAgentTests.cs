@@ -14,7 +14,9 @@ using NSubstitute;
 
 using FluentAssertions;
 
-namespace DeltaQ.RTB.Tests
+using DeltaQ.RTB.Tests.Support;
+
+namespace DeltaQ.RTB.Tests.Fixtures
 {
   [TestFixture]
   public class BackupAgentTests

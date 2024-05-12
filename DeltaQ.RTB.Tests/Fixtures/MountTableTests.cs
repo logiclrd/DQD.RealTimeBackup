@@ -2,7 +2,7 @@ using NUnit.Framework;
 
 using FluentAssertions;
 
-namespace DeltaQ.RTB.Tests
+namespace DeltaQ.RTB.Tests.Fixtures
 {
   [TestFixture]
   public class MountTableTests

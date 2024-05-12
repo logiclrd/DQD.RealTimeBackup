@@ -16,7 +16,7 @@ using FluentAssertions;
 
 using NativeMethodsUnderTest = DeltaQ.RTB.NativeMethods;
 
-namespace DeltaQ.RTB.Tests
+namespace DeltaQ.RTB.Tests.Fixtures
 {
   [TestFixture]
   public class FileSystemMonitorTests

@@ -9,7 +9,9 @@ using Bogus;
 
 using FluentAssertions;
 
-namespace DeltaQ.RTB.Tests
+using DeltaQ.RTB.Tests.Support;
+
+namespace DeltaQ.RTB.Tests.Fixtures
 {
   [TestFixture]
   public class FileAccessNotifyTests
@@ -19,7 +21,7 @@ namespace DeltaQ.RTB.Tests
     [Test]
     public void MarkPath_should_enable_collecting_events_for_path()
     {
-      if (NativeMethods.geteuid() != 0)
+      if (TestsNativeMethods.geteuid() != 0)
         Assert.Inconclusive();
 
       // Arrange
@@ -84,7 +86,7 @@ namespace DeltaQ.RTB.Tests
     [Test]
     public void Events_should_not_be_collected_for_unmarked_paths()
     {
-      if (NativeMethods.geteuid() != 0)
+      if (TestsNativeMethods.geteuid() != 0)
         Assert.Inconclusive();
 
       // Arrange

@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace DeltaQ.RTB.Tests
+namespace DeltaQ.RTB.Tests.Support
 {
   class TemporaryFile : IDisposable
   {

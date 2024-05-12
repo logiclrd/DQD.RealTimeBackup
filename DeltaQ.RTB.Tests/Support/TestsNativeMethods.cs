@@ -1,9 +1,9 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace DeltaQ.RTB.Tests
+namespace DeltaQ.RTB.Tests.Support
 {
-  class NativeMethods
+  class TestsNativeMethods
   {
     [DllImport("c", SetLastError = true)]
     public static extern int geteuid();
