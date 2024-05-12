@@ -1,15 +1,28 @@
 ﻿using System;
 
+using Autofac;
+
 namespace DeltaQ.RTB
 {
   class Program
   {
+    static IContainer InitializeContainer()
+    {
+      var builder = new ContainerBuilder();
+
+      builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces();
+      builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces();
+      builder.RegisterType<MountTable>().AsImplementedInterfaces();
+      builder.RegisterType<OpenByHandleAt>().AsImplementedInterfaces();
+
+      return builder.Build();
+    }
+
     static void Main()
     {
-      var monitor = new FileSystemMonitor(
-        new MountTable(),
-        () => new FileAccessNotify(),
-        new OpenByHandleAt());
+      var container = InitializeContainer();
+
+      var monitor = container.Resolve<IFileSystemMonitor>();
 
       monitor.PathUpdate +=
         (sender, e) =>
