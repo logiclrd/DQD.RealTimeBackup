@@ -127,6 +127,9 @@ namespace DeltaQ.RTB
       {
         InitializeFileAccessNotify();
 
+        if (_fileAccessNotify == null)
+          throw new Exception("Internal error");
+
         SetUpFANotify();
 
         _fileAccessNotify.MonitorEvents(
