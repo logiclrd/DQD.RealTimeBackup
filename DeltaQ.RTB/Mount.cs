@@ -1,6 +1,6 @@
 namespace DeltaQ.RTB
 {
-  public class Mount
+  public class Mount : IMount
   {
     string _deviceName;
     string _mountPoint;

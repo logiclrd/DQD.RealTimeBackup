@@ -6,7 +6,10 @@ namespace DeltaQ.RTB
   {
     static void Main()
     {
-      var monitor = new FileSystemMonitor(new MountTable());
+      var monitor = new FileSystemMonitor(
+        new MountTable(),
+        () => new FileAccessNotify(),
+        new OpenByHandleAt());
 
       monitor.PathUpdate +=
         (sender, e) =>

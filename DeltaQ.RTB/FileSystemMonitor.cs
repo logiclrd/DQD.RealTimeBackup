@@ -10,10 +10,16 @@ namespace DeltaQ.RTB
   public class FileSystemMonitor : IFileSystemMonitor
   {
     IMountTable _mountTable;
+    Func<IFileAccessNotify> _fileAccessNotifyFactory;
+    IOpenByHandleAt _openByHandleAt;
 
-    public FileSystemMonitor(IMountTable mountTable)
+    IFileAccessNotify? _fileAccessNotify;
+
+    public FileSystemMonitor(IMountTable mountTable, Func<IFileAccessNotify> fileAccessNotifyFactory, IOpenByHandleAt openByHandleAt)
     {
       _mountTable = mountTable;
+      _fileAccessNotifyFactory = fileAccessNotifyFactory;
+      _openByHandleAt = openByHandleAt;
 
       _shutdownSource = new CancellationTokenSource();
     }
@@ -24,11 +30,9 @@ namespace DeltaQ.RTB
     volatile int _threadCount = 0;
     object _threadCountSync = new object();
 
-    FileAccessNotify? _fileAccessNotify;
-
     StringBuilder _pathNameBuffer = new StringBuilder(NativeMethods.MAX_PATH);
 
-    void ProcessEvent(FileAccessNotifyEvent @event)
+    internal void ProcessEvent(FileAccessNotifyEvent @event)
     {
       int mask = unchecked((int)@event.Metadata.Mask);
 
@@ -61,33 +65,16 @@ namespace DeltaQ.RTB
         mountDescriptor = NativeMethods.AT_FDCWD;
       }
 
-      int fd = NativeMethods.open_by_handle_at(
-          mountDescriptor,
-          fileHandle,
-          NativeMethods.O_RDONLY | NativeMethods.O_NONBLOCK | NativeMethods.O_LARGEFILE | NativeMethods.O_PATH);
+      string? path = null;
 
-      if (fd > 0)
+      using (var openHandle = _openByHandleAt.Open(mountDescriptor, fileHandle))
       {
-        string path;
+        if (openHandle != null)
+          path = openHandle.ReadLink();
+      }
 
-        try
-        {
-          string linkPath = "/proc/self/fd/" + fd;
-
-          _pathNameBuffer.Length = NativeMethods.MAX_PATH;
-
-          var len = NativeMethods.readlink(linkPath, _pathNameBuffer, _pathNameBuffer.Length);
-
-          if (len < 0)
-            return;
-
-          path = _pathNameBuffer.ToString(0, (int)len);
-        }
-        finally
-        {
-          NativeMethods.close(fd);
-        }
-
+      if (path != null)
+      {
         if ((mask & NativeMethods.FAN_MOVE) != 0)
           PathMove?.Invoke(this, new PathMove(path, (mask & NativeMethods.FAN_MOVED_FROM) != 0 ? MoveType.From : MoveType.To));
         else
@@ -95,9 +82,9 @@ namespace DeltaQ.RTB
       }
     }
 
-    Dictionary<long, int> MountDescriptorByFileSystemID = new Dictionary<long, int>();
+    internal Dictionary<long, int> MountDescriptorByFileSystemID = new Dictionary<long, int>();
 
-    void SetUpFANotify()
+    internal void SetUpFANotify()
     {
       if (_fileAccessNotify == null)
         throw new Exception("Sanity check failure: Cannot set up FANotify before opening FANotify handles");
@@ -127,19 +114,24 @@ namespace DeltaQ.RTB
       }
     }
 
-    void MonitorFileActivity()
+    internal void InitializeFileAccessNotify()
+    {
+      _fileAccessNotify = _fileAccessNotifyFactory();
+    }
+
+    internal void MonitorFileActivity()
     {
       Interlocked.Increment(ref _threadCount);
 
       try
       {
-        _fileAccessNotify = new FileAccessNotify();
+        InitializeFileAccessNotify();
 
         SetUpFANotify();
 
         _fileAccessNotify.MonitorEvents(
-            ProcessEvent,
-            _shutdownSource.Token);
+          ProcessEvent,
+          _shutdownSource.Token);
       }
       finally
       {

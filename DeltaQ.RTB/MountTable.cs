@@ -5,7 +5,7 @@ namespace DeltaQ.RTB
 {
   public class MountTable : IMountTable
   {
-    public MountHandle OpenMountForFileSystem(string mountPointPath)
+    public IMountHandle OpenMountForFileSystem(string mountPointPath)
     {
       int fd = NativeMethods.open(mountPointPath, NativeMethods.O_RDONLY | NativeMethods.O_NOFOLLOW);
 
@@ -15,7 +15,7 @@ namespace DeltaQ.RTB
       return new MountHandle(fd, mountPointPath);
     }
 
-    public IEnumerable<Mount> EnumerateMounts()
+    public IEnumerable<IMount> EnumerateMounts()
     {
       IntPtr mounts = NativeMethods.setmntent("/proc/self/mounts", "r");
       if (mounts == IntPtr.Zero)

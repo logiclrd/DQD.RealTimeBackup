@@ -5,8 +5,8 @@ namespace DeltaQ.RTB
 {
   public interface IMountTable
   {
-    MountHandle OpenMountForFileSystem(string mountPointPath);
-    IEnumerable<Mount> EnumerateMounts();
+    IMountHandle OpenMountForFileSystem(string mountPointPath);
+    IEnumerable<IMount> EnumerateMounts();
   }
 }
 

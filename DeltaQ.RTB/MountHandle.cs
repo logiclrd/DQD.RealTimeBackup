@@ -2,7 +2,7 @@ using System;
 
 namespace DeltaQ.RTB
 {
-  public class MountHandle
+  public class MountHandle : IMountHandle
   {
     int _fd;
     string _mountPointPath;

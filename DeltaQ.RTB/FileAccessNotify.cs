@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace DeltaQ.RTB
 {
-  public class FileAccessNotify : IDisposable
+  public class FileAccessNotify : IFileAccessNotify, IDisposable
   {
     int _fd;
 
