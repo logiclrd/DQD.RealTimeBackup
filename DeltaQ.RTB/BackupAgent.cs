@@ -166,7 +166,7 @@ namespace DeltaQ.RTB
         {
           var fileReference = openFilesCached[i];
 
-          if (!_openFileHandles.Enumerate(fileReference.SnapshotReference.Path).Any())
+          if (!_openFileHandles.Enumerate(fileReference.SnapshotReference.Path).Any(handle => handle.FileAccess.HasFlag(FileAccess.Write)))
           {
             filesToPromote.Add(fileReference);
             openFilesCached.RemoveAt(i);
