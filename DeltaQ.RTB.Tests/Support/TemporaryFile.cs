@@ -20,6 +20,9 @@ namespace DeltaQ.RTB.Tests.Support
     public TemporaryFile(string path)
     {
       _path = path;
+
+      using (File.Open(path, FileMode.OpenOrCreate))
+        ;
     }
 
     public void Dispose()

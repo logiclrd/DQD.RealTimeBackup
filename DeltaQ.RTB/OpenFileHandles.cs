@@ -19,6 +19,13 @@ namespace DeltaQ.RTB
 
       using (var process = Process.Start(psi)!)
       {
+        int processID = -1;
+        int processGroupID = -1;
+        int parentProcessID = -1;
+        string? commandName = null;
+        int processUserID = -1;
+        string? processLoginName = null;
+
         OpenFileHandle? handle = null;
 
         while (true)
@@ -31,27 +38,50 @@ namespace DeltaQ.RTB
           if (line.Length == 0)
             continue;
 
+          // Start of new Process Set
+          if (line[0] == 'p')
+          {
+            processID = -1;
+            processGroupID = -1;
+            parentProcessID = -1;
+            commandName = null;
+            processUserID = -1;
+            processLoginName = null;
+          }
+
           if (line[0] == 'f')
           {
             if (handle != null)
               yield return handle;
 
             handle = new OpenFileHandle();
+            handle.ProcessID = processID;
+            handle.ProcessGroupID = processGroupID;
+            handle.ParentProcessID = parentProcessID;
+            handle.CommandName = commandName;
+            handle.ProcessUserID = processUserID;
+            handle.ProcessLoginName = processLoginName;
+          }
+
+          char field = line[0];
+          string fieldValue = line.Substring(1);
+
+          // Process Set fields
+          switch (field)
+          {
+            case 'p': processID = int.Parse(fieldValue); break;
+            case 'g': processGroupID = int.Parse(fieldValue); break;
+            case 'R': parentProcessID = int.Parse(fieldValue); break;
+            case 'c': commandName = fieldValue; break;
+            case 'u': processUserID = int.Parse(fieldValue); break;
+            case 'L': processLoginName = fieldValue; break;
           }
 
           if (handle != null)
           {
-            char field = line[0];
-            string fieldValue = line.Substring(1);
-
+            // File Set fields
             switch (field)
             {
-              case 'p': handle.ProcessID = int.Parse(fieldValue); break;
-              case 'g': handle.ProcessGroupID = int.Parse(fieldValue); break;
-              case 'R': handle.ParentProcessID = int.Parse(fieldValue); break;
-              case 'c': handle.CommandName = fieldValue; break;
-              case 'u': handle.ProcessUserID = int.Parse(fieldValue); break;
-              case 'L': handle.ProcessLoginName = fieldValue; break;
               case 'f': handle.FileDescriptor = int.Parse(fieldValue); break;
               case 'a':
                         handle.FileAccess =
