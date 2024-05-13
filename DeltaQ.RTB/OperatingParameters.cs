@@ -4,6 +4,10 @@ namespace DeltaQ.RTB
 {
   public class OperatingParameters
   {
+    // Set to false to run a BackupAgent that responds only to explicit notifications. For instance,
+    // this is used to achieve initial backup.
+    public bool EnableFileAccessNotify = true;
+
     // When submitting a file, if its size is less than this then it will be copied to /tmp and
     // the ZFS snapshot released. If its size is greater than or equal to this, then the ZFS
     // snapshot will be retained and used as the source for the upload.

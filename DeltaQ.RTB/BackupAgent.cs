@@ -358,7 +358,9 @@ namespace DeltaQ.RTB
       _stopping = false;
       _monitor.Start();
 
-      StartPollOpenFilesThread();
+      if (_parameters.EnableFileAccessNotify)
+        StartPollOpenFilesThread();
+
       StartProcessBackupQueueThread();
       StartUploadThreads();
     }
