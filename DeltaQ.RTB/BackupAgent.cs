@@ -313,7 +313,11 @@ namespace DeltaQ.RTB
     object _uploadQueueSync = new object();
     List<FileReference> _uploadQueue = new List<FileReference>();
 
-    internal IEnumerable<FileReference> UploadQueue => _uploadQueue.Select(x => x);
+    public IEnumerable<FileReference> PeekUploadQueue()
+    {
+      lock (_uploadQueueSync)
+        return _uploadQueue.ToList();
+    }
 
     internal void AddFileReferenceToUploadQueue(FileReference fileReference)
     {

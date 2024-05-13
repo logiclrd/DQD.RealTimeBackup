@@ -130,7 +130,13 @@ namespace DeltaQ.RTB.Tests.Fixtures
           var path = x.Arg<string>();
 
           if (hasOpenFileHandles)
-            return new[] { autoFaker.Generate<OpenFileHandle>() };
+          {
+            var openFileHandle = autoFaker.Generate<OpenFileHandle>();
+
+            openFileHandle.FileAccess = FileAccess.Write;
+
+            return new[] { openFileHandle };
+          }
           else
             return new OpenFileHandle[0];
         });
@@ -233,7 +239,7 @@ namespace DeltaQ.RTB.Tests.Fixtures
         // Assert
         remoteFileStateCache.Received().GetFileState(file.Path);
         staging.DidNotReceive().StageFile(Arg.Any<Stream>());
-        sut.UploadQueue.Should().BeEmpty();
+        sut.PeekUploadQueue().Should().BeEmpty();
       }
     }
 
@@ -284,7 +290,7 @@ namespace DeltaQ.RTB.Tests.Fixtures
         remoteFileStateCache.Received().GetFileState(file.Path);
         staging.DidNotReceive().StageFile(Arg.Any<Stream>());
 
-        var fileReference = sut.UploadQueue.Single();
+        var fileReference = sut.PeekUploadQueue().Single();
 
         fileReference.Path.Should().Be(file.Path);
       }
@@ -351,7 +357,7 @@ namespace DeltaQ.RTB.Tests.Fixtures
         remoteFileStateCache.Received().GetFileState(file.Path);
         staging.Received().StageFile(Arg.Any<Stream>());
 
-        var fileReference = sut.UploadQueue.Single();
+        var fileReference = sut.PeekUploadQueue().Single();
 
         fileReference.Path.Should().Be(stagedFilePath);
       }
@@ -397,14 +403,14 @@ namespace DeltaQ.RTB.Tests.Fixtures
 
         for (int i=0; i < 10; i++)
         {
-          if (sut.UploadQueue.Count() == 0)
+          if (sut.PeekUploadQueue().Count() == 0)
             break;
 
           Thread.Sleep(50);
         }
 
         // Assert
-        sut.UploadQueue.Should().BeEmpty();
+        sut.PeekUploadQueue().Should().BeEmpty();
 
         foreach (var reference in fileReferences)
           storage.Received().UploadFile(Arg.Any<string>(), Arg.Is(reference.Stream));
