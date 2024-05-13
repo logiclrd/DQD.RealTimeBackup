@@ -21,8 +21,7 @@ namespace DeltaQ.RTB.Tests.Support
     {
       _path = path;
 
-      using (File.Open(path, FileMode.OpenOrCreate))
-        ;
+      File.Open(path, FileMode.OpenOrCreate).Dispose();
     }
 
     public void Dispose()
