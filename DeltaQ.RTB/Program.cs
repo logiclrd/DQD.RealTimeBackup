@@ -35,7 +35,7 @@ namespace DeltaQ.RTB
       builder.RegisterType<OpenFileHandles>().AsImplementedInterfaces();
       builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces();
       builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces();
-      // TODO: builder.RegisterType<Staging>().AsImplementedInterfaces();
+      builder.RegisterType<Staging>().AsImplementedInterfaces();
       builder.RegisterType<Timer>().AsImplementedInterfaces();
       builder.RegisterType<ZFS>().AsImplementedInterfaces();
 
