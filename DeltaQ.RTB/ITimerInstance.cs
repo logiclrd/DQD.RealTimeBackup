@@ -2,9 +2,9 @@ using System;
 
 namespace DeltaQ.RTB
 {
-  public interface ITimerInstance : IDisposable
-  {
-    DateTime DueTime { get; }
-  }
+	public interface ITimerInstance : IDisposable
+	{
+		DateTime DueTime { get; }
+	}
 }
 

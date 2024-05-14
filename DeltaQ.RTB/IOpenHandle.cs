@@ -2,9 +2,9 @@
 
 namespace DeltaQ.RTB
 {
-  public interface IOpenHandle : IDisposable
-  {
-    string ReadLink();
-  }
+	public interface IOpenHandle : IDisposable
+	{
+		string ReadLink();
+	}
 }
 

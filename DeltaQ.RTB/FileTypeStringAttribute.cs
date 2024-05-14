@@ -2,16 +2,16 @@ using System;
 
 namespace DeltaQ.RTB
 {
-  [AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
-  public class FileTypeStringAttribute : Attribute
-  {
-    string _tag;
+	[AttributeUsage(AttributeTargets.Field, Inherited = false, AllowMultiple = false)]
+	public class FileTypeStringAttribute : Attribute
+	{
+		string _tag;
 
-    public FileTypeStringAttribute(string tag)
-    {
-      _tag = tag;
-    }
+		public FileTypeStringAttribute(string tag)
+		{
+			_tag = tag;
+		}
 
-    public string Tag => _tag;
-  }
+		public string Tag => _tag;
+	}
 }

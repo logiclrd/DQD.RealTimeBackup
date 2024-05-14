@@ -18,408 +18,408 @@ using DeltaQ.RTB.Tests.Support;
 
 namespace DeltaQ.RTB.Tests.Fixtures
 {
-  [TestFixture]
-  public class BackupAgentTests
-  {
-    Faker _faker = new Faker();
-
-    BackupAgent CreateSUT(OperatingParameters parameters, out ITimer timer, out IChecksum checksum, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
-    {
-      timer = Substitute.For<ITimer>();
-      checksum = Substitute.For<IChecksum>();
-      monitor = Substitute.For<IFileSystemMonitor>();
-      openFileHandles = Substitute.For<IOpenFileHandles>();
-      zfs = Substitute.For<IZFS>();
-      staging = Substitute.For<IStaging>();
-      remoteFileStateCache = Substitute.For<IRemoteFileStateCache>();
-      storage = Substitute.For<IRemoteStorage>();
-
-      var md5Checksum = new MD5Checksum();
-
-      checksum.ComputeChecksum(Arg.Any<Stream>()).Returns(x => md5Checksum.ComputeChecksum(x.Arg<Stream>()));
-      checksum.ComputeChecksum(Arg.Any<string>()).Returns(x => md5Checksum.ComputeChecksum(new MemoryStream(Encoding.UTF8.GetBytes(x.Arg<string>()))));
-
-      return new BackupAgent(
-        parameters,
-        timer,
-        checksum,
-        monitor,
-        openFileHandles,
-        zfs,
-        staging,
-        remoteFileStateCache,
-        storage);
-    }
-
-    [Test]
-    public void QueuePathForOpenFilesCheck_should_immediately_process_file_with_no_handles()
-    {
-      // Arrange
-      var parameters = new OperatingParameters();
-
-      parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
-      parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
-
-      var sut = CreateSUT(
-        parameters,
-        out var timer,
-        out var checksum,
-        out var monitor,
-        out var openFileHandles,
-        out var zfs,
-        out var staging,
-        out var remoteFileStateCache,
-        out var storage);
-
-      openFileHandles.Enumerate(Arg.Any<string>()).Returns(new OpenFileHandle[0]);
-
-      string filePath = _faker.System.FilePath();
-
-      var snapshot = Substitute.For<IZFSSnapshot>();
-
-      var referenceTracker = new SnapshotReferenceTracker(snapshot);
-
-      var reference = new SnapshotReference(referenceTracker, filePath);
-
-      try
-      {
-        sut.StartPollOpenFilesThread();
-
-        // Act
-        sut.QueuePathForOpenFilesCheck(reference);
-        bool backupQueueInitiallyEmpty = !sut.BackupQueue.Any();
-        Thread.Sleep(parameters.MaximumTimeToWaitForNoOpenFileHandles * 2);
-
-        // Assert
-        backupQueueInitiallyEmpty.Should().BeTrue();
-        sut.BackupQueue.Should().Contain(reference);
-      }
-      finally
-      {
-        sut.Stop();
-      }
-    }
-
-    [Test]
-    public void QueuePathForOpenFilesCheck_should_wait_until_file_has_no_handles()
-    {
-      // Arrange
-      var autoFaker = AutoFaker.Create();
-
-      var parameters = new OperatingParameters();
-
-      parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(1);
-      parameters.OpenFileHandlePollingInterval = TimeSpan.FromSeconds(0.1);
-
-      var sut = CreateSUT(
-        parameters,
-        out var timer,
-        out var checksum,
-        out var monitor,
-        out var openFileHandles,
-        out var zfs,
-        out var staging,
-        out var remoteFileStateCache,
-        out var storage);
+	[TestFixture]
+	public class BackupAgentTests
+	{
+		Faker _faker = new Faker();
+
+		BackupAgent CreateSUT(OperatingParameters parameters, out ITimer timer, out IChecksum checksum, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
+		{
+			timer = Substitute.For<ITimer>();
+			checksum = Substitute.For<IChecksum>();
+			monitor = Substitute.For<IFileSystemMonitor>();
+			openFileHandles = Substitute.For<IOpenFileHandles>();
+			zfs = Substitute.For<IZFS>();
+			staging = Substitute.For<IStaging>();
+			remoteFileStateCache = Substitute.For<IRemoteFileStateCache>();
+			storage = Substitute.For<IRemoteStorage>();
+
+			var md5Checksum = new MD5Checksum();
+
+			checksum.ComputeChecksum(Arg.Any<Stream>()).Returns(x => md5Checksum.ComputeChecksum(x.Arg<Stream>()));
+			checksum.ComputeChecksum(Arg.Any<string>()).Returns(x => md5Checksum.ComputeChecksum(new MemoryStream(Encoding.UTF8.GetBytes(x.Arg<string>()))));
+
+			return new BackupAgent(
+				parameters,
+				timer,
+				checksum,
+				monitor,
+				openFileHandles,
+				zfs,
+				staging,
+				remoteFileStateCache,
+				storage);
+		}
+
+		[Test]
+		public void QueuePathForOpenFilesCheck_should_immediately_process_file_with_no_handles()
+		{
+			// Arrange
+			var parameters = new OperatingParameters();
+
+			parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
+			parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
+
+			var sut = CreateSUT(
+				parameters,
+				out var timer,
+				out var checksum,
+				out var monitor,
+				out var openFileHandles,
+				out var zfs,
+				out var staging,
+				out var remoteFileStateCache,
+				out var storage);
+
+			openFileHandles.Enumerate(Arg.Any<string>()).Returns(new OpenFileHandle[0]);
+
+			string filePath = _faker.System.FilePath();
 
-      bool hasOpenFileHandles = true;
+			var snapshot = Substitute.For<IZFSSnapshot>();
+
+			var referenceTracker = new SnapshotReferenceTracker(snapshot);
+
+			var reference = new SnapshotReference(referenceTracker, filePath);
+
+			try
+			{
+				sut.StartPollOpenFilesThread();
+
+				// Act
+				sut.QueuePathForOpenFilesCheck(reference);
+				bool backupQueueInitiallyEmpty = !sut.BackupQueue.Any();
+				Thread.Sleep(parameters.MaximumTimeToWaitForNoOpenFileHandles * 2);
+
+				// Assert
+				backupQueueInitiallyEmpty.Should().BeTrue();
+				sut.BackupQueue.Should().Contain(reference);
+			}
+			finally
+			{
+				sut.Stop();
+			}
+		}
+
+		[Test]
+		public void QueuePathForOpenFilesCheck_should_wait_until_file_has_no_handles()
+		{
+			// Arrange
+			var autoFaker = AutoFaker.Create();
+
+			var parameters = new OperatingParameters();
+
+			parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(1);
+			parameters.OpenFileHandlePollingInterval = TimeSpan.FromSeconds(0.1);
+
+			var sut = CreateSUT(
+				parameters,
+				out var timer,
+				out var checksum,
+				out var monitor,
+				out var openFileHandles,
+				out var zfs,
+				out var staging,
+				out var remoteFileStateCache,
+				out var storage);
 
-      openFileHandles.Enumerate(Arg.Any<string>()).Returns(
-        x =>
-        {
-          var path = x.Arg<string>();
+			bool hasOpenFileHandles = true;
 
-          if (hasOpenFileHandles)
-          {
-            var openFileHandle = autoFaker.Generate<OpenFileHandle>();
+			openFileHandles.Enumerate(Arg.Any<string>()).Returns(
+				x =>
+				{
+					var path = x.Arg<string>();
 
-            openFileHandle.FileAccess = FileAccess.Write;
+					if (hasOpenFileHandles)
+					{
+						var openFileHandle = autoFaker.Generate<OpenFileHandle>();
 
-            return new[] { openFileHandle };
-          }
-          else
-            return new OpenFileHandle[0];
-        });
+						openFileHandle.FileAccess = FileAccess.Write;
 
-      string filePath = _faker.System.FilePath();
+						return new[] { openFileHandle };
+					}
+					else
+						return new OpenFileHandle[0];
+				});
 
-      var snapshot = Substitute.For<IZFSSnapshot>();
+			string filePath = _faker.System.FilePath();
 
-      string snapshotPath = _faker.System.DirectoryPath();
+			var snapshot = Substitute.For<IZFSSnapshot>();
 
-      snapshot.BuildPath().Returns(snapshotPath);
+			string snapshotPath = _faker.System.DirectoryPath();
 
-      string fileInSnapshotPath = Path.Combine(snapshotPath, filePath.TrimStart('/'));
+			snapshot.BuildPath().Returns(snapshotPath);
 
-      var referenceTracker = new SnapshotReferenceTracker(snapshot);
+			string fileInSnapshotPath = Path.Combine(snapshotPath, filePath.TrimStart('/'));
 
-      var reference = new SnapshotReference(referenceTracker, filePath);
+			var referenceTracker = new SnapshotReferenceTracker(snapshot);
 
-      sut.StartPollOpenFilesThread();
+			var reference = new SnapshotReference(referenceTracker, filePath);
 
-      try
-      {
-        // Act & Assert
-        sut.QueuePathForOpenFilesCheck(reference);
+			sut.StartPollOpenFilesThread();
 
-        sut.BackupQueue.Should().BeEmpty();
+			try
+			{
+				// Act & Assert
+				sut.QueuePathForOpenFilesCheck(reference);
 
-        Thread.Sleep(parameters.OpenFileHandlePollingInterval * 1.5);
-    
-        sut.BackupQueue.Should().BeEmpty();
-        openFileHandles.Received().Enumerate(filePath);
-        openFileHandles.ClearReceivedCalls();
+				sut.BackupQueue.Should().BeEmpty();
 
-        hasOpenFileHandles = false;
+				Thread.Sleep(parameters.OpenFileHandlePollingInterval * 1.5);
 
-        Thread.Sleep(parameters.OpenFileHandlePollingInterval);
+				sut.BackupQueue.Should().BeEmpty();
+				openFileHandles.Received().Enumerate(filePath);
+				openFileHandles.ClearReceivedCalls();
 
-        openFileHandles.Received().Enumerate(filePath);
-        sut.BackupQueue.Should().Contain(reference);
-      }
-      finally
-      {
-        sut.Stop();
-      }
-    }
+				hasOpenFileHandles = false;
 
-    [Test]
-    public void ProcessBackupQueueReference_should_not_queue_unchanged_file()
-    {
-      // Arrange
-      using (var file = new TemporaryFile())
-      {
-        var parameters = new OperatingParameters();
+				Thread.Sleep(parameters.OpenFileHandlePollingInterval);
 
-        parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
-        parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
-        parameters.MaximumFileSizeForStagingCopy = 100;
+				openFileHandles.Received().Enumerate(filePath);
+				sut.BackupQueue.Should().Contain(reference);
+			}
+			finally
+			{
+				sut.Stop();
+			}
+		}
 
-        var snapshot = Substitute.For<IZFSSnapshot>();
+		[Test]
+		public void ProcessBackupQueueReference_should_not_queue_unchanged_file()
+		{
+			// Arrange
+			using (var file = new TemporaryFile())
+			{
+				var parameters = new OperatingParameters();
 
-        snapshot.BuildPath().Returns("/");
+				parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
+				parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
+				parameters.MaximumFileSizeForStagingCopy = 100;
 
-        var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+				var snapshot = Substitute.For<IZFSSnapshot>();
 
-        var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
+				snapshot.BuildPath().Returns("/");
 
-        var sut = CreateSUT(
-          parameters,
-          out var timer,
-          out var checksum,
-          out var monitor,
-          out var openFileHandles,
-          out var zfs,
-          out var staging,
-          out var remoteFileStateCache,
-          out var storage);
+				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
 
-        checksum.ComputeChecksum(Arg.Any<string>()).Returns(
-          x =>
-          {
-            using (var stream = File.OpenRead(x.Arg<string>()))
-              return checksum.ComputeChecksum(stream);
-          });
+				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
 
-        var cachedFileState = new FileState();
+				var sut = CreateSUT(
+					parameters,
+					out var timer,
+					out var checksum,
+					out var monitor,
+					out var openFileHandles,
+					out var zfs,
+					out var staging,
+					out var remoteFileStateCache,
+					out var storage);
 
-        cachedFileState.Path = file.Path;
-        cachedFileState.FileSize = parameters.MaximumFileSizeForStagingCopy;
+				checksum.ComputeChecksum(Arg.Any<string>()).Returns(
+					x =>
+					{
+						using (var stream = File.OpenRead(x.Arg<string>()))
+							return checksum.ComputeChecksum(stream);
+					});
 
-        File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)cachedFileState.FileSize));
+				var cachedFileState = new FileState();
 
-        cachedFileState.LastModifiedUTC = File.GetLastWriteTimeUtc(file.Path);
-        cachedFileState.Checksum = checksum.ComputeChecksum(file.Path);
+				cachedFileState.Path = file.Path;
+				cachedFileState.FileSize = parameters.MaximumFileSizeForStagingCopy;
 
-        remoteFileStateCache.GetFileState(file.Path).Returns(cachedFileState);
+				File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)cachedFileState.FileSize));
 
-        // Act
-        sut.ProcessBackupQueueReference(reference);
+				cachedFileState.LastModifiedUTC = File.GetLastWriteTimeUtc(file.Path);
+				cachedFileState.Checksum = checksum.ComputeChecksum(file.Path);
 
-        // Assert
-        remoteFileStateCache.Received().GetFileState(file.Path);
-        staging.DidNotReceive().StageFile(Arg.Any<Stream>());
-        sut.PeekUploadQueue().Should().BeEmpty();
-      }
-    }
+				remoteFileStateCache.GetFileState(file.Path).Returns(cachedFileState);
 
-    [Test]
-    public void ProcessBackupQueueReference_should_queue_file_in_place_for_large_files()
-    {
-      // Arrange
-      using (var file = new TemporaryFile())
-      {
-        var parameters = new OperatingParameters();
+				// Act
+				sut.ProcessBackupQueueReference(reference);
 
-        parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
-        parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
-        parameters.MaximumFileSizeForStagingCopy = 100;
+				// Assert
+				remoteFileStateCache.Received().GetFileState(file.Path);
+				staging.DidNotReceive().StageFile(Arg.Any<Stream>());
+				sut.PeekUploadQueue().Should().BeEmpty();
+			}
+		}
 
-        var snapshot = Substitute.For<IZFSSnapshot>();
+		[Test]
+		public void ProcessBackupQueueReference_should_queue_file_in_place_for_large_files()
+		{
+			// Arrange
+			using (var file = new TemporaryFile())
+			{
+				var parameters = new OperatingParameters();
 
-        snapshot.BuildPath().Returns("/");
+				parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
+				parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
+				parameters.MaximumFileSizeForStagingCopy = 100;
 
-        var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+				var snapshot = Substitute.For<IZFSSnapshot>();
 
-        var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
+				snapshot.BuildPath().Returns("/");
 
-        var sut = CreateSUT(
-          parameters,
-          out var timer,
-          out var checksum,
-          out var monitor,
-          out var openFileHandles,
-          out var zfs,
-          out var staging,
-          out var remoteFileStateCache,
-          out var storage);
+				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
 
-        checksum.ComputeChecksum(Arg.Any<string>()).Returns(
-          x =>
-          {
-            using (var stream = File.OpenRead(x.Arg<string>()))
-              return checksum.ComputeChecksum(stream);
-          });
+				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
 
-        File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)parameters.MaximumFileSizeForStagingCopy + 1));
+				var sut = CreateSUT(
+					parameters,
+					out var timer,
+					out var checksum,
+					out var monitor,
+					out var openFileHandles,
+					out var zfs,
+					out var staging,
+					out var remoteFileStateCache,
+					out var storage);
 
-        // Act
-        sut.ProcessBackupQueueReference(reference);
+				checksum.ComputeChecksum(Arg.Any<string>()).Returns(
+					x =>
+					{
+						using (var stream = File.OpenRead(x.Arg<string>()))
+							return checksum.ComputeChecksum(stream);
+					});
 
-        // Assert
-        remoteFileStateCache.Received().GetFileState(file.Path);
-        staging.DidNotReceive().StageFile(Arg.Any<Stream>());
+				File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)parameters.MaximumFileSizeForStagingCopy + 1));
 
-        var fileReference = sut.PeekUploadQueue().Single();
+				// Act
+				sut.ProcessBackupQueueReference(reference);
 
-        fileReference.Path.Should().Be(file.Path);
-      }
-    }
+				// Assert
+				remoteFileStateCache.Received().GetFileState(file.Path);
+				staging.DidNotReceive().StageFile(Arg.Any<Stream>());
 
-    [Test]
-    public void ProcessBackupQueueReference_should_stage_file_for_small_files()
-    {
-      // Arrange
-      using (var file = new TemporaryFile())
-      {
-        var parameters = new OperatingParameters();
+				var fileReference = sut.PeekUploadQueue().Single();
 
-        parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
-        parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
-        parameters.MaximumFileSizeForStagingCopy = 100;
+				fileReference.Path.Should().Be(file.Path);
+			}
+		}
 
-        var snapshot = Substitute.For<IZFSSnapshot>();
+		[Test]
+		public void ProcessBackupQueueReference_should_stage_file_for_small_files()
+		{
+			// Arrange
+			using (var file = new TemporaryFile())
+			{
+				var parameters = new OperatingParameters();
 
-        snapshot.BuildPath().Returns("/");
+				parameters.MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(0.1);
+				parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
+				parameters.MaximumFileSizeForStagingCopy = 100;
 
-        var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+				var snapshot = Substitute.For<IZFSSnapshot>();
 
-        var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
+				snapshot.BuildPath().Returns("/");
 
-        var sut = CreateSUT(
-          parameters,
-          out var timer,
-          out var checksum,
-          out var monitor,
-          out var openFileHandles,
-          out var zfs,
-          out var staging,
-          out var remoteFileStateCache,
-          out var storage);
+				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
 
-        checksum.ComputeChecksum(Arg.Any<string>()).Returns(
-          x =>
-          {
-            using (var stream = File.OpenRead(x.Arg<string>()))
-              return checksum.ComputeChecksum(stream);
-          });
+				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
 
-        File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)parameters.MaximumFileSizeForStagingCopy));
+				var sut = CreateSUT(
+					parameters,
+					out var timer,
+					out var checksum,
+					out var monitor,
+					out var openFileHandles,
+					out var zfs,
+					out var staging,
+					out var remoteFileStateCache,
+					out var storage);
 
-        var stagedFile = Substitute.For<IStagedFile>();
+				checksum.ComputeChecksum(Arg.Any<string>()).Returns(
+					x =>
+					{
+						using (var stream = File.OpenRead(x.Arg<string>()))
+							return checksum.ComputeChecksum(stream);
+					});
 
-        var stagedFilePath = "/tmp/" + _faker.System.FileName();
+				File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)parameters.MaximumFileSizeForStagingCopy));
 
-        stagedFile.Path.Returns(stagedFilePath);
+				var stagedFile = Substitute.For<IStagedFile>();
 
-        staging.StageFile(Arg.Any<Stream>()).Returns(
-          x =>
-          {
-            File.Copy(file.Path, stagedFilePath);
+				var stagedFilePath = "/tmp/" + _faker.System.FileName();
 
-            return stagedFile;
-          });
+				stagedFile.Path.Returns(stagedFilePath);
 
-        // Act
-        sut.ProcessBackupQueueReference(reference);
+				staging.StageFile(Arg.Any<Stream>()).Returns(
+					x =>
+					{
+						File.Copy(file.Path, stagedFilePath);
 
-        // Assert
-        remoteFileStateCache.Received().GetFileState(file.Path);
-        staging.Received().StageFile(Arg.Any<Stream>());
+						return stagedFile;
+					});
 
-        var fileReference = sut.PeekUploadQueue().Single();
+				// Act
+				sut.ProcessBackupQueueReference(reference);
 
-        fileReference.Path.Should().Be(stagedFilePath);
-      }
-    }
+				// Assert
+				remoteFileStateCache.Received().GetFileState(file.Path);
+				staging.Received().StageFile(Arg.Any<Stream>());
 
-    [Test]
-    public void UploadThreadProc_should_upload_files()
-    {
-      // Arrange
-      var autoFaker = AutoFaker.Create();
+				var fileReference = sut.PeekUploadQueue().Single();
 
-      var parameters = new OperatingParameters();
+				fileReference.Path.Should().Be(stagedFilePath);
+			}
+		}
 
-      var sut = CreateSUT(
-        parameters,
-        out var timer,
-        out var checksum,
-        out var monitor,
-        out var openFileHandles,
-        out var zfs,
-        out var staging,
-        out var remoteFileStateCache,
-        out var storage);
+		[Test]
+		public void UploadThreadProc_should_upload_files()
+		{
+			// Arrange
+			var autoFaker = AutoFaker.Create();
 
-      sut.Start();
+			var parameters = new OperatingParameters();
 
-      var fileReferences =
-        new[]
-        {
-          autoFaker.Generate<FileReference>(),
-          autoFaker.Generate<FileReference>(),
-          autoFaker.Generate<FileReference>(),
-        };
+			var sut = CreateSUT(
+				parameters,
+				out var timer,
+				out var checksum,
+				out var monitor,
+				out var openFileHandles,
+				out var zfs,
+				out var staging,
+				out var remoteFileStateCache,
+				out var storage);
 
-      foreach (var reference in fileReferences)
-        reference.Stream = new MemoryStream();
+			sut.Start();
 
-      try
-      {
-        // Act
-        foreach (var reference in fileReferences)
-          sut.AddFileReferenceToUploadQueue(reference);
+			var fileReferences =
+				new[]
+				{
+					autoFaker.Generate<FileReference>(),
+					autoFaker.Generate<FileReference>(),
+					autoFaker.Generate<FileReference>(),
+				};
 
-        for (int i=0; i < 10; i++)
-        {
-          if (sut.PeekUploadQueue().Count() == 0)
-            break;
+			foreach (var reference in fileReferences)
+				reference.Stream = new MemoryStream();
 
-          Thread.Sleep(50);
-        }
+			try
+			{
+				// Act
+				foreach (var reference in fileReferences)
+					sut.AddFileReferenceToUploadQueue(reference);
 
-        // Assert
-        sut.PeekUploadQueue().Should().BeEmpty();
+				for (int i = 0; i < 10; i++)
+				{
+					if (sut.PeekUploadQueue().Count() == 0)
+						break;
 
-        foreach (var reference in fileReferences)
-          storage.Received().UploadFile(Arg.Any<string>(), Arg.Is(reference.Stream));
-      }
-      finally
-      {
-        sut.Stop();
-      }
-    }
-  }
+					Thread.Sleep(50);
+				}
+
+				// Assert
+				sut.PeekUploadQueue().Should().BeEmpty();
+
+				foreach (var reference in fileReferences)
+					storage.Received().UploadFile(Arg.Any<string>(), Arg.Is(reference.Stream));
+			}
+			finally
+			{
+				sut.Stop();
+			}
+		}
+	}
 }
 
