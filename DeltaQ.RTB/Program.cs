@@ -4,6 +4,14 @@ using Autofac;
 
 using DeltaQ.CommandLineParser;
 
+using DeltaQ.RTB.ActivityMonitor;
+using DeltaQ.RTB.Agent;
+using DeltaQ.RTB.FileSystem;
+using DeltaQ.RTB.Interop;
+using DeltaQ.RTB.StateCache;
+using DeltaQ.RTB.Storage;
+using DeltaQ.RTB.Utility;
+
 namespace DeltaQ.RTB
 {
   class Program
