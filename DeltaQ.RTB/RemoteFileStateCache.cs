@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace DeltaQ.RTB
 {
@@ -14,22 +15,27 @@ namespace DeltaQ.RTB
 		// 4. Have a mechanism to consolidate batches, merging the oldest batch forward, and updating the server's copy in the same way
 		//    => Merge algorithm: if we call the oldest batch 0 and its successor 1, then add all files from 0 that aren't in 1 to 1, and then
 		//                        discard 0.
-		const int BatchUploadConsolidationDelaySeconds = 30;
+		OperatingParameters _parameters;
 
 		ITimer _timer;
+		IRemoteFileStateCacheStorage _cacheStorage;
 		IRemoteStorage _remoteStorage;
-		string _statePath;
 		Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
 		List<FileState> _currentBatch = new List<FileState>();
 		int _currentBatchNumber;
 		StreamWriter? _currentBatchWriter;
 		ITimerInstance? _batchUploadTimer;
 
-		public RemoteFileStateCache(ITimer timer, IRemoteStorage remoteStorage, string statePath)
+		internal Dictionary<string, FileState> GetCacheForTest() => _cache;
+		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
+
+		public RemoteFileStateCache(OperatingParameters parameters, ITimer timer, IRemoteFileStateCacheStorage cacheStorage, IRemoteStorage remoteStorage)
 		{
+			_parameters = parameters;
+
 			_timer = timer;
+			_cacheStorage = cacheStorage;
 			_remoteStorage = remoteStorage;
-			_statePath = statePath;
 
 			LoadCache();
 		}
@@ -53,25 +59,10 @@ namespace DeltaQ.RTB
 			}
 		}
 
-		int GetBatchCountInCache()
-		{
-			int count = 0;
-
-			foreach (var batchFile in Directory.EnumerateFiles(_statePath))
-				if (int.TryParse(Path.GetFileName(batchFile), out var batchNumber))
-					count++;
-
-			return count;
-		}
-
 		void LoadCache()
 		{
 			// Enumerate the batch numbers that are stored locally. Process them in order.
-			var batchNumbers = new List<int>();
-
-			foreach (var batchFile in Directory.EnumerateFiles(_statePath))
-				if (int.TryParse(Path.GetFileName(batchFile), out var batchNumber))
-					batchNumbers.Add(batchNumber);
+			var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
 
 			batchNumbers.Sort();
 
@@ -79,35 +70,41 @@ namespace DeltaQ.RTB
 			// it is a newer state that supersedes the previously-loaded one.
 			foreach (var batchNumber in batchNumbers)
 			{
-				using (var reader = new StreamReader(Path.Combine(_statePath, batchNumber.ToString())))
+				using (var reader = _cacheStorage.OpenBatchFileReader(batchNumber))
 				{
-					var line = reader.ReadLine();
+					while (true)
+					{
+						var line = reader.ReadLine();
 
-					if (line == null)
-						break;
+						if (line == null)
+							break;
 
-					var fileState = FileState.Parse(line);
+						var fileState = FileState.Parse(line);
 
-					// Overwrite if already present, as the one we just loaded will be newer.
-					_cache[fileState.Path] = fileState;
+						// Overwrite if already present, as the one we just loaded will be newer.
+						_cache[fileState.Path] = fileState;
+					}
 				}
 			}
+
+			if (batchNumbers.Any())
+				_currentBatchNumber = batchNumbers.Max() + 1;
+			else
+				_currentBatchNumber = 1;
 		}
 
-		void AppendNewFileStateToCurrentBatch(FileState newFileState)
+		internal void AppendNewFileStateToCurrentBatch(FileState newFileState)
 		{
 			lock (this)
 			{
 				_currentBatch.Add(newFileState);
 
 				if (_batchUploadTimer == null)
-				{
-					_batchUploadTimer = _timer.ScheduleAction(TimeSpan.FromSeconds(BatchUploadConsolidationDelaySeconds), BatchUploadTimerElapsed);
-				}
+					_batchUploadTimer = _timer.ScheduleAction(_parameters.BatchUploadConsolidationDelay, BatchUploadTimerElapsed);
 
 				if (_currentBatchWriter == null)
 				{
-					_currentBatchWriter = new StreamWriter(Path.Combine(_statePath, _currentBatchNumber.ToString()));
+					_currentBatchWriter = _cacheStorage.OpenBatchFileWriter(_currentBatchNumber);
 					_currentBatchWriter.AutoFlush = true;
 				}
 
@@ -126,11 +123,12 @@ namespace DeltaQ.RTB
 			}
 		}
 
-		void UploadCurrentBatch()
+		internal void UploadCurrentBatch()
 		{
 			lock (this)
 			{
-				string currentBatchPath = Path.Combine(_statePath, _currentBatchNumber.ToString());
+				int batchNumberToUpload = _currentBatchNumber;
+
 				string currentBatchRemotePath = "/state/" + _currentBatchNumber;
 
 				_currentBatchNumber++;
@@ -138,10 +136,10 @@ namespace DeltaQ.RTB
 				_currentBatchWriter?.Close();
 				_currentBatchWriter = null;
 
-				using (var stream = File.OpenRead(currentBatchPath))
+				using (var stream = _cacheStorage.OpenBatchFileStream(batchNumberToUpload))
 					_remoteStorage.UploadFile(currentBatchRemotePath, stream);
 
-				if (GetBatchCountInCache() > 3)
+				if (_cacheStorage.EnumerateBatches().Count() > 3)
 				{
 					int removedBatchNumber = ConsolidateOldestBatch();
 
@@ -155,17 +153,13 @@ namespace DeltaQ.RTB
 			}
 		}
 
-		int ConsolidateOldestBatch()
+		internal int ConsolidateOldestBatch()
 		{
 			lock (this)
 			{
 				// Find the two oldest batches.
 				// If there is only one batch, nothing to do.
-				var batchNumbers = new List<int>();
-
-				foreach (var batchFile in Directory.EnumerateFiles(_statePath))
-					if (int.TryParse(Path.GetFileName(batchFile), out var batchNumber))
-						batchNumbers.Add(batchNumber);
+				var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
 
 				if (batchNumbers.Count < 2)
 					return -1;
@@ -175,13 +169,10 @@ namespace DeltaQ.RTB
 				var oldestBatchNumber = batchNumbers[0];
 				var mergeIntoBatchNumber = batchNumbers[1];
 
-				string oldestBatchPath = Path.Combine(_statePath, oldestBatchNumber.ToString());
-				string mergeIntoBatchPath = Path.Combine(_statePath, mergeIntoBatchNumber.ToString());
-
 				// Load in the merge-into batch.
 				var mergeIntoBatch = new Dictionary<string, FileState>();
 
-				using (var reader = new StreamReader(mergeIntoBatchPath))
+				using (var reader = _cacheStorage.OpenBatchFileReader(mergeIntoBatchNumber))
 				{
 					while (true)
 					{
@@ -198,7 +189,7 @@ namespace DeltaQ.RTB
 
 				// Merge the oldest batch into the merge-into batch. Only entries that aren't superseded in the merge-into
 				// batch are used. When the merge-into branch already has a newer FileState, the older one is discarded.
-				using (var reader = new StreamReader(oldestBatchPath))
+				using (var reader = _cacheStorage.OpenBatchFileReader(oldestBatchNumber))
 				{
 					while (true)
 					{
@@ -217,12 +208,13 @@ namespace DeltaQ.RTB
 				// Write out the merged batch. It is written to a ".new" file first, so that the update to the actual
 				// batch file path is atomic and cannot possibly contain an incomplete file in the event of an error
 				// or power loss or whatnot.
-				using (var writer = new StreamWriter(mergeIntoBatchPath + ".new"))
+				using (var writer = _cacheStorage.OpenNewBatchFileWriter(mergeIntoBatchNumber))
 					foreach (var fileState in mergeIntoBatch.Values)
 						writer.WriteLine(fileState);
 
-				File.Move(mergeIntoBatchPath + ".new", mergeIntoBatchPath, overwrite: true);
-				File.Delete(oldestBatchPath);
+				_cacheStorage.SwitchToConsolidatedFile(
+					oldestBatchNumber,
+					mergeIntoBatchNumber);
 
 				// Return the batch number that no longer exists so that the caller can remove it from remote storage.
 				return oldestBatchNumber;

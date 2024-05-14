@@ -25,6 +25,13 @@ namespace DeltaQ.RTB
     // multiple files.
     public TimeSpan SnapshotSharingWindow = TimeSpan.FromSeconds(5);
 
+    // Local path at which the remote file state cache is stored, persisting it across runs.
+    public string RemoteFileStateCachePath = "/var/DeltaQ.RTB/FileStateCache";
+
+    // Delay after a first file state update before the current file is pinched off and uploaded,
+    // to consolidate multiple updates.
+    public TimeSpan BatchUploadConsolidationDelay = TimeSpan.FromSeconds(30);
+
     // Number of concurrent upload processing threads.
     public int UploadThreadCount = 4;
   }
