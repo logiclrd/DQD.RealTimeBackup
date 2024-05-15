@@ -9,13 +9,18 @@ namespace DeltaQ.RTB.Interop
 {
 	public class OpenFileHandles : IOpenFileHandles
 	{
-		const string LSOFPath = "/usr/bin/lsof";
+		OperatingParameters _parameters;
+
+		public OpenFileHandles(OperatingParameters parameters)
+		{
+			_parameters = parameters;
+		}
 
 		public IEnumerable<OpenFileHandle> Enumerate(string path)
 		{
 			var psi = new ProcessStartInfo();
 
-			psi.FileName = LSOFPath;
+			psi.FileName = _parameters.LSOFBinaryPath;
 			psi.Arguments = "-l -F -w -- \"" + path + "\"";
 			psi.RedirectStandardOutput = true;
 

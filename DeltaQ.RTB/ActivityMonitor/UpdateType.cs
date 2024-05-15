@@ -1,9 +1,9 @@
 ﻿namespace DeltaQ.RTB.ActivityMonitor
 {
-  public enum UpdateType
-  {
-    ContentUpdated,
-    ChildRemoved,
-  }
+	public enum UpdateType
+	{
+		ContentUpdated,
+		ChildRemoved,
+	}
 }
 

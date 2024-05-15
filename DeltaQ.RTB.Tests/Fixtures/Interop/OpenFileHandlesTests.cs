@@ -20,7 +20,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 		public void Enumerate_should_enumerate_open_file_handles()
 		{
 			// Arrange
-			var sut = new OpenFileHandles();
+			var parameters = new OperatingParameters();
+
+			var sut = new OpenFileHandles(parameters);
 
 			using (var file = new TemporaryFile())
 			{
@@ -47,7 +49,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 		public void Enumerate_should_return_empty_set_when_file_has_no_open_handles()
 		{
 			// Arrange
-			var sut = new OpenFileHandles();
+			var parameters = new OperatingParameters();
+
+			var sut = new OpenFileHandles(parameters);
 
 			using (var file = new TemporaryFile())
 			{

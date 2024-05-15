@@ -368,6 +368,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			TimeSpan allowableStopTime = TimeSpan.FromMilliseconds(50);
 
 			// Act & Assert
+			var stopwatch = new Stopwatch();
+
+			stopwatch.Start();
+
 			Task.Run(
 				() =>
 				{
@@ -378,10 +382,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 			haveStopped.Should().BeFalse();
 
-			var stopwatch = new Stopwatch();
-
-			stopwatch.Start();
 			sut.MonitorFileActivity();
+
 			stopwatch.Stop();
 
 			haveStopped.Should().BeTrue();

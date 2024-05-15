@@ -1,4 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Threading;
+using System.Xml.Serialization;
 
 using Autofac;
 
@@ -12,65 +17,163 @@ using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
 
+using Timer = DeltaQ.RTB.Utility.Timer;
+
 namespace DeltaQ.RTB
 {
-  class Program
-  {
-    static OperatingParameters BuildOperatingParameters(CommandLineArguments args)
-    {
-      var parameters = new OperatingParameters();
+	class Program
+	{
+		const string ConfigurationPath = "/etc/DeltaQ.RTB.xml";
 
-      // TODO: load from file
+		static OperatingParameters BuildOperatingParameters(CommandLineArguments args)
+		{
+			OperatingParameters parameters;
 
-      if (args.DisableFAN)
-        parameters.EnableFileAccessNotify = false;
+			if (!File.Exists(ConfigurationPath))
+				parameters = new OperatingParameters();
+			else
+			{
+				var serializer = new XmlSerializer(typeof(OperatingParameters));
 
-      return parameters;
-    }
+				try
+				{
+					using (var stream = File.OpenRead(ConfigurationPath))
+						parameters = (OperatingParameters)serializer.Deserialize(stream)!;
+				}
+				catch (Exception e)
+				{
+					throw new Exception("Unable to parse configuration file: " + ConfigurationPath, e);
+				}
+			}
 
-    static IContainer InitializeContainer(OperatingParameters parameters)
-    {
-      var builder = new ContainerBuilder();
+			if (args.Quiet)
+				parameters.Verbosity = Verbosity.Quiet;
+			if (args.Verbose)
+				parameters.Verbosity = Verbosity.Verbose;
+			if (args.DisableFAN)
+				parameters.EnableFileAccessNotify = false;
 
-      builder.RegisterInstance(parameters);
+			return parameters;
+		}
 
-      builder.RegisterType<BackupAgent>().AsImplementedInterfaces();
-      builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces();
-      builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces();
-      builder.RegisterType<MD5Checksum>().AsImplementedInterfaces();
-      builder.RegisterType<MountTable>().AsImplementedInterfaces();
-      builder.RegisterType<OpenByHandleAt>().AsImplementedInterfaces();
-      builder.RegisterType<OpenFileHandles>().AsImplementedInterfaces();
-      builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces();
-      builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces();
-      builder.RegisterType<Staging>().AsImplementedInterfaces();
-      builder.RegisterType<Timer>().AsImplementedInterfaces();
-      builder.RegisterType<ZFS>().AsImplementedInterfaces();
+		static IContainer InitializeContainer(OperatingParameters parameters)
+		{
+			var builder = new ContainerBuilder();
 
-      return builder.Build();
-    }
+			builder.RegisterInstance(parameters);
 
-    static void Main()
-    {
-      var args = new CommandLine().Parse<CommandLineArguments>();
+			builder.RegisterType<BackupAgent>().AsImplementedInterfaces();
+			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces();
+			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces();
+			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces();
+			builder.RegisterType<MountTable>().AsImplementedInterfaces();
+			builder.RegisterType<OpenByHandleAt>().AsImplementedInterfaces();
+			builder.RegisterType<OpenFileHandles>().AsImplementedInterfaces();
+			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces();
+			builder.RegisterType<RemoteFileStateCacheStorage>().AsImplementedInterfaces();
+			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces();
+			builder.RegisterType<Staging>().AsImplementedInterfaces();
+			builder.RegisterType<Timer>().AsImplementedInterfaces();
+			builder.RegisterType<ZFS>().AsImplementedInterfaces();
 
-      var parameters = BuildOperatingParameters(args);
+			return builder.Build();
+		}
 
-      var container = InitializeContainer(parameters);
+		static int Main()
+		{
+			CommandLineArguments? args = null;
 
-      var backupAgent = container.Resolve<IBackupAgent>();
+			try
+			{
+				args = new CommandLine().Parse<CommandLineArguments>();
 
-      backupAgent.Start();
+				var parameters = BuildOperatingParameters(args);
 
-      Console.WriteLine("Starting monitor...");
-      backupAgent.Start();
+				if (parameters.Verbose)
+				{
+					Console.WriteLine("My process ID is: {0}", Process.GetCurrentProcess().Id);
+					Console.WriteLine("Command-line: {0}", Environment.CommandLine);
+					Console.WriteLine();
+					Console.WriteLine("Operating parameters:");
 
-      Console.WriteLine("Press enter to stop");
-      Console.ReadLine();
+					foreach (var field in typeof(OperatingParameters).GetFields(BindingFlags.Instance | BindingFlags.Public))
+						Console.WriteLine("- {0}: {1}", field.Name, field.GetValue(parameters));
+				}
 
-      Console.WriteLine("Stopping monitor...");
-      backupAgent.Stop();
-    }
-  }
+				var stopEvent = new ManualResetEvent(initialState: false);
+				var stoppedEvent = new ManualResetEvent(initialState: false);
+
+				try
+				{
+					Console.CancelKeyPress +=
+						(sender, e) =>
+						{
+							if (parameters.Verbose)
+								Console.WriteLine("Received SIGINT");
+							stopEvent.Set();
+							stoppedEvent.WaitOne();
+						};
+
+					AppDomain.CurrentDomain.ProcessExit +=
+						(sender, e) =>
+						{
+							if (parameters.Verbose)
+								Console.WriteLine("Received SIGTERM");
+							stopEvent.Set();
+							stoppedEvent.WaitOne();
+						};
+
+					var container = InitializeContainer(parameters);
+
+					var backupAgent = container.Resolve<IBackupAgent>();
+
+					backupAgent.Start();
+
+					if (!parameters.Quiet)
+						Console.WriteLine("Starting backup agent...");
+					backupAgent.Start();
+
+					if (!parameters.Quiet)
+						Console.WriteLine("Waiting for stop signal");
+					stopEvent.WaitOne();
+
+					if (!parameters.Quiet)
+						Console.WriteLine("Stopping backup agent...");
+					backupAgent.Stop();
+				}
+				finally
+				{
+					stoppedEvent.Set();
+				}
+
+				return 0;
+			}
+			catch (Exception e)
+			{
+				bool quiet = false;
+				bool verbose = false;
+
+				if (args != null)
+				{
+					quiet = args.Quiet && !args.Verbose;
+					verbose = args.Verbose;
+				}
+
+				Console.Error.WriteLine(e.Message);
+
+				if ((e.InnerException != null) && !quiet)
+				{
+					Console.Error.WriteLine();
+
+					if (verbose)
+						Console.WriteLine(e);
+					else
+						Console.Error.WriteLine("{0}: {1}", e.InnerException.GetType().Name, e.InnerException.Message);
+				}
+
+				return 1;
+			}
+		}
+	}
 }
 

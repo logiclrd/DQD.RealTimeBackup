@@ -4,102 +4,115 @@ using System.Diagnostics;
 
 namespace DeltaQ.RTB.FileSystem
 {
-  public class ZFS : IZFS
-  {
-    const string ZFSBinaryPath = "/usr/sbin/zfs";
+	public class ZFS : IZFS
+	{
+		OperatingParameters _parameters;
 
-    protected string _deviceName;
-    protected string _mountPoint;
+		protected string _deviceName;
+		protected string _mountPoint;
 
-    public string DeviceName => _deviceName;
-    public string MountPoint => _mountPoint;
+		public string DeviceName => _deviceName;
+		public string MountPoint => _mountPoint;
 
-    public ZFS(string deviceName)
-      : this(FindVolume(deviceName))
-    {
-    }
+		const string Dummy = "dummy";
 
-    public ZFS(ZFSVolume volume)
-      : this(
-          volume.DeviceName ?? throw new ArgumentNullException("volume.DeviceName"),
-          volume.MountPoint ?? throw new ArgumentNullException("volume.MountPoint"))
-      {
-      }
+		public ZFS(OperatingParameters parameters)
+		{
+			_parameters = parameters;
 
-    ZFS(string deviceName, string mountPoint)
-    {
-      _deviceName = deviceName;
-      _mountPoint = mountPoint;
-    }
+			_deviceName = Dummy;
+			_mountPoint = Dummy;
+		}
 
-    protected static void ExecuteZFSCommand(string command)
-    {
-      var psi = new ProcessStartInfo();
+		public ZFS(OperatingParameters parameters, string deviceName)
+			: this(parameters, new ZFS(parameters).FindVolume(deviceName))
+		{
+		}
 
-      psi.FileName = ZFSBinaryPath;
-      psi.Arguments = command;
+		public ZFS(OperatingParameters parameters, ZFSVolume volume)
+			: this(
+					parameters,
+					volume.DeviceName ?? throw new ArgumentNullException("volume.DeviceName"),
+					volume.MountPoint ?? throw new ArgumentNullException("volume.MountPoint"))
+		{
+		}
 
-      using (var process = Process.Start(psi)!)
-      {
-        process.WaitForExit();
-      }
-    }
+		ZFS(OperatingParameters parameters, string deviceName, string mountPoint)
+		{
+			_parameters = parameters;
+			_deviceName = deviceName;
+			_mountPoint = mountPoint;
+		}
 
-    protected static IEnumerable<string> ExecuteZFSCommandOutput(string command)
-    {
-      var psi = new ProcessStartInfo();
+		protected internal void ExecuteZFSCommand(string command)
+		{
+			var psi = new ProcessStartInfo();
 
-      psi.FileName = ZFSBinaryPath;
-      psi.Arguments = command;
-      psi.RedirectStandardOutput = true;
+			psi.FileName = _parameters.ZFSBinaryPath;
+			psi.Arguments = command;
 
-      using (var process = Process.Start(psi)!)
-      {
-        while (true)
-        {
-          string? line = process.StandardOutput.ReadLine();
+			using (var process = Process.Start(psi)!)
+			{
+				process.WaitForExit();
+			}
+		}
 
-          if (line == null)
-            break;
+		protected internal IEnumerable<string> ExecuteZFSCommandOutput(string command)
+		{
+			var psi = new ProcessStartInfo();
 
-          yield return line;
-        }
-      }
-    }
+			psi.FileName = _parameters.ZFSBinaryPath;
+			psi.Arguments = command;
+			psi.RedirectStandardOutput = true;
 
-    public IZFSSnapshot CreateSnapshot(string snapshotName)
-    {
-      return new ZFSSnapshot(_deviceName, snapshotName);
-    }
+			using (var process = Process.Start(psi)!)
+			{
+				while (true)
+				{
+					string? line = process.StandardOutput.ReadLine();
 
-    public static ZFSVolume FindVolume(string deviceName)
-    {
-      var zfs = new ZFS("dummy", "dummy");
+					if (line == null)
+						break;
 
-      foreach (var volume in zfs.EnumerateVolumes())
-        if (volume.DeviceName == deviceName)
-          return volume;
+					yield return line;
+				}
+			}
+		}
 
-      throw new Exception("Unable to locate ZFS volume with device name " + deviceName);
-    }
+		public IZFSSnapshot CreateSnapshot(string snapshotName)
+		{
+			if (_deviceName == Dummy)
+				throw new InvalidOperationException("This ZFS instance is not attached to a specific device name.");
 
-    public IEnumerable<ZFSVolume> EnumerateVolumes()
-    {
-      foreach (string line in ExecuteZFSCommandOutput("list -Hp"))
-      {
-        string[] parts = line.Split('\t');
+			return new ZFSSnapshot(_parameters, _deviceName, snapshotName);
+		}
 
-        yield return
-          new ZFSVolume()
-          {
-            DeviceName = parts[0],
-            UsedBytes = long.Parse(parts[1]),
-            AvailableBytes = long.Parse(parts[2]),
-            ReferencedBytes = long.Parse(parts[3]),
-            MountPoint = parts[4],
-          };
-      }
-    }
-  }
+		public ZFSVolume FindVolume(string deviceName)
+		{
+			foreach (var volume in EnumerateVolumes())
+				if (volume.DeviceName == deviceName)
+					return volume;
+
+			throw new KeyNotFoundException("Unable to locate ZFS volume with device name " + deviceName);
+		}
+
+		public IEnumerable<ZFSVolume> EnumerateVolumes()
+		{
+			foreach (string line in ExecuteZFSCommandOutput("list -Hp"))
+			{
+				string[] parts = line.Split('\t');
+
+				yield return
+					new ZFSVolume()
+					{
+						DeviceName = parts[0],
+						UsedBytes = long.Parse(parts[1]),
+						AvailableBytes = long.Parse(parts[2]),
+						ReferencedBytes = long.Parse(parts[3]),
+						MountPoint = parts[4],
+					};
+			}
+		}
+	}
 }
 

@@ -11,6 +11,8 @@ namespace DeltaQ.RTB.StateCache
 		public RemoteFileStateCacheStorage(OperatingParameters parameters)
 		{
 			_parameters = parameters;
+
+			Directory.CreateDirectory(_parameters.RemoteFileStateCachePath);
 		}
 
 		public IEnumerable<int> EnumerateBatches()
