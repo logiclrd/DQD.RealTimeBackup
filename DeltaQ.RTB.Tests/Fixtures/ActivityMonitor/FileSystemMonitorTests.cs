@@ -416,6 +416,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				() => fileAccessNotify,
 				openByHandleAt);
 
+			sut.InitializeFileAccessNotify();
+			sut.SetUpFANotify();
+
 			fileAccessNotify
 				.When(x => x.MonitorEvents(Arg.Any<Action<FileAccessNotifyEvent>>(), Arg.Any<CancellationToken>()))
 				.Do(
