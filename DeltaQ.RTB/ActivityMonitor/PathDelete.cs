@@ -1,12 +1,12 @@
 ﻿namespace DeltaQ.RTB.ActivityMonitor
 {
-	public class PathUpdate
+	public class PathDelete
 	{
 		public string Path;
 
-		public PathUpdate() { Path = ""; }
+		public PathDelete() { Path = ""; }
 
-		public PathUpdate(string path)
+		public PathDelete(string path)
 		{
 			Path = path;
 		}

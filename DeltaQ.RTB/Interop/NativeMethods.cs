@@ -17,23 +17,10 @@ namespace DeltaQ.RTB.Interop
 			public short ReturnedEvents;
 		}
 
-		public const int FileAccessNotifyClass_Notification = 0x00000000;
-
-		public const int FileAccessNotifyReport_UniqueFileID = 0x00000200;
-
 		public const int EventHeaderLength = 24;
-
-		public const int FAN_ACCESS = 1;
-		public const int FAN_MODIFY = 2;
-		public const int FAN_MOVED_FROM = 64;
-		public const int FAN_MOVED_TO = 128;
-		public const int FAN_MOVE = FAN_MOVED_FROM | FAN_MOVED_TO;
-		public const int FAN_DELETE = 512;
 
 		public const int FAN_MARK_ADD = 1;
 		public const int FAN_MARK_FILESYSTEM = 256;
-
-		public const int FAN_EVENT_INFO_TYPE_FID = 1;
 
 		public const int AT_FDCWD = -100;
 
@@ -50,7 +37,7 @@ namespace DeltaQ.RTB.Interop
 		public const int INFTIM = -1;
 
 		[DllImport("c", SetLastError = true)]
-		public static extern int fanotify_init(int flags, int event_flags);
+		public static extern int fanotify_init(FileAccessNotifyFlags flags, int event_flags);
 		[DllImport("c", SetLastError = true)]
 		public static extern int fanotify_mark(IntPtr fanotify_fd, int flags, long mask, int dirfd, string pathname);
 		[DllImport("c", SetLastError = true)]
@@ -62,7 +49,7 @@ namespace DeltaQ.RTB.Interop
 		[DllImport("c", SetLastError = true)]
 		public static extern int open(string pathname, int flags);
 		[DllImport("c", SetLastError = true)]
-		public static extern int open_by_handle_at(int dirfd, IntPtr handle, int flags);
+		public static extern int open_by_handle_at(int dirfd, byte[] handle, int flags);
 		[DllImport("c", SetLastError = true)]
 		public static extern int poll(PollFD[] fds, int nfds, int timeout);
 		[DllImport("c", SetLastError = true)]

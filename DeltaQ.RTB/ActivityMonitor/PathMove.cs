@@ -2,15 +2,15 @@
 {
 	public class PathMove
 	{
-		public string ContainerPath;
-		public MoveType MoveType;
+		public string PathFrom;
+		public string PathTo;
 
-		public PathMove() { ContainerPath = ""; }
+		public PathMove() { PathFrom = PathTo = ""; }
 
-		public PathMove(string path, MoveType moveType)
+		public PathMove(string pathFrom, string pathTo)
 		{
-			ContainerPath = path;
-			MoveType = moveType;
+			PathFrom = pathFrom;
+			PathTo = pathTo;
 		}
 	}
 }

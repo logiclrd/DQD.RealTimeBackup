@@ -1,4 +1,7 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 
 namespace DeltaQ.RTB.Interop
 {
@@ -8,8 +11,7 @@ namespace DeltaQ.RTB.Interop
 		public byte Version;
 		public byte Reserved;
 		public short MetadataLength;
-		public int _Alignment;
-		public long Mask;
+		public FileAccessNotifyEventMask Mask;
 		public int FileDescriptor;
 		public int ProcessID;
 	}

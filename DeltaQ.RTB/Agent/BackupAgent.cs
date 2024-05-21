@@ -60,7 +60,7 @@ namespace DeltaQ.RTB.Agent
 
 		void monitor_PathMove(object? sender, PathMove move)
 		{
-			// TODO: Consolidate two events per file: move from & move to
+			// TODO
 		}
 
 		object _snapshotSharingDelaySync = new object();

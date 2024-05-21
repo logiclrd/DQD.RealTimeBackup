@@ -46,75 +46,136 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				int mountDescriptor = _faker.Random.Int();
 				string path = _faker.System.FilePath();
 
+				byte[] fileHandleBytes = BitConverter.GetBytes(fileHandleValue);
+
 				var evt = new FileAccessNotifyEvent();
 
-				var evtAdditionalData = new MemoryStream();
+				evt.InformationStructures.Add(
+					new FileAccessNotifyEventInfo()
+					{
+						Type = FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName,
+						FileSystemID = fileSystemID,
+						FileHandle = fileHandleBytes,
+						FileName = path,
+					});
 
-				var writer = new BinaryWriter(evtAdditionalData);
+				evt.Metadata =
+					new FileAccessNotifyEventMetadata()
+					{
+						Mask = FileAccessNotifyEventMask.Modified,
+					};
 
-				writer.Write((byte)NativeMethodsUnderTest.FAN_EVENT_INFO_TYPE_FID); // infoType
-				writer.Write((byte)0); // padding
-				writer.Write((short)8); // length
+				var receivedPathUpdate = new List<PathUpdate>();
+				var receivedPathMove = new List<PathMove>();
+				var receivedPathDelete = new List<PathDelete>();
 
-				writer.Write((long)fileSystemID); // fsid
+				sut.PathUpdate += (sender, e) => { receivedPathUpdate.Add(e); };
+				sut.PathMove += (sender, e) => { receivedPathMove.Add(e); };
+				sut.PathDelete += (sender, e) => { receivedPathDelete.Add(e); };
 
-				// fileHandle
-				writer.Write(4); // file handle byte count
-				writer.Write(fileHandleValue); // file handle bytes
+				sut.MountDescriptorByFileSystemID[fileSystemID] = mountDescriptor;
 
-				var evtAdditionalDataBytes = evtAdditionalData.ToArray();
+				// Act
+				sut.ProcessEvent(evt);
 
-				fixed (byte* evtAdditionalDataPointer = &evtAdditionalDataBytes[0])
-				{
-					evt.Metadata =
-						new FileAccessNotifyEventMetadata()
-						{
-							Mask = NativeMethodsUnderTest.FAN_MODIFY,
-						};
+				// Assert
+				openByHandleAt.Received().Open(mountDescriptor, fileHandleBytes);
 
-					evt.AdditionalDataLength = (int)evtAdditionalData.Length;
-					evt.AdditionalData = (IntPtr)evtAdditionalDataPointer;
+				receivedPathUpdate.Should().HaveCount(1);
+				receivedPathMove.Should().BeEmpty();
+				receivedPathDelete.Should().BeEmpty();
 
-					var fileHandleAddress = evt.AdditionalData + 12;
+				var pathUpdate = receivedPathUpdate.Single();
 
-					var receivedPathUpdate = new List<PathUpdate>();
-					var receivedPathMove = new List<PathMove>();
-
-					sut.PathUpdate += (sender, e) => { receivedPathUpdate.Add(e); };
-					sut.PathMove += (sender, e) => { receivedPathMove.Add(e); };
-
-					sut.MountDescriptorByFileSystemID[fileSystemID] = mountDescriptor;
-
-					openByHandleAt.Open(Arg.Any<int>(), Arg.Any<IntPtr>()).Returns(
-						x =>
-						{
-							var openHandle = Substitute.For<IOpenHandle>();
-
-							openHandle.ReadLink().Returns(path);
-
-							return openHandle;
-						});
-
-					// Act
-					sut.ProcessEvent(evt);
-
-					// Assert
-					openByHandleAt.Received().Open(mountDescriptor, fileHandleAddress);
-
-					receivedPathMove.Should().BeEmpty();
-					receivedPathUpdate.Should().HaveCount(1);
-
-					var pathUpdate = receivedPathUpdate.Single();
-
-					pathUpdate.Path.Should().Be(path);
-					pathUpdate.UpdateType.Should().Be(UpdateType.ContentUpdated);
-				}
+				pathUpdate.Path.Should().Be(path);
 			}
 		}
 
-		[TestCase(NativeMethodsUnderTest.FAN_MOVED_FROM)]
-		[TestCase(NativeMethodsUnderTest.FAN_MOVED_TO)]
-		public void ProcessEvent_should_dispatch_move_events(int mask)
+		[Test]
+		public void ProcessEvent_should_dispatch_move_events()
+		{
+			// Arrange
+			unsafe
+			{
+				var mountTable = Substitute.For<IMountTable>();
+				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
+				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
+
+				var sut = new FileSystemMonitor(
+					mountTable,
+					() => fileAccessNotify,
+					openByHandleAt);
+
+				var fileSystemIDFrom = _faker.Random.Int();
+				int fileHandleValueFrom = _faker.Random.Int();
+				int mountDescriptorFrom = _faker.Random.Int();
+				var fileSystemIDTo = _faker.Random.Int();
+				int fileHandleValueTo = _faker.Random.Int();
+				int mountDescriptorTo = _faker.Random.Int();
+				string pathFrom = _faker.System.FilePath();
+				string pathTo = _faker.System.FilePath();
+
+				byte[] fileHandleBytesFrom = BitConverter.GetBytes(fileHandleValueFrom);
+				byte[] fileHandleBytesTo = BitConverter.GetBytes(fileHandleValueTo);
+
+				var evt = new FileAccessNotifyEvent();
+
+				evt.Metadata =
+					new FileAccessNotifyEventMetadata()
+					{
+						Mask = FileAccessNotifyEventMask.ChildMoved,
+					};
+
+				evt.InformationStructures.Add(
+					new FileAccessNotifyEventInfo()
+					{
+						Type = FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From,
+						FileSystemID = fileSystemIDFrom,
+						FileHandle = fileHandleBytesFrom,
+						FileName = pathFrom,
+					});
+
+				evt.InformationStructures.Add(
+					new FileAccessNotifyEventInfo()
+					{
+						Type = FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To,
+						FileSystemID = fileSystemIDTo,
+						FileHandle = fileHandleBytesTo,
+						FileName = pathTo,
+					});
+
+				var receivedPathUpdate = new List<PathUpdate>();
+				var receivedPathMove = new List<PathMove>();
+				var receivedPathDelete = new List<PathDelete>();
+
+				sut.PathUpdate += (sender, e) => { receivedPathUpdate.Add(e); };
+				sut.PathMove += (sender, e) => { receivedPathMove.Add(e); };
+				sut.PathDelete += (sender, e) => { receivedPathDelete.Add(e); };
+
+				sut.MountDescriptorByFileSystemID[fileSystemIDFrom] = mountDescriptorFrom;
+				sut.MountDescriptorByFileSystemID[fileSystemIDTo] = mountDescriptorTo;
+
+				// Act
+				sut.ProcessEvent(evt);
+
+				// Assert
+				openByHandleAt.Received().Open(mountDescriptorFrom, fileHandleBytesFrom);
+				openByHandleAt.Received().Open(mountDescriptorTo, fileHandleBytesTo);
+				openByHandleAt.ReceivedCalls().Should().HaveCount(2);
+
+				receivedPathUpdate.Should().BeEmpty();
+				receivedPathMove.Should().HaveCount(1);
+				receivedPathDelete.Should().BeEmpty();
+
+				var pathMove = receivedPathMove.Single();
+
+				pathMove.PathFrom.Should().Be(pathFrom);
+				pathMove.PathTo.Should().Be(pathTo);
+			}
+		}
+
+		[Test]
+		public void ProcessEvent_should_dispatch_delete_events()
 		{
 			// Arrange
 			unsafe
@@ -133,75 +194,48 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				int mountDescriptor = _faker.Random.Int();
 				string path = _faker.System.FilePath();
 
+				byte[] fileHandleBytes = BitConverter.GetBytes(fileHandleValue);
+
 				var evt = new FileAccessNotifyEvent();
 
-				var evtAdditionalData = new MemoryStream();
+				evt.Metadata =
+					new FileAccessNotifyEventMetadata()
+					{
+						Mask = FileAccessNotifyEventMask.ChildDeleted,
+					};
 
-				var writer = new BinaryWriter(evtAdditionalData);
+				evt.InformationStructures.Add(
+					new FileAccessNotifyEventInfo()
+					{
+						Type = FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName,
+						FileSystemID = fileSystemID,
+						FileHandle = fileHandleBytes,
+						FileName = path,
+					});
 
-				writer.Write((byte)NativeMethodsUnderTest.FAN_EVENT_INFO_TYPE_FID); // infoType
-				writer.Write((byte)0); // padding
-				writer.Write((short)8); // length
+				var receivedPathUpdate = new List<PathUpdate>();
+				var receivedPathMove = new List<PathMove>();
+				var receivedPathDelete = new List<PathDelete>();
 
-				writer.Write((long)fileSystemID); // fsid
+				sut.PathUpdate += (sender, e) => { receivedPathUpdate.Add(e); };
+				sut.PathMove += (sender, e) => { receivedPathMove.Add(e); };
+				sut.PathDelete += (sender, e) => { receivedPathDelete.Add(e); };
 
-				// fileHandle
-				writer.Write(4); // file handle byte count
-				writer.Write(fileHandleValue); // file handle bytes
+				sut.MountDescriptorByFileSystemID[fileSystemID] = mountDescriptor;
 
-				var evtAdditionalDataBytes = evtAdditionalData.ToArray();
+				// Act
+				sut.ProcessEvent(evt);
 
-				fixed (byte* evtAdditionalDataPointer = &evtAdditionalDataBytes[0])
-				{
-					evt.Metadata =
-						new FileAccessNotifyEventMetadata()
-						{
-							Mask = mask,
-						};
+				// Assert
+				openByHandleAt.Received().Open(mountDescriptor, fileHandleBytes);
 
-					evt.AdditionalDataLength = (int)evtAdditionalData.Length;
-					evt.AdditionalData = (IntPtr)evtAdditionalDataPointer;
+				receivedPathUpdate.Should().BeEmpty();
+				receivedPathMove.Should().BeEmpty();
+				receivedPathDelete.Should().HaveCount(1);
 
-					var fileHandleAddress = evt.AdditionalData + 12;
+				var pathDelete = receivedPathDelete.Single();
 
-					var receivedPathUpdate = new List<PathUpdate>();
-					var receivedPathMove = new List<PathMove>();
-
-					sut.PathUpdate += (sender, e) => { receivedPathUpdate.Add(e); };
-					sut.PathMove += (sender, e) => { receivedPathMove.Add(e); };
-
-					sut.MountDescriptorByFileSystemID[fileSystemID] = mountDescriptor;
-
-					openByHandleAt.Open(Arg.Any<int>(), Arg.Any<IntPtr>()).Returns(
-						x =>
-						{
-							var openHandle = Substitute.For<IOpenHandle>();
-
-							openHandle.ReadLink().Returns(path);
-
-							return openHandle;
-						});
-
-					// Act
-					sut.ProcessEvent(evt);
-
-					// Assert
-					openByHandleAt.Received().Open(mountDescriptor, fileHandleAddress);
-
-					receivedPathUpdate.Should().BeEmpty();
-					receivedPathMove.Should().HaveCount(1);
-
-					var pathMove = receivedPathMove.Single();
-
-					pathMove.ContainerPath.Should().Be(path);
-					pathMove.MoveType.Should().Be(
-						mask switch
-						{
-							NativeMethodsUnderTest.FAN_MOVED_FROM => MoveType.From,
-							NativeMethodsUnderTest.FAN_MOVED_TO => MoveType.To,
-							_ => throw new ArgumentOutOfRangeException(),
-						});
-				}
+				pathDelete.Path.Should().Be(path);
 			}
 		}
 

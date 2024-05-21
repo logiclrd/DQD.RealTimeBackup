@@ -1,5 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -28,6 +32,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 
 		public event EventHandler<PathUpdate>? PathUpdate;
 		public event EventHandler<PathMove>? PathMove;
+		public event EventHandler<PathDelete>? PathDelete;
 
 		volatile int _threadCount = 0;
 		object _threadCountSync = new object();
@@ -36,51 +41,65 @@ namespace DeltaQ.RTB.ActivityMonitor
 
 		internal void ProcessEvent(FileAccessNotifyEvent @event)
 		{
-			int mask = unchecked((int)@event.Metadata.Mask);
-
-			if (@event.AdditionalDataLength < 16)
-				throw new Exception("Insufficient bytes for fanotify_event_info_header, fanotify_event_info_fid and struct file_handle");
-
-			// fanotify_event_info_header
-
-			byte infoType = Marshal.ReadByte(@event.AdditionalData, 0);
-			byte padding = Marshal.ReadByte(@event.AdditionalData, 1);
-			int length = Marshal.ReadInt16(@event.AdditionalData, 2);
-
-			if (infoType != NativeMethods.FAN_EVENT_INFO_TYPE_FID)
-				throw new Exception("Received unexpected event info type: " + infoType);
-
-			// fanotify_event_info_fid
-			long fsid = Marshal.ReadInt64(@event.AdditionalData, 4);
-
-			// fanotify_event_info_fid -> file_handle
-			IntPtr fileHandle = @event.AdditionalData + 12;
-
-			int handleBytes = Marshal.ReadInt32(fileHandle, 0);
-
-			if (@event.AdditionalDataLength < 12 + handleBytes)
-				throw new Exception("Insufficient bytes for struct file_handle with length " + handleBytes);
-
-			if (!MountDescriptorByFileSystemID.TryGetValue(fsid, out var mountDescriptor))
+			if (!@event.InformationStructures.Any())
 			{
-				Console.WriteLine("Using file system mount fallback");
-				mountDescriptor = NativeMethods.AT_FDCWD;
+				Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
+				return;
 			}
 
-			string? path = null;
-
-			using (var openHandle = _openByHandleAt.Open(mountDescriptor, fileHandle))
+			string? ResolvePath(FileAccessNotifyEventInfoType type)
 			{
-				if (openHandle != null)
-					path = openHandle.ReadLink();
+				foreach (var info in @event.InformationStructures)
+				{
+					if (info.Type == type)
+					{
+						if (!string.IsNullOrEmpty(info.FileName))
+						{
+							string path = info.FileName!;
+
+							if (info.FileHandle != null)
+							{
+								if (!MountDescriptorByFileSystemID.TryGetValue(info.FileSystemID, out var mountDescriptor))
+								{
+									Console.Error.WriteLine("Using file system mount fallback");
+									mountDescriptor = NativeMethods.AT_FDCWD;
+								}
+
+								using (var openHandle = _openByHandleAt.Open(mountDescriptor, info.FileHandle!))
+								{
+									if (openHandle != null)
+									{
+										string containerPath = openHandle.ReadLink();
+
+										path = Path.Combine(containerPath, path);
+
+										return path;
+									}
+								}
+							}
+						}
+					}
+				}
+
+				return null;
 			}
+
+			string? path = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName);
+			string? pathFrom = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From);
+			string? pathTo = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To);
 
 			if (path != null)
 			{
-				if ((mask & NativeMethods.FAN_MOVE) != 0)
-					PathMove?.Invoke(this, new PathMove(path, (mask & NativeMethods.FAN_MOVED_FROM) != 0 ? MoveType.From : MoveType.To));
-				else
-					PathUpdate?.Invoke(this, new PathUpdate(path, (mask & NativeMethods.FAN_DELETE) != 0 ? UpdateType.ChildRemoved : UpdateType.ContentUpdated));
+				if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.ChildDeleted))
+					PathDelete?.Invoke(this, new PathDelete(path));
+				if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.Modified))
+					PathUpdate?.Invoke(this, new PathUpdate(path));
+			}
+
+			if ((pathFrom != null) && (pathTo != null))
+			{
+				if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.ChildMoved))
+					PathMove?.Invoke(this, new PathMove(pathFrom, pathTo));
 			}
 		}
 

@@ -4,7 +4,7 @@ namespace DeltaQ.RTB.Interop
 {
 	public interface IOpenByHandleAt
 	{
-		IOpenHandle? Open(int mountFileDescriptor, IntPtr fileHandle);
+		IOpenHandle? Open(int mountFileDescriptor, byte[] fileHandle);
 	}
 }
 

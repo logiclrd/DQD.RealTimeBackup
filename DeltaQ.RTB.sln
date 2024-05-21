@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaQ.RTB", "DeltaQ.RTB\De
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaQ.RTB.Tests", "DeltaQ.RTB.Tests\DeltaQ.RTB.Tests.csproj", "{07FDBF51-3BDD-42F0-B1B6-82D5E5C2F6B4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaQ.RTB.FileActivityTrace", "DeltaQ.RTB.FileActivityTrace\DeltaQ.RTB.FileActivityTrace.csproj", "{01BD765B-BBBE-42BE-943D-0D2035F2C934}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{07FDBF51-3BDD-42F0-B1B6-82D5E5C2F6B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{07FDBF51-3BDD-42F0-B1B6-82D5E5C2F6B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{07FDBF51-3BDD-42F0-B1B6-82D5E5C2F6B4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{01BD765B-BBBE-42BE-943D-0D2035F2C934}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01BD765B-BBBE-42BE-943D-0D2035F2C934}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01BD765B-BBBE-42BE-943D-0D2035F2C934}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{01BD765B-BBBE-42BE-943D-0D2035F2C934}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

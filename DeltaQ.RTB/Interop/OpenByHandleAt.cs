@@ -4,7 +4,7 @@ namespace DeltaQ.RTB.Interop
 {
 	public class OpenByHandleAt : IOpenByHandleAt
 	{
-		public IOpenHandle? Open(int mountFileDescriptor, IntPtr fileHandle)
+		public IOpenHandle? Open(int mountFileDescriptor, byte[] fileHandle)
 		{
 			int fd = NativeMethods.open_by_handle_at(
 				mountFileDescriptor,
