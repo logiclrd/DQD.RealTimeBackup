@@ -1,7 +1,9 @@
 ﻿//#define EXTRADEBUG
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -49,6 +51,117 @@ namespace DeltaQ.RTB.Interop
 
 			if (result < 0)
 				throw new Exception("[" + Marshal.GetLastWin32Error() + "] Failed to add watch for " + path);
+		}
+
+		static internal UnmanagedMemoryStream CreateSubStream(UnmanagedMemoryStream parentStream, int offset = 0, long length = -1)
+		{
+			unsafe
+			{
+				if (length < 0)
+					length = parentStream.Length - parentStream.Position - offset;
+
+				return new UnmanagedMemoryStream(
+					parentStream.PositionPointer + offset,
+					length,
+					length,
+					FileAccess.ReadWrite);
+			}
+		}
+
+		static internal string? ReadStringAtUnmanagedMemoryStreamCurrentPosition(UnmanagedMemoryStream stream)
+		{
+			unsafe
+			{
+				return Marshal.PtrToStringAuto((IntPtr)stream.PositionPointer);
+			}
+		}
+
+		static internal IEnumerable<FileAccessNotifyEventInfo> ParseEventInfoStructures(UnmanagedMemoryStream eventStream)
+		{
+			while (eventStream.Position + 4 <= eventStream.Length)
+			{
+#if EXTRADEBUG
+				Console.WriteLine();
+				Console.WriteLine("  Event stream: {0} / {1}", eventStream.Position, eventStream.Length);
+#endif
+
+				// fanotify_event_info_header
+				var infoStream = CreateSubStream(eventStream);
+
+				var infoReader = new BinaryReader(infoStream);
+
+				var infoType = (FileAccessNotifyEventInfoType)infoReader.ReadByte();
+				var padding = infoReader.ReadByte();
+				var infoStructureLength = infoReader.ReadUInt16();
+
+#if EXTRADEBUG
+				Console.WriteLine("  Info structure length: {0}", infoStructureLength);
+				Console.WriteLine("  => info structure of type: {0}", infoType);
+#endif
+				// Sanity check
+				if ((infoStructureLength <= 0) || (infoStructureLength > infoStream.Length))
+					break;
+
+				infoStream.SetLength(infoStructureLength);
+
+				eventStream.Position += infoStructureLength;
+
+				var structure = new FileAccessNotifyEventInfo();
+
+				structure.Type = infoType;
+
+				switch (infoType)
+				{
+					case FileAccessNotifyEventInfoType.FileIdentifier:
+					case FileAccessNotifyEventInfoType.ContainerIdentifier:
+					case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName:
+					case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From:
+					case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To:
+					{
+#if EXTRADEBUG
+						Console.WriteLine("######## infoType: {0}", infoType);
+#endif
+
+						structure.FileSystemID = infoReader.ReadInt64();
+
+						// struct file_handle
+						// {
+						//   uint handle_bytes;
+						//   int type;
+						//   inline byte[] handle;
+						// }
+						//
+						// handle_bytes is the count of bytes in the handle member alone.
+						// So, the overall file_handle is of length handle_bytes + 8, to
+						// account for the other fields.
+
+						int handle_bytes = infoReader.ReadInt32();
+
+						infoStream.Position -= 4;
+
+						int file_handle_structure_bytes = handle_bytes + 8;
+
+						structure.FileHandle = new byte[file_handle_structure_bytes];
+
+						infoReader.Read(structure.FileHandle, 0, structure.FileHandle.Length);
+
+						if ((infoType == FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName)
+						 || (infoType == FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From)
+						 || (infoType == FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To))
+						{
+							structure.FileName = ReadStringAtUnmanagedMemoryStreamCurrentPosition(infoStream);
+
+#if EXTRADEBUG
+							Console.WriteLine("  ## {0} Got filename: {1}", infoType, structure.FileName);
+#endif
+						}
+
+						break;
+					}
+				}
+
+				yield return structure;
+			}
 		}
 
 		const int BufferSize = 256 * 1024;
@@ -166,99 +279,7 @@ namespace DeltaQ.RTB.Interop
 						var @event = new FileAccessNotifyEvent();
 
 						@event.Metadata = metadata;
-
-						unsafe
-						{
-							// TODO: refactor to allow testing
-							while (eventStream.Position + 4 < eventStream.Length)
-							{
-#if EXTRADEBUG
-								Console.WriteLine();
-								Console.WriteLine("  Event stream: {0} / {1}", eventStream.Position, eventStream.Length);
-#endif
-
-								// fanotify_event_info_header
-								var infoStream = new UnmanagedMemoryStream(
-									eventStream.PositionPointer,
-									eventStream.Length - eventStream.Position,
-									eventStream.Length - eventStream.Position,
-									FileAccess.ReadWrite);
-
-								var infoReader = new BinaryReader(infoStream);
-
-								var infoType = (FileAccessNotifyEventInfoType)infoReader.ReadByte();
-								var padding = infoReader.ReadByte();
-								var infoStructureLength = infoReader.ReadUInt16();
-
-#if EXTRADEBUG
-								Console.WriteLine("  Info structure length: {0}", infoStructureLength);
-								Console.WriteLine("  => info structure of type: {0}", infoType);
-#endif
-								// Sanity check
-								if ((infoStructureLength <= 0) || (infoStructureLength > infoStream.Length))
-									break;
-
-								infoStream.SetLength(infoStructureLength);
-
-								eventStream.Position += infoStructureLength;
-
-								var structure = new FileAccessNotifyEventInfo();
-
-								structure.Type = infoType;
-
-								switch (infoType)
-								{
-									case FileAccessNotifyEventInfoType.FileIdentifier:
-									case FileAccessNotifyEventInfoType.ContainerIdentifier:
-									case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName:
-									case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From:
-									case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To:
-									{
-#if EXTRADEBUG
-										Console.WriteLine("######## infoType: {0}", infoType);
-#endif
-
-										structure.FileSystemID = infoReader.ReadInt64();
-
-										// struct file_handle
-										// {
-										//   uint handle_bytes;
-										//   int type;
-										//   inline byte[] handle;
-										// }
-										//
-										// handle_bytes is the count of bytes in the handle member alone.
-										// So, the overall file_handle is of length handle_bytes + 8, to
-										// account for the other fields.
-
-										int handle_bytes = infoReader.ReadInt32();
-
-										infoStream.Position -= 4;
-
-										int file_handle_structure_bytes = handle_bytes + 8;
-
-										structure.FileHandle = new byte[file_handle_structure_bytes];
-
-										infoReader.Read(structure.FileHandle, 0, structure.FileHandle.Length);
-
-										if ((infoType == FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName)
-									   || (infoType == FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From)
-										 || (infoType == FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To))
-										{
-											structure.FileName = Marshal.PtrToStringAuto((IntPtr)infoStream.PositionPointer);
-
-#if EXTRADEBUG
-											Console.WriteLine("  ## {0} Got filename: {1}", infoType, structure.FileName);
-#endif
-										}
-
-										@event.InformationStructures.Add(structure);
-
-										break;
-									}
-								}
-							}
-						}
+						@event.InformationStructures.AddRange(ParseEventInfoStructures(eventStream));
 
 #if EXTRADEBUG
 						Console.WriteLine("Raising event");

@@ -5,7 +5,6 @@ namespace DeltaQ.RTB.Interop
 		public FileAccessNotifyEventInfoType Type;
 		public long FileSystemID;
 		public byte[]? FileHandle;
-		public string? ContainerName;
 		public string? FileName;
 	}
 }
