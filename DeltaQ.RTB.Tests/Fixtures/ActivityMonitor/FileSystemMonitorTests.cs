@@ -287,11 +287,19 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			var mounts = new List<IMount>();
 			var goodMounts = new List<IMount>();
 
+			var used = new HashSet<string>();
+
 			// Conventional mounts
 			for (int i = 0; i < 10; i++)
 			{
 				string devNode = _faker.System.DirectoryPath();
 				string mountPoint = _faker.System.DirectoryPath();
+
+				// Ensure that the device nodes and mount points are all unique.
+				while (!used.Add(devNode))
+					devNode = _faker.System.DirectoryPath();
+				while (!used.Add(mountPoint))
+					mountPoint = _faker.System.DirectoryPath();
 
 				var mount = Substitute.For<IMount>();
 
@@ -318,6 +326,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				if (type == "zfs")
 					type = "notzfs";
 
+				// Ensure that the mount points are all unique.
+				while (!used.Add(mountPoint))
+					mountPoint = _faker.System.DirectoryPath();
+
 				var mount = Substitute.For<IMount>();
 
 				mount.DeviceName.Returns(devNode);
@@ -336,6 +348,12 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				string devNode = "rpool/ROOT/" + _faker.System.DirectoryPath();
 				string mountPoint = _faker.System.DirectoryPath();
+
+				// Ensure that the device nodes and mount points are all unique.
+				while (!used.Add(devNode))
+					devNode = "rpool/ROOT/" + _faker.System.DirectoryPath();
+				while (!used.Add(mountPoint))
+					mountPoint = _faker.System.DirectoryPath();
 
 				var mount = Substitute.For<IMount>();
 
