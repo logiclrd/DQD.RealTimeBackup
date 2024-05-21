@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -63,51 +64,46 @@ namespace DeltaQ.RTB.Interop
 		[DllImport("c", SetLastError = true)]
 		public static extern int fstatfs(int fd, byte[] buf);
 
-		[DllImport("c", SetLastError = true)]
-		public static extern IntPtr setmntent(string filename, string type);
-		[DllImport("c", SetLastError = true)]
-		public static extern IntPtr getmntent(IntPtr fp);
-		[DllImport("c", SetLastError = true)]
-		public static extern int endmntent(IntPtr fp);
-
-		public static void DecodeMountEntry(IntPtr mount, out string mnt_fsname, out string mnt_dir, out string? mnt_type, out string? mnt_opts, out int mnt_freq, out int mnt_passno)
+		public static void DecodeMountInfoEntry(string serialized, out int mountID, out int parentMountID, out int deviceMajor, out int deviceMinor, out string root, out string mountPoint, out string options, out string[] optionalFields, out string fileSystemType, out string deviceName, out string? superblockOptions)
 		{
-			unsafe
-			{
-				var stream = new UnmanagedMemoryStream((byte*)mount, 4 * IntPtr.Size + 8);
+			var fields = serialized.Split(' ');
 
-				var reader = new BinaryReader(stream);
+			if (fields.Length < 9)
+				throw new Exception("Invalid mountinfo format: record has fewer than 9 fields");
 
-				IntPtr mnt_fsname_addr;
-				IntPtr mnt_dir_addr;
-				IntPtr mnt_type_addr;
-				IntPtr mnt_opts_addr;
+			int i = 0;
 
-				if (IntPtr.Size == 4)
-				{
-					mnt_fsname_addr = (IntPtr)reader.ReadInt32();
-					mnt_dir_addr = (IntPtr)reader.ReadInt32();
-					mnt_type_addr = (IntPtr)reader.ReadInt32();
-					mnt_opts_addr = (IntPtr)reader.ReadInt32();
-				}
-				else if (IntPtr.Size == 8)
-				{
-					mnt_fsname_addr = (IntPtr)reader.ReadInt64();
-					mnt_dir_addr = (IntPtr)reader.ReadInt64();
-					mnt_type_addr = (IntPtr)reader.ReadInt64();
-					mnt_opts_addr = (IntPtr)reader.ReadInt64();
-				}
-				else
-					throw new Exception("Sanity failure");
+			mountID = int.Parse(fields[i++]);
+			parentMountID = int.Parse(fields[i++]);
 
-				mnt_freq = reader.ReadInt32();
-				mnt_passno = reader.ReadInt32();
+			var deviceNumbers = fields[i++].Split(':');
 
-				mnt_fsname = (mnt_fsname_addr == IntPtr.Zero) ? "" : Marshal.PtrToStringAuto(mnt_fsname_addr)!;
-				mnt_dir = (mnt_dir_addr == IntPtr.Zero) ? "" : Marshal.PtrToStringAuto(mnt_dir_addr)!;
-				mnt_type = (mnt_type_addr == IntPtr.Zero) ? null : Marshal.PtrToStringAuto(mnt_type_addr);
-				mnt_opts = (mnt_opts_addr == IntPtr.Zero) ? null : Marshal.PtrToStringAuto(mnt_opts_addr);
-			}
+			deviceMajor = int.Parse(deviceNumbers[0]);
+			deviceMinor = int.Parse(deviceNumbers[1]);
+
+			root = fields[i++];
+			mountPoint = fields[i++];
+			options = fields[i++];
+
+			var optionalFieldList = new List<string>();
+
+			while (fields[i] != "-")
+				optionalFieldList.Add(fields[i++]);
+			
+			i++; // Skip the '-' terminator.
+
+			optionalFields = optionalFieldList.ToArray();
+
+			if (fields.Length - i < 2)
+				throw new Exception("Invalid mountinfo format: record does not have the device name field");
+
+			fileSystemType = fields[i++];
+			deviceName = fields[i++];
+
+			if (i < fields.Length)
+				superblockOptions = fields[i++];
+			else
+				superblockOptions = default;
 		}
 	}
 }

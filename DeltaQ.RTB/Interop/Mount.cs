@@ -2,28 +2,43 @@ namespace DeltaQ.RTB.Interop
 {
 	public class Mount : IMount
 	{
-		string _deviceName;
+		int _mountID;
+		int _parentMountID;
+		int _deviceMajor;
+		int _deviceMinor;
+		string _root;
 		string _mountPoint;
-		string? _type;
-		string? _options;
-		int _frequency;
-		int _passNumber;
+		string _options;
+		string[] _optionalFields;
+		string _fileSystemType;
+		string _deviceName;
+		string? _superblockOptions;
 
-		public string DeviceName => _deviceName;
+		public int MountID => _mountID;
+		public int ParentMountID => _parentMountID;
+		public int DeviceMajor => _deviceMajor;
+		public int DeviceMinor => _deviceMinor;
+		public string Root => _root;
 		public string MountPoint => _mountPoint;
-		public string? Type => _type;
-		public string? Options => _options;
-		public int Frequency => _frequency;
-		public int PassNumber => _passNumber;
+		public string Options => _options;
+		public string[] OptionalFields => _optionalFields;
+		public string FileSystemType => _fileSystemType;
+		public string DeviceName => _deviceName;
+		public string? SuperblockOptions => _superblockOptions;
 
-		public Mount(string mnt_fsname, string mnt_dir, string? mnt_type, string? mnt_opts, int mnt_freq, int mnt_passno)
+		public Mount(int mountID, int parentMountID, int deviceMajor, int deviceMinor, string root, string mountPoint, string options, string[] optionalFields, string fileSystemType, string deviceName, string? superblockOptions)
 		{
-			_deviceName = mnt_fsname;
-			_mountPoint = mnt_dir;
-			_type = mnt_type;
-			_options = mnt_opts;
-			_frequency = mnt_freq;
-			_passNumber = mnt_passno;
+			_mountID = mountID;
+			_parentMountID = parentMountID;
+			_deviceMajor = deviceMajor;
+			_deviceMinor = deviceMinor;
+			_root = root;
+			_mountPoint = mountPoint;
+			_options = options;
+			_optionalFields =  optionalFields;
+			_fileSystemType = fileSystemType;
+			_deviceName = deviceName;
+			_superblockOptions = superblockOptions;
 		}
 
 		public bool TestDeviceAccess()

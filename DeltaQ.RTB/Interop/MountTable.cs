@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 
 namespace DeltaQ.RTB.Interop
 {
@@ -17,27 +19,79 @@ namespace DeltaQ.RTB.Interop
 
 		public IEnumerable<IMount> EnumerateMounts()
 		{
-			IntPtr mounts = NativeMethods.setmntent("/proc/self/mounts", "r");
-			if (mounts == IntPtr.Zero)
-				throw new Exception("setmntent failed");
-
-			IntPtr mount = NativeMethods.getmntent(mounts);
-
-			try
+			using (var reader = new StreamReader("/proc/self/mountinfo"))
 			{
-				while (mount != IntPtr.Zero)
+				while (true)
 				{
-					NativeMethods.DecodeMountEntry(mount, out string mnt_fsname, out string mnt_dir, out string? mnt_type, out string? mnt_opts, out int mnt_freq, out int mnt_passno);
+					string? line = reader.ReadLine();
 
-					yield return new Mount(mnt_fsname, mnt_dir, mnt_type, mnt_opts, mnt_freq, mnt_passno);
+					if (line == null)
+						break;
 
-					mount = NativeMethods.getmntent(mounts);
+					NativeMethods.DecodeMountInfoEntry(
+						line,
+						out int mountID,
+						out int parentMountID,
+						out int deviceMajor,
+						out int deviceMinor,
+						out string root,
+						out string mountPoint,
+						out string options,
+						out string[] optionalFields,
+						out string fileSystemType,
+						out string deviceName,
+						out string? superblockOptions);
+
+					root = Unescape(root)!;
+					mountPoint = Unescape(mountPoint)!;
+					options = Unescape(options)!;
+
+					for (int i=0; i < optionalFields.LongLength; i++)
+						optionalFields[i] = Unescape(optionalFields[i])!;
+
+					deviceName = Unescape(deviceName)!;
+					superblockOptions = Unescape(superblockOptions);
+
+					yield return new Mount(mountID, parentMountID, deviceMajor, deviceMinor, root, mountPoint, options, optionalFields, fileSystemType, deviceName, superblockOptions);
 				}
 			}
-			finally
+		}
+
+		internal static string? Unescape(string? escapedString)
+		{
+			if (escapedString == null)
+				return null;
+
+			int sequenceIndex = escapedString.IndexOf('\\');
+
+			if (sequenceIndex	< 0)
+				return escapedString;
+
+			int nextIndex = 0;
+
+			var decoded = new StringBuilder();
+
+			while (sequenceIndex >= 0)
 			{
-				NativeMethods.endmntent(mounts);
+				decoded.Append(escapedString, nextIndex, sequenceIndex - nextIndex);
+
+				nextIndex = sequenceIndex;
+
+				// Certain characters are encoded as \ooo, where ooo is the ASCII code in octal.
+				int value =         (escapedString[++nextIndex] - '0');
+				value = value * 8 + (escapedString[++nextIndex] - '0');
+				value = value * 8 + (escapedString[++nextIndex] - '0');
+
+				decoded.Append((char)value);
+
+				nextIndex++;
+
+				sequenceIndex = escapedString.IndexOf('\\', nextIndex);
 			}
+
+			decoded.Append(escapedString, nextIndex, escapedString.Length - nextIndex);
+
+			return decoded.ToString();
 		}
 	}
 }

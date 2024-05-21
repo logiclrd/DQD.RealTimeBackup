@@ -32,11 +32,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// Arrange
 			unsafe
 			{
+				var parameters = new OperatingParameters();
+
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 				var sut = new FileSystemMonitor(
+					parameters,
 					mountTable,
 					() => fileAccessNotify,
 					openByHandleAt);
@@ -97,11 +100,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// Arrange
 			unsafe
 			{
+				var parameters = new OperatingParameters();
+
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 				var sut = new FileSystemMonitor(
+					parameters,
 					mountTable,
 					() => fileAccessNotify,
 					openByHandleAt);
@@ -180,11 +186,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// Arrange
 			unsafe
 			{
+				var parameters = new OperatingParameters();
+
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 				var sut = new FileSystemMonitor(
+					parameters,
 					mountTable,
 					() => fileAccessNotify,
 					openByHandleAt);
@@ -243,11 +252,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 		public void SetUpFANotify_should_open_all_physical_mounts_including_ZFS()
 		{
 			// Arrange
+			var parameters = new OperatingParameters();
+
 			var mountTable = Substitute.For<IMountTable>();
 			var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 			var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 			var sut = new FileSystemMonitor(
+				parameters,
 				mountTable,
 				() => fileAccessNotify,
 				openByHandleAt);
@@ -284,11 +296,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				var mount = Substitute.For<IMount>();
 
 				mount.DeviceName.Returns(devNode);
+				mount.Root.Returns("/");
 				mount.MountPoint.Returns(mountPoint);
-				mount.Type.Returns("ext4");
+				mount.FileSystemType.Returns("ext4");
 				mount.Options.Returns("rw");
-				mount.Frequency.Returns(1);
-				mount.PassNumber.Returns(2);
 
 				mount.TestDeviceAccess().Returns(true);
 
@@ -310,11 +321,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				var mount = Substitute.For<IMount>();
 
 				mount.DeviceName.Returns(devNode);
+				mount.Root.Returns("/");
 				mount.MountPoint.Returns(mountPoint);
-				mount.Type.Returns(type);
+				mount.FileSystemType.Returns(type);
 				mount.Options.Returns("rw");
-				mount.Frequency.Returns(1);
-				mount.PassNumber.Returns(2);
 
 				mount.TestDeviceAccess().Returns(access);
 
@@ -324,17 +334,16 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// ZFS mounts
 			for (int i = 0; i < 10; i++)
 			{
-				string devNode = _faker.System.DirectoryPath();
-				string mountPoint = "rpool/ROOT/" + _faker.System.DirectoryPath();
+				string devNode = "rpool/ROOT/" + _faker.System.DirectoryPath();
+				string mountPoint = _faker.System.DirectoryPath();
 
 				var mount = Substitute.For<IMount>();
 
 				mount.DeviceName.Returns(devNode);
+				mount.Root.Returns("/");
 				mount.MountPoint.Returns(mountPoint);
-				mount.Type.Returns("zfs");
+				mount.FileSystemType.Returns("zfs");
 				mount.Options.Returns("rw");
-				mount.Frequency.Returns(1);
-				mount.PassNumber.Returns(2);
 
 				mount.TestDeviceAccess().Returns(false);
 
@@ -377,11 +386,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 		public void MonitorFileActivity_should_run_FileAccessNotify_MonitorEvents_until_shutdown_is_signalled()
 		{
 			// Arrange
+			var parameters = new OperatingParameters();
+
 			var mountTable = Substitute.For<IMountTable>();
 			var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 			var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 			var sut = new FileSystemMonitor(
+				parameters,
 				mountTable,
 				() => fileAccessNotify,
 				openByHandleAt);
@@ -416,7 +428,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 			haveStopped.Should().BeFalse();
 
-			sut.MonitorFileActivity();
+			sut.MonitorFileActivityThreadProc();
 
 			stopwatch.Stop();
 

@@ -20,7 +20,18 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 
 			try
 			{
-				var sut = new Mount(dummyFilePath, "", default, default, default, default);
+				var sut = new Mount(
+					default,
+					default,
+					default,
+					default,
+					"/",
+					"",
+					"",
+					Array.Empty<string>(),
+					"",
+					dummyFilePath,
+					default);
 
 				// Act
 				var result = sut.TestDeviceAccess();
@@ -38,7 +49,18 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 		public void TestDeviceAccess_should_fail_for_ZFS_device_name()
 		{
 			// Arrange
-			var sut = new Mount("rpool/ROOT/ubuntu_znaqup", "", default, default, default, default);
+			var sut = new Mount(
+				default,
+				default,
+				default,
+				default,
+				"/",
+				"",
+				"",
+				Array.Empty<string>(),
+				"",
+				"rpool/ROOT/ubuntu_znaqup",
+				default);
 
 			// Act
 			var result = sut.TestDeviceAccess();

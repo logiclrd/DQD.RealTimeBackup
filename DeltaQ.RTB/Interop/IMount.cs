@@ -2,12 +2,17 @@ namespace DeltaQ.RTB.Interop
 {
 	public interface IMount
 	{
-		string DeviceName { get; }
+		int MountID { get; }
+		int ParentMountID { get; }
+		int DeviceMajor { get; }
+		int DeviceMinor { get; }
+		string Root { get; }
 		string MountPoint { get; }
-		string? Type { get; }
-		string? Options { get; }
-		int Frequency { get; }
-		int PassNumber { get; }
+		string Options { get; }
+		string[] OptionalFields { get; }
+		string FileSystemType { get; }
+		string DeviceName { get; }
+		string? SuperblockOptions { get; }
 
 		bool TestDeviceAccess();
 	}

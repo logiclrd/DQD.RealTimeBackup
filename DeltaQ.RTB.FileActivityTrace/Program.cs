@@ -9,6 +9,8 @@ namespace DeltaQ.RTB.FileActivityTrace
 	{
 		static void Main()
 		{
+			var parameters = new OperatingParameters();
+
 			var stopping = new ManualResetEvent(initialState: false);
 			var stopped = new ManualResetEvent(initialState: false);
 
@@ -16,6 +18,7 @@ namespace DeltaQ.RTB.FileActivityTrace
 			var openByHandleAt = new OpenByHandleAt();
 
 			var fsm = new FileSystemMonitor(
+				parameters,
 				mountTable,
 				() => new FileAccessNotify(),
 				openByHandleAt);

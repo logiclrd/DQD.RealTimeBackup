@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace DeltaQ.RTB
 {
@@ -13,6 +14,14 @@ namespace DeltaQ.RTB
 		// Set to false to run a BackupAgent that responds only to explicit notifications. For instance,
 		// this is used to achieve initial backup.
 		public bool EnableFileAccessNotify = true;
+
+		// Used to resolve situations where the same device is mounted to multiple places. When this
+		// happens, if one of those places is in this list, only that one will be used. If none of the
+		// mounts are in this list, then an error will be generated.
+		public List<string> PreferredMountPoints = new List<string>();
+
+		// Specifies filesystem types that should be monitored.
+		public List<string> MonitorFileSystemTypes = new List<string>() { "zfs", "ext4", "ext3", "ext2", "ext", "reiserfs", "minix", "xfs", "jfs", "xiafs", "msdos", "umsdos", "vfat", "ntfs", "sysv" };
 
 		// When submitting a file, if its size is less than this then it will be copied to /tmp and
 		// the ZFS snapshot released. If its size is greater than or equal to this, then the ZFS

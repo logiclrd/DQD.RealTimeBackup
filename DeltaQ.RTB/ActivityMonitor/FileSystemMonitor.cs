@@ -10,19 +10,24 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using DeltaQ.RTB.Interop;
+using Microsoft.VisualBasic;
 
 namespace DeltaQ.RTB.ActivityMonitor
 {
 	public class FileSystemMonitor : IFileSystemMonitor
 	{
+		OperatingParameters _parameters;
+
 		IMountTable _mountTable;
 		Func<IFileAccessNotify> _fileAccessNotifyFactory;
 		IOpenByHandleAt _openByHandleAt;
 
 		IFileAccessNotify? _fileAccessNotify;
 
-		public FileSystemMonitor(IMountTable mountTable, Func<IFileAccessNotify> fileAccessNotifyFactory, IOpenByHandleAt openByHandleAt)
+		public FileSystemMonitor(OperatingParameters parameters, IMountTable mountTable, Func<IFileAccessNotify> fileAccessNotifyFactory, IOpenByHandleAt openByHandleAt)
 		{
+			_parameters = parameters;
+
 			_mountTable = mountTable;
 			_fileAccessNotifyFactory = fileAccessNotifyFactory;
 			_openByHandleAt = openByHandleAt;
@@ -105,6 +110,10 @@ namespace DeltaQ.RTB.ActivityMonitor
 
 		internal Dictionary<long, int> MountDescriptorByFileSystemID = new Dictionary<long, int>();
 
+		List<IMount>? _surfaceArea;
+
+		// TODO: make surface area a first-class entity so that it can be used even when not monitoring the filesystem
+
 		internal void SetUpFANotify()
 		{
 			if (_fileAccessNotify == null)
@@ -116,16 +125,76 @@ namespace DeltaQ.RTB.ActivityMonitor
 
 			MountDescriptorByFileSystemID[openMount.FileSystemID] = openMount.FileDescriptor;
 
-			foreach (var mount in _mountTable.EnumerateMounts())
+			var mountsToMark = _mountTable.EnumerateMounts().ToList();
+
+			var mountsByDevice = mountsToMark
+				.GroupBy(key => key.DeviceName)
+				.Select(grouping => grouping.ToList())
+				.ToList();
+
+			foreach (var mountSet in mountsByDevice)
 			{
-				if (mount.Type != "zfs")
+				for (int i = mountSet.Count - 1; i >= 0; i--)
+				{
+					if (!string.IsNullOrWhiteSpace(mountSet[i].Root) && (mountSet[i].Root != "/"))
+					{
+						Console.WriteLine("Discarding mount because it isn't at root: {0}[{1}] @ {2}", mountSet[i].DeviceName, mountSet[i].Root, mountSet[i].MountPoint);
+						mountSet.RemoveAt(i);
+						continue;
+					}
+
+					if (!_parameters.MonitorFileSystemTypes.Contains(mountSet[i].FileSystemType))
+					{
+						Console.WriteLine("Discarding mount because of the filesystem type: {0}[{1}] @ {2}", mountSet[i].DeviceName, mountSet[i].Root, mountSet[i].MountPoint);
+						mountSet.RemoveAt(i);
+						continue;
+					}
+				}
+
+				if (mountSet.Count > 1)
+				{
+					int preferredMountPointIndex = -1;
+
+					for (int i = mountSet.Count - 1; i >= 0; i--)
+					{
+						if (_parameters.PreferredMountPoints.Contains(mountSet[i].MountPoint))
+						{
+							if (preferredMountPointIndex >= 0)
+								throw new Exception($"More than one mount point refers to device {mountSet[0].DeviceName}. One of these needs to be explicitly selected using the PreferredMountPoint option. Presently, more than one is selected.");
+
+							preferredMountPointIndex = i;
+						}
+					}
+
+					if (preferredMountPointIndex < 0)
+						throw new Exception($"More than one mount point refers to device {mountSet[0].DeviceName}. One of these needs to be explicitly selected using the PreferredMountPoint option. Presently, none is selected.");
+
+					var preferredMount = mountSet[preferredMountPointIndex];
+
+					mountSet.Clear();
+					mountSet.Add(preferredMount);
+				}
+			}
+
+			_surfaceArea = mountsByDevice.SelectMany(m => m).ToList();
+
+			Console.WriteLine("About to mark");
+
+			foreach (var mount in _surfaceArea)
+			{
+				if (mount.FileSystemType != "zfs")
 				{
 					if (!mount.TestDeviceAccess() || !mount.DeviceName.StartsWith("/"))
+					{
+						Console.WriteLine("Discarding mount because its device is inaccessible: {0}[{1}] @ {2}", mount.DeviceName, mount.Root, mount.MountPoint);
 						continue;
+					}
 				}
 
 				if ((mount.MountPoint != null) && (mount.MountPoint != "/"))
 				{
+					Console.WriteLine("Marking: {0}", mount.MountPoint);
+
 					_fileAccessNotify.MarkPath(mount.MountPoint);
 
 					openMount = _mountTable.OpenMountForFileSystem(mount.MountPoint);
@@ -133,6 +202,8 @@ namespace DeltaQ.RTB.ActivityMonitor
 					MountDescriptorByFileSystemID[openMount.FileSystemID] = openMount.FileDescriptor;
 				}
 			}
+
+			Console.WriteLine("Done marking");
 		}
 
 		internal void InitializeFileAccessNotify()
@@ -140,20 +211,13 @@ namespace DeltaQ.RTB.ActivityMonitor
 			_fileAccessNotify = _fileAccessNotifyFactory();
 		}
 
-		internal void MonitorFileActivity()
+		internal void MonitorFileActivityThreadProc()
 		{
 			Interlocked.Increment(ref _threadCount);
 
 			try
 			{
-				InitializeFileAccessNotify();
-
-				if (_fileAccessNotify == null)
-					throw new Exception("Internal error");
-
-				SetUpFANotify();
-
-				_fileAccessNotify.MonitorEvents(
+				_fileAccessNotify?.MonitorEvents(
 					ProcessEvent,
 					_shutdownSource.Token);
 			}
@@ -174,9 +238,16 @@ namespace DeltaQ.RTB.ActivityMonitor
 			if (_started)
 				return;
 
+			InitializeFileAccessNotify();
+
+			if (_fileAccessNotify == null)
+				throw new Exception("Internal error");
+
+			SetUpFANotify();
+
 			_started = true;
 
-			Task.Run(() => MonitorFileActivity());
+			Task.Run(() => MonitorFileActivityThreadProc());
 		}
 
 		public void Stop()
