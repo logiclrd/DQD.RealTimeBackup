@@ -51,6 +51,7 @@ namespace DeltaQ.RTB.Agent
 
 			_monitor.PathUpdate += monitor_PathUpdate;
 			_monitor.PathMove += monitor_PathMove;
+			_monitor.PathDelete += monitor_PathDelete;
 		}
 
 		void monitor_PathUpdate(object? sender, PathUpdate update)
@@ -60,7 +61,12 @@ namespace DeltaQ.RTB.Agent
 
 		void monitor_PathMove(object? sender, PathMove move)
 		{
-			// TODO
+			AddActionToBackupQueue(new MoveAction(move.PathFrom, move.PathTo));
+		}
+
+		void monitor_PathDelete(object? sender, PathDelete delete)
+		{
+			AddActionToBackupQueue(new DeleteAction(delete.Path));
 		}
 
 		object _snapshotSharingDelaySync = new object();
@@ -130,6 +136,17 @@ namespace DeltaQ.RTB.Agent
 			new Thread(PollOpenFilesThreadProc).Start();
 		}
 
+		void WakePollOpenFilesThread()
+		{
+			// The open file handles polling thread waits on _openFilesSync when its queue is empty, and
+			// on _openFileHandlePollingSync when its queue is not empty.
+			lock (_openFilesSync)
+				Monitor.PulseAll(_openFilesSync);
+
+			lock (_openFileHandlePollingSync)
+				Monitor.PulseAll(_openFileHandlePollingSync);
+		}
+
 		void PollOpenFilesThreadProc()
 		{
 			var openFilesCached = new List<SnapshotReferenceWithTimeout>();
@@ -188,7 +205,9 @@ namespace DeltaQ.RTB.Agent
 						foreach (var reference in filesToPromote)
 							_openFiles.Remove(reference);
 
-					AddFilesToBackupQueue(filesToPromote.Select(reference => reference.SnapshotReference));
+					AddActionsToBackupQueue(filesToPromote
+						.Select(reference => reference.SnapshotReference)
+						.Select(reference => new UploadAction(reference, reference.Path)));
 
 					filesToPromote.Clear();
 				}
@@ -212,7 +231,7 @@ namespace DeltaQ.RTB.Agent
 						{
 							if (_openFiles[i].TimeoutUTC < now)
 							{
-								BeginLongPollingStrategy(_openFiles[i].SnapshotReference);
+								AddLongPollingItem(_openFiles[i].SnapshotReference);
 								_openFiles.RemoveAt(i);
 							}
 						}
@@ -221,106 +240,331 @@ namespace DeltaQ.RTB.Agent
 			}
 		}
 
-		void BeginLongPollingStrategy(SnapshotReference reference)
+		class LongPollingItem
 		{
-			// TODO
-			/*
-       * If the file is still open after 30 seconds, switch to a new polling method:
-       1. Create/locate a ZFS snapshot
-       2. If the file has no open file handles, then run Submit file procedure and exit.
-       3. Wait 30 seconds
-       4. Create/locate a ZFS snapshot
-       5. Compare the file in the old and new snapshots.
-       6. Drop the old snapshot, the new snapshot becomes the new old snapshot.
-       7. If the snapshots are identical or the retry limit has been reached, then run Submit file procedure and exit, otherwise go to step 2.
-       */
+			public SnapshotReference CurrentSnapshotReference;
+			public DateTime DeadlineUTC; // Upload anyway after this has elapsed.
+
+			public LongPollingItem(SnapshotReference snapshotReference, TimeSpan timeout)
+			{
+				this.CurrentSnapshotReference = snapshotReference;
+				this.DeadlineUTC = DateTime.UtcNow + timeout;
+			}
+		}
+
+		object _longPollingSync = new object();
+		List<LongPollingItem> _longPollingQueue = new List<LongPollingItem>();
+		CancellationTokenSource? _longPollingCancellationTokenSource;
+
+		void StartLongPollingThread()
+		{
+			_longPollingCancellationTokenSource = new CancellationTokenSource();
+
+			new Thread(LongPollingThreadProc).Start();
+		}
+
+		void WakeLongPollingThread()
+		{
+			lock (_longPollingSync)
+				Monitor.PulseAll(_longPollingSync);
+		}
+
+		void CleanUpLongPollingThread()
+		{
+			_longPollingCancellationTokenSource?.Dispose();
+			_longPollingCancellationTokenSource = null;
+		}
+
+		void AddLongPollingItem(SnapshotReference snapshotReference)
+		{
+			lock (_longPollingSync)
+			{
+				_longPollingQueue.Add(new LongPollingItem(snapshotReference, _parameters.MaximumLongPollingTime));
+				Monitor.PulseAll(_longPollingSync);
+			}
+		}
+
+		void LongPollingThreadProc()
+		{
+			DateTime intervalEndUTC = DateTime.UtcNow;
+
+			while (!_stopping)
+			{
+				List<BackupAction>? actions = null;
+
+				lock (_longPollingSync)
+				{
+					if (_longPollingQueue.Count == 0)
+					{
+						Monitor.Wait(_longPollingSync);
+						continue;
+					}
+
+					var maximumDeadLineUTC = DateTime.UtcNow + _parameters.LongPollingInterval;
+
+					if (_longPollingQueue.Count == 0)
+						intervalEndUTC = maximumDeadLineUTC;
+					else
+					{
+						intervalEndUTC = _longPollingQueue.Select(entry => entry.DeadlineUTC).Min();
+
+						if (intervalEndUTC > maximumDeadLineUTC)
+							intervalEndUTC = maximumDeadLineUTC;
+					}
+
+					var waitDuration = intervalEndUTC - DateTime.UtcNow;
+
+					while ((waitDuration > TimeSpan.Zero) && !_stopping)
+					{
+						Monitor.Wait(_longPollingSync, waitDuration);
+						waitDuration = intervalEndUTC - DateTime.UtcNow;
+					}
+
+					if (_stopping)
+						break;
+
+					var now = DateTime.UtcNow;
+
+					var snapshot = _zfs.CreateSnapshot("RTB-" + now.Ticks);
+
+					var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+
+					for (int i = _longPollingQueue.Count - 1; i >= 0; i--)
+					{
+						var item = _longPollingQueue[i];
+
+						var newSnapshotReference = new SnapshotReference(
+							snapshotReferenceTracker,
+							item.CurrentSnapshotReference.Path);
+
+						bool promoteFile = false;
+
+						if ((item.DeadlineUTC < now)
+						 || !_openFileHandles.Enumerate(newSnapshotReference.Path).Any(handle => handle.FileAccess.HasFlag(FileAccess.Write)))
+						{
+							item.CurrentSnapshotReference.Dispose();
+							promoteFile = true;
+						}
+						else
+						{
+							bool fileLooksStable = FileUtility.FilesAreEqual(
+								item.CurrentSnapshotReference.SnapshottedPath,
+								newSnapshotReference.SnapshottedPath,
+								_longPollingCancellationTokenSource?.Token ?? CancellationToken.None);
+
+							item.CurrentSnapshotReference.Dispose();
+							item.CurrentSnapshotReference = newSnapshotReference;
+
+							if (fileLooksStable)
+								promoteFile = true;
+						}
+
+						if (promoteFile)
+						{
+							_longPollingQueue.RemoveAt(i);
+
+							if (actions == null)
+								actions = new List<BackupAction>();
+
+							actions.Add(new UploadAction(newSnapshotReference, newSnapshotReference.Path));
+						}
+					}
+				}
+
+				if ((actions != null) && !_stopping)
+					AddActionsToBackupQueue(actions);
+			}
 		}
 
 		object _backupQueueSync = new object();
-		List<SnapshotReference> _backupQueue = new List<SnapshotReference>();
+		List<BackupAction> _backupQueue = new List<BackupAction>();
+		CancellationTokenSource? _backupQueueCancellationTokenSource;
+		ManualResetEvent? _backupQueueExited;
 
-		void AddFilesToBackupQueue(IEnumerable<SnapshotReference> filesToPromote)
+		void AddActionToBackupQueue(BackupAction action)
 		{
 			lock (_backupQueueSync)
 			{
-				_backupQueue.AddRange(filesToPromote);
+				_backupQueue.Add(action);
 				Monitor.PulseAll(_backupQueueSync);
 			}
 		}
 
-		internal IEnumerable<SnapshotReference> BackupQueue => _backupQueue.Select(x => x);
+		void AddActionsToBackupQueue(IEnumerable<BackupAction> actions)
+		{
+			lock (_backupQueueSync)
+			{
+				_backupQueue.AddRange(actions);
+				Monitor.PulseAll(_backupQueueSync);
+			}
+		}
+
+		internal IEnumerable<BackupAction> BackupQueue => _backupQueue.Select(x => x);
 
 		void StartProcessBackupQueueThread()
 		{
+			_backupQueueCancellationTokenSource = new CancellationTokenSource();
+			_backupQueueExited = new ManualResetEvent(initialState: false);
+
 			new Thread(ProcessBackupQueueThreadProc).Start();
+		}
+
+		void WakeProcessBackupQueueThread()
+		{
+			lock (_backupQueueSync)
+				Monitor.PulseAll(_backupQueueSync);
+		}
+
+		void InterruptProcessBackupQueueThread()
+		{
+			_backupQueueCancellationTokenSource?.Cancel();
+
+			WakeProcessBackupQueueThread();
+		}
+
+		bool WaitForProcessBackupQueueThreadToExit(TimeSpan timeout)
+		{
+			return _backupQueueExited?.WaitOne(timeout) ?? true;
+		}
+
+		void CleanUpProcessBackupQueueThread()
+		{
+			_backupQueueCancellationTokenSource?.Dispose();
+			_backupQueueCancellationTokenSource = null;
+
+			_backupQueueExited?.Dispose();
+			_backupQueueExited = null;
 		}
 
 		void ProcessBackupQueueThreadProc()
 		{
-			while (!_stopping)
+			try
 			{
-				SnapshotReference reference;
-
-				lock (_backupQueueSync)
+				while (!_stopping)
 				{
-					while (_backupQueue.Count == 0)
+					BackupAction backupAction;
+
+					lock (_backupQueueSync)
 					{
+						while (_backupQueue.Count == 0)
+						{
+							if (_stopping)
+								return;
+
+							Monitor.Wait(_backupQueueSync);
+						}
+
 						if (_stopping)
 							return;
 
-						Monitor.Wait(_backupQueueSync);
+						backupAction = _backupQueue[_backupQueue.Count - 1];
+						_backupQueue.RemoveAt(_backupQueue.Count - 1);
 					}
 
-					if (_stopping)
-						return;
-
-					reference = _backupQueue[_backupQueue.Count - 1];
-					_backupQueue.RemoveAt(_backupQueue.Count - 1);
+					ProcessBackupQueueAction(backupAction);
 				}
-
-				ProcessBackupQueueReference(reference);
+			}
+			finally
+			{
+				_backupQueueExited?.Set();
 			}
 		}
 
-		internal void ProcessBackupQueueReference(SnapshotReference reference)
+		internal void ProcessBackupQueueAction(BackupAction action)
 		{
-			FileReference fileReference;
-
-			var stream = File.OpenRead(reference.SnapshottedPath);
-
-			var backedUpFileState = _remoteFileStateCache.GetFileState(reference.Path);
-			var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);
-
-			if ((backedUpFileState == null) || (currentLocalFileChecksum != backedUpFileState.Checksum))
+			switch (action)
 			{
-				if (stream.Length > _parameters.MaximumFileSizeForStagingCopy)
-					fileReference = new FileReference(reference, stream);
-				else
-				{
-					var stagedCopy = _staging.StageFile(stream);
+				case UploadAction uploadAction:
+					FileReference fileReference;
 
-					stream.Dispose();
+					var stream = File.OpenRead(uploadAction.Source.SnapshottedPath);
 
-					fileReference = new FileReference(reference.Path, stagedCopy);
+					var backedUpFileState = _remoteFileStateCache.GetFileState(uploadAction.Source.Path);
+					var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);
 
-					reference.Dispose();
-				}
+					if ((backedUpFileState == null) || (currentLocalFileChecksum != backedUpFileState.Checksum))
+					{
+						if (stream.Length > _parameters.MaximumFileSizeForStagingCopy)
+							fileReference = new FileReference(uploadAction.Source, stream);
+						else
+						{
+							var stagedCopy = _staging.StageFile(stream);
 
-				AddFileReferenceToUploadQueue(fileReference);
+							stream.Dispose();
+
+							fileReference = new FileReference(uploadAction.Source.Path, stagedCopy);
+
+							uploadAction.Source.Dispose();
+						}
+
+						AddFileReferenceToUploadQueue(fileReference);
+					}
+
+					break;
+				case MoveAction moveAction:
+					_storage.MoveFile(
+						moveAction.FromPath,
+						moveAction.ToPath,
+						_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+
+					break;
+				case DeleteAction deleteAction:
+					_storage.DeleteFile(
+						deleteAction.Path,
+						_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+
+					break;
 			}
 			/*
        * Restrict number of concurrent tasks (separately for small vs. large files)
        * */
 		}
 
+		object _uploadQueueSync = new object();
+		CancellationTokenSource? _cancelUploadsCancellationTokenSource;
+		List<FileReference> _uploadQueue = new List<FileReference>();
+		int _uploadThreadCount;
+		Semaphore? _uploadThreadsExited;
+
 		void StartUploadThreads()
 		{
+			_uploadThreadCount = _parameters.UploadThreadCount;
+			_uploadThreadsExited = new Semaphore(initialCount: 0, maximumCount: _uploadThreadCount);
+
+			_cancelUploadsCancellationTokenSource = new CancellationTokenSource();
+
 			for (int i = 0; i < _parameters.UploadThreadCount; i++)
-				new Thread(UploadThreadProc).Start();
+				new Thread(() => UploadThreadProc(_cancelUploadsCancellationTokenSource.Token)).Start();
 		}
 
-		object _uploadQueueSync = new object();
-		List<FileReference> _uploadQueue = new List<FileReference>();
+		void InterruptUploadThreads()
+		{
+			// Idle Upload threads wait on _uploadQueueSync.
+			lock (_uploadQueueSync)
+				Monitor.PulseAll(_uploadQueueSync);
+
+			// Busy upload threads can be interrupted with the cancellation token.
+			_cancelUploadsCancellationTokenSource?.Cancel();
+		}
+
+		void WaitForUploadThreadsToExit()
+		{
+			var exited = _uploadThreadsExited;
+
+			if (exited != null)
+				for (int i = 0, l = _uploadThreadCount; i < l; i++)
+					exited.WaitOne();
+		}
+
+		void CleanUpUploadThreads()
+		{
+			_cancelUploadsCancellationTokenSource?.Dispose();
+			_cancelUploadsCancellationTokenSource = null;
+
+			_uploadThreadsExited?.Dispose();
+			_uploadThreadsExited = null;
+		}
+
 
 		public IEnumerable<FileReference> PeekUploadQueue()
 		{
@@ -337,32 +581,41 @@ namespace DeltaQ.RTB.Agent
 			}
 		}
 
-		void UploadThreadProc()
+		void UploadThreadProc(CancellationToken cancellationToken)
 		{
-			while (true)
+			var exited = _uploadThreadsExited;
+
+			try
 			{
-				FileReference fileToUpload;
-
-				lock (_uploadQueueSync)
+				while (!cancellationToken.IsCancellationRequested)
 				{
-					while (_uploadQueue.Count == 0)
-					{
-						Monitor.Wait(_uploadQueueSync);
+					FileReference fileToUpload;
 
-						if (_stopping)
-							return;
+					lock (_uploadQueueSync)
+					{
+						while (_uploadQueue.Count == 0)
+						{
+							Monitor.Wait(_uploadQueueSync);
+
+							if (_stopping)
+								return;
+						}
+
+						fileToUpload = _uploadQueue[_uploadQueue.Count - 1];
+						_uploadQueue.RemoveAt(_uploadQueue.Count - 1);
 					}
 
-					fileToUpload = _uploadQueue[_uploadQueue.Count - 1];
-					_uploadQueue.RemoveAt(_uploadQueue.Count - 1);
+					using (fileToUpload)
+					{
+						// TODO: write down that we're now uploading this file so that if we get interrupted, we can pick up where we left off
+						//
+						_storage.UploadFile(Path.Combine("/content", fileToUpload.Path), fileToUpload.Stream, cancellationToken);
+					}
 				}
-
-				using (fileToUpload)
-				{
-					// TODO: write down that we're now uploading this file so that if we get interrupted, we can pick up where we left off
-					//
-					_storage.UploadFile(Path.Combine("/content", fileToUpload.Path), fileToUpload.Stream);
-				}
+			}
+			finally
+			{
+				exited?.Release();
 			}
 		}
 
@@ -372,7 +625,10 @@ namespace DeltaQ.RTB.Agent
 			_monitor.Start();
 
 			if (_parameters.EnableFileAccessNotify)
+			{
 				StartPollOpenFilesThread();
+				StartLongPollingThread();
+			}
 
 			StartProcessBackupQueueThread();
 			StartUploadThreads();
@@ -383,25 +639,29 @@ namespace DeltaQ.RTB.Agent
 			_stopping = true;
 
 			_monitor.Stop();
+			_remoteFileStateCache.Stop();
 
-			// The open file handles polling thread waits on _openFilesSync when its queue is empty, and
-			// on _openFileHandlePollingSync when its queue is not empty.
-			lock (_openFilesSync)
-				Monitor.PulseAll(_openFilesSync);
+			WakePollOpenFilesThread();
+			WakeLongPollingThread();
+			WakeProcessBackupQueueThread();
 
-			lock (_openFileHandlePollingSync)
-				Monitor.PulseAll(_openFileHandlePollingSync);
+			_remoteFileStateCache.WaitWhileBusy();
 
-			// The backup queue waits on _backupQueueSync.
-			lock (_backupQueueSync)
-				Monitor.PulseAll(_backupQueueSync);
+			if (!WaitForProcessBackupQueueThreadToExit(TimeSpan.FromSeconds(3)))
+			{
+				InterruptProcessBackupQueueThread();
+				WaitForProcessBackupQueueThreadToExit(TimeSpan.FromSeconds(1));
+			}
 
-			// Upload threads wait on _uploadQueueSync.
-			lock (_uploadQueueSync)
-				Monitor.PulseAll(_uploadQueueSync);
+			// We don't need to sync to the open file handles polling thread exiting because it doesn't take actions.
 
-			// TODO: cancel long operations
-			// TODO: wait for short operations to complete
+			InterruptUploadThreads();
+
+			WaitForUploadThreadsToExit();
+
+			CleanUpLongPollingThread();
+			CleanUpProcessBackupQueueThread();
+			CleanUpUploadThreads();
 		}
 	}
 }

@@ -102,7 +102,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 				// Assert
 				backupQueueInitiallyEmpty.Should().BeTrue();
-				sut.BackupQueue.Should().Contain(reference);
+				sut.BackupQueue.Should().Contain(x => (x is UploadAction) && (((UploadAction)x).Source == reference));
 			}
 			finally
 			{
@@ -185,7 +185,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				Thread.Sleep(parameters.OpenFileHandlePollingInterval);
 
 				openFileHandles.Received().Enumerate(filePath);
-				sut.BackupQueue.Should().Contain(reference);
+				sut.BackupQueue.Should().Contain(x => (x is UploadAction) && (((UploadAction)x).Source == reference));
 			}
 			finally
 			{
@@ -194,7 +194,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 		}
 
 		[Test]
-		public void ProcessBackupQueueReference_should_not_queue_unchanged_file()
+		public void ProcessBackupQueueAction_should_not_queue_unchanged_file()
 		{
 			// Arrange
 			using (var file = new TemporaryFile())
@@ -212,6 +212,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
 
 				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
+
+				var uploadAction = new UploadAction(reference, reference.Path);
 
 				var sut = CreateSUT(
 					parameters,
@@ -244,7 +246,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				remoteFileStateCache.GetFileState(file.Path).Returns(cachedFileState);
 
 				// Act
-				sut.ProcessBackupQueueReference(reference);
+				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
 				remoteFileStateCache.Received().GetFileState(file.Path);
@@ -254,7 +256,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 		}
 
 		[Test]
-		public void ProcessBackupQueueReference_should_queue_file_in_place_for_large_files()
+		public void ProcessBackupQueueAction_should_queue_file_in_place_for_large_files()
 		{
 			// Arrange
 			using (var file = new TemporaryFile())
@@ -272,6 +274,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
 
 				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
+
+				var uploadAction = new UploadAction(reference, reference.Path);
 
 				var sut = CreateSUT(
 					parameters,
@@ -294,7 +298,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				File.WriteAllBytes(file.Path, _faker.Random.Bytes((int)parameters.MaximumFileSizeForStagingCopy + 1));
 
 				// Act
-				sut.ProcessBackupQueueReference(reference);
+				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
 				remoteFileStateCache.Received().GetFileState(file.Path);
@@ -307,7 +311,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 		}
 
 		[Test]
-		public void ProcessBackupQueueReference_should_stage_file_for_small_files()
+		public void ProcessBackupQueueAction_should_stage_file_for_small_files()
 		{
 			// Arrange
 			using (var file = new TemporaryFile())
@@ -325,6 +329,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
 
 				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
+
+				var uploadAction = new UploadAction(reference, reference.Path);
 
 				var sut = CreateSUT(
 					parameters,
@@ -361,7 +367,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					});
 
 				// Act
-				sut.ProcessBackupQueueReference(reference);
+				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
 				remoteFileStateCache.Received().GetFileState(file.Path);
@@ -423,7 +429,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				sut.PeekUploadQueue().Should().BeEmpty();
 
 				foreach (var reference in fileReferences)
-					storage.Received().UploadFile(Arg.Any<string>(), Arg.Is(reference.Stream));
+					storage.Received().UploadFile(Arg.Any<string>(), Arg.Is(reference.Stream), Arg.Any<CancellationToken>());
 			}
 			finally
 			{

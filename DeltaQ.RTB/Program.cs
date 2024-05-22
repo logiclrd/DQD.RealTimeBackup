@@ -127,8 +127,6 @@ namespace DeltaQ.RTB
 
 					var backupAgent = container.Resolve<IBackupAgent>();
 
-					backupAgent.Start();
-
 					if (!parameters.Quiet)
 						Console.WriteLine("Starting backup agent...");
 					backupAgent.Start();

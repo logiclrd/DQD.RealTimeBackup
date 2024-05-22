@@ -17,6 +17,8 @@ using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
 
+using CancellationToken = System.Threading.CancellationToken;
+
 namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 {
 	[TestFixture]
@@ -288,7 +290,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>())).Do(
+			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();
@@ -396,7 +398,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>())).Do(
+			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();

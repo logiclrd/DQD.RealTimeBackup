@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
+
+using ITimer = DeltaQ.RTB.Utility.ITimer;
 
 namespace DeltaQ.RTB.StateCache
 {
@@ -28,6 +31,47 @@ namespace DeltaQ.RTB.StateCache
 		int _currentBatchNumber;
 		StreamWriter? _currentBatchWriter;
 		ITimerInstance? _batchUploadTimer;
+		object _consolidationSync = new object();
+
+		volatile bool _stopping;
+		volatile int _busyCount;
+		object _busySync = new object();
+
+		class BusyScope : IDisposable
+		{
+			RemoteFileStateCache? _owner;
+
+			public BusyScope(RemoteFileStateCache owner)
+			{
+				_owner = owner;
+				_owner._busyCount++;
+			}
+
+			public void Dispose()
+			{
+				if (_owner != null)
+				{
+					_owner._busyCount--;
+					_owner = null;
+				}
+			}
+		}
+
+		IDisposable Busy() => new BusyScope(this);
+
+		public void Stop()
+		{
+			_stopping = true;
+		}
+
+		public void WaitWhileBusy()
+		{
+			lock (_busySync)
+			{
+				while (_busyCount > 0)
+					Monitor.Wait(_busySync);
+			}
+		}
 
 		internal Dictionary<string, FileState> GetCacheForTest() => _cache;
 		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
@@ -121,36 +165,61 @@ namespace DeltaQ.RTB.StateCache
 			{
 				_batchUploadTimer?.Dispose();
 				_batchUploadTimer = null;
-
-				UploadCurrentBatch();
 			}
+
+			if (!_stopping)
+				using (Busy())
+					UploadCurrentBatch();
 		}
 
 		internal void UploadCurrentBatch()
 		{
+			int batchNumberToUpload;
+			string currentBatchRemotePath;
+
 			lock (this)
 			{
-				int batchNumberToUpload = _currentBatchNumber;
+				batchNumberToUpload = _currentBatchNumber;
 
-				string currentBatchRemotePath = "/state/" + _currentBatchNumber;
+				currentBatchRemotePath = "/state/" + _currentBatchNumber;
 
 				_currentBatchNumber++;
 				_currentBatch.Clear();
 				_currentBatchWriter?.Close();
 				_currentBatchWriter = null;
+			}
 
-				using (var stream = _cacheStorage.OpenBatchFileStream(batchNumberToUpload))
-					_remoteStorage.UploadFile(currentBatchRemotePath, stream);
+			using (var stream = _cacheStorage.OpenBatchFileStream(batchNumberToUpload))
+				_remoteStorage.UploadFile(currentBatchRemotePath, stream, CancellationToken.None);
 
+			bool shouldConsolidate = false;
+
+			lock (this)
+			{
 				if (_cacheStorage.EnumerateBatches().Count() > 3)
+					shouldConsolidate = true;
+			}
+
+			if (shouldConsolidate)
+			{
+				lock (_consolidationSync)
 				{
-					int removedBatchNumber = ConsolidateOldestBatch();
-
-					if (removedBatchNumber >= 0)
+					lock (this)
 					{
-						string remoteBatchPath = "/state/" + removedBatchNumber;
+						if (_cacheStorage.EnumerateBatches().Count() <= 3)
+							shouldConsolidate = false;
+					}
 
-						_remoteStorage.DeleteFile(remoteBatchPath);
+					if (shouldConsolidate)
+					{
+						int removedBatchNumber = ConsolidateOldestBatch();
+
+						if (removedBatchNumber >= 0)
+						{
+							string remoteBatchPath = "/state/" + removedBatchNumber;
+
+							_remoteStorage.DeleteFile(remoteBatchPath, CancellationToken.None);
+						}
 					}
 				}
 			}
@@ -158,70 +227,67 @@ namespace DeltaQ.RTB.StateCache
 
 		internal int ConsolidateOldestBatch()
 		{
-			lock (this)
+			// Find the two oldest batches.
+			// If there is only one batch, nothing to do.
+			var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
+
+			if (batchNumbers.Count < 2)
+				return -1;
+
+			batchNumbers.Sort();
+
+			var oldestBatchNumber = batchNumbers[0];
+			var mergeIntoBatchNumber = batchNumbers[1];
+
+			// Load in the merge-into batch.
+			var mergeIntoBatch = new Dictionary<string, FileState>();
+
+			using (var reader = _cacheStorage.OpenBatchFileReader(mergeIntoBatchNumber))
 			{
-				// Find the two oldest batches.
-				// If there is only one batch, nothing to do.
-				var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
-
-				if (batchNumbers.Count < 2)
-					return -1;
-
-				batchNumbers.Sort();
-
-				var oldestBatchNumber = batchNumbers[0];
-				var mergeIntoBatchNumber = batchNumbers[1];
-
-				// Load in the merge-into batch.
-				var mergeIntoBatch = new Dictionary<string, FileState>();
-
-				using (var reader = _cacheStorage.OpenBatchFileReader(mergeIntoBatchNumber))
+				while (true)
 				{
-					while (true)
-					{
-						string? line = reader.ReadLine();
+					string? line = reader.ReadLine();
 
-						if (line == null)
-							break;
+					if (line == null)
+						break;
 
-						var fileState = FileState.Parse(line);
+					var fileState = FileState.Parse(line);
 
-						mergeIntoBatch[fileState.Path] = fileState;
-					}
+					mergeIntoBatch[fileState.Path] = fileState;
 				}
-
-				// Merge the oldest batch into the merge-into batch. Only entries that aren't superseded in the merge-into
-				// batch are used. When the merge-into branch already has a newer FileState, the older one is discarded.
-				using (var reader = _cacheStorage.OpenBatchFileReader(oldestBatchNumber))
-				{
-					while (true)
-					{
-						string? line = reader.ReadLine();
-
-						if (line == null)
-							break;
-
-						var fileState = FileState.Parse(line);
-
-						if (!mergeIntoBatch.ContainsKey(fileState.Path))
-							mergeIntoBatch[fileState.Path] = fileState;
-					}
-				}
-
-				// Write out the merged batch. It is written to a ".new" file first, so that the update to the actual
-				// batch file path is atomic and cannot possibly contain an incomplete file in the event of an error
-				// or power loss or whatnot.
-				using (var writer = _cacheStorage.OpenNewBatchFileWriter(mergeIntoBatchNumber))
-					foreach (var fileState in mergeIntoBatch.Values)
-						writer.WriteLine(fileState);
-
-				_cacheStorage.SwitchToConsolidatedFile(
-					oldestBatchNumber,
-					mergeIntoBatchNumber);
-
-				// Return the batch number that no longer exists so that the caller can remove it from remote storage.
-				return oldestBatchNumber;
 			}
+
+			// Merge the oldest batch into the merge-into batch. Only entries that aren't superseded in the merge-into
+			// batch are used. When the merge-into branch already has a newer FileState, the older one is discarded.
+			using (var reader = _cacheStorage.OpenBatchFileReader(oldestBatchNumber))
+			{
+				while (true)
+				{
+					string? line = reader.ReadLine();
+
+					if (line == null)
+						break;
+
+					var fileState = FileState.Parse(line);
+
+					if (!mergeIntoBatch.ContainsKey(fileState.Path))
+						mergeIntoBatch[fileState.Path] = fileState;
+				}
+			}
+
+			// Write out the merged batch. It is written to a ".new" file first, so that the update to the actual
+			// batch file path is atomic and cannot possibly contain an incomplete file in the event of an error
+			// or power loss or whatnot.
+			using (var writer = _cacheStorage.OpenNewBatchFileWriter(mergeIntoBatchNumber))
+				foreach (var fileState in mergeIntoBatch.Values)
+					writer.WriteLine(fileState);
+
+			_cacheStorage.SwitchToConsolidatedFile(
+				oldestBatchNumber,
+				mergeIntoBatchNumber);
+
+			// Return the batch number that no longer exists so that the caller can remove it from remote storage.
+			return oldestBatchNumber;
 		}
 	}
 }

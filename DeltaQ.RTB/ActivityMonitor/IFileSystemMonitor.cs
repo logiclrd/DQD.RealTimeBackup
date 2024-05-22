@@ -6,6 +6,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 	{
 		event EventHandler<PathUpdate>? PathUpdate;
 		event EventHandler<PathMove>? PathMove;
+		event EventHandler<PathDelete>? PathDelete;
 
 		void Start();
 		void Stop();

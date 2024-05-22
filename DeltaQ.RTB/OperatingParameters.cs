@@ -35,8 +35,15 @@ namespace DeltaQ.RTB
 		public TimeSpan OpenFileHandlePollingInterval = TimeSpan.FromSeconds(4);
 
 		// When polling for open file handles to go away, if this much time elapses then the alternate
-		// strategy for dealing with files that aren't being closed is engaged.
+		// strategy (long polling) for dealing with files that aren't being closed is engaged.
 		public TimeSpan MaximumTimeToWaitForNoOpenFileHandles = TimeSpan.FromSeconds(30);
+
+		// The long polling strategy checks this often for changes.
+		public TimeSpan LongPollingInterval = TimeSpan.FromSeconds(30);
+
+		// If a file sits in the long polling queue for this long, it will get uploaded as-is even though it hasn't been
+		// observed to be stable yet.
+		public TimeSpan MaximumLongPollingTime = TimeSpan.FromMinutes(10);
 
 		// Path to the ZFS binary.
 		public string ZFSBinaryPath = "/usr/sbin/zfs";

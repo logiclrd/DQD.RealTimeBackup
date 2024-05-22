@@ -41,30 +41,40 @@ namespace DeltaQ.RTB.Storage
 		}
 
 		// This method is intended for small resources.
-		string DownloadFileString(string bucketId, string serverPath)
+		string DownloadFileString(string bucketId, string serverPath, CancellationToken cancellationToken)
 		{
 			var buffer = new MemoryStream();
 
-			var result = Wait(_b2Client.DownloadAsync(bucketId, serverPath, buffer));
+			var request = new DownloadFileByNameRequest(bucketId, serverPath);
+
+			var result = Wait(_b2Client.DownloadAsync(request, buffer, default, cancellationToken));
+
+			if (!result.IsSuccessStatusCode)
+				throw new Exception("The operation did not complete successfully.");
 
 			return Encoding.UTF8.GetString(buffer.ToArray());
 		}
 
 		// This method is intended for small resources.
-		byte[] DownloadFileBytes(string bucketId, string serverPath)
+		byte[] DownloadFileBytes(string bucketId, string serverPath, CancellationToken cancellationToken)
 		{
 			var buffer = new MemoryStream();
 
-			var result = Wait(_b2Client.DownloadAsync(bucketId, serverPath, buffer));
+			var request = new DownloadFileByNameRequest(bucketId, serverPath);
+
+			var result = Wait(_b2Client.DownloadAsync(request, buffer, default, cancellationToken));
+
+			if (!result.IsSuccessStatusCode)
+				throw new Exception("The operation did not complete successfully.");
 
 			return buffer.ToArray();
 		}
 
 		const string Alphabet = "0123456789abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ";
 
-		public void UploadFile(string serverPath, Stream contentStream)
+		public void UploadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
-			if (DownloadFileString(_parameters.RemoteStorageBucketID, serverPath) is string contentKey)
+			if (DownloadFileString(_parameters.RemoteStorageBucketID, serverPath, cancellationToken) is string contentKey)
 				Wait(_b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, contentKey));
 
 			char[] contentKeyChars = new char[128];
@@ -86,7 +96,7 @@ namespace DeltaQ.RTB.Storage
 				isArchive: true,
 				isCompressed: false,
 				progress: null,
-				cancel: CancellationToken.None));
+				cancel: cancellationToken));
 
 			Wait(_b2Client.Files.UploadAsync(
 				_parameters.RemoteStorageBucketID,
@@ -98,12 +108,12 @@ namespace DeltaQ.RTB.Storage
 				isArchive: true,
 				isCompressed: false,
 				progress: null,
-				cancel: CancellationToken.None));
+				cancel: cancellationToken));
 		}
 
-		public void MoveFile(string serverPathFrom, string serverPathTo)
+		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken)
 		{
-			var contentKey = DownloadFileBytes(_parameters.RemoteStorageBucketID, serverPathFrom);
+			var contentKey = DownloadFileBytes(_parameters.RemoteStorageBucketID, serverPathFrom, cancellationToken);
 
 			Wait(_b2Client.Files.UploadAsync(
 				_parameters.RemoteStorageBucketID,
@@ -115,14 +125,14 @@ namespace DeltaQ.RTB.Storage
 				isArchive: true,
 				isCompressed: false,
 				progress: null,
-				cancel: CancellationToken.None));
+				cancel: cancellationToken));
 
 			Wait(_b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPathFrom));
 		}
 
-		public void DeleteFile(string serverPath)
+		public void DeleteFile(string serverPath, CancellationToken cancellationToken)
 		{
-			var contentKey = DownloadFileString(_parameters.RemoteStorageBucketID, serverPath);
+			var contentKey = DownloadFileString(_parameters.RemoteStorageBucketID, serverPath, cancellationToken);
 
 			Wait(_b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, contentKey));
 			Wait(_b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath));
