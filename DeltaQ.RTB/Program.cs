@@ -15,6 +15,7 @@ using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
+using DeltaQ.RTB.SurfaceArea;
 using DeltaQ.RTB.Utility;
 
 using Timer = DeltaQ.RTB.Utility.Timer;
@@ -66,6 +67,7 @@ namespace DeltaQ.RTB
 			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces();
 			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces();
 			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces();
+			builder.RegisterType<SurfaceAreaImplementation>().AsImplementedInterfaces();
 			builder.RegisterType<MountTable>().AsImplementedInterfaces();
 			builder.RegisterType<OpenByHandleAt>().AsImplementedInterfaces();
 			builder.RegisterType<OpenFileHandles>().AsImplementedInterfaces();

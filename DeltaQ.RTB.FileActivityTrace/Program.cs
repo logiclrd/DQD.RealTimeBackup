@@ -1,7 +1,9 @@
 using System;
 using System.Threading;
+
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Interop;
+using DeltaQ.RTB.SurfaceArea;
 
 namespace DeltaQ.RTB.FileActivityTrace
 {
@@ -15,10 +17,13 @@ namespace DeltaQ.RTB.FileActivityTrace
 			var stopped = new ManualResetEvent(initialState: false);
 
 			var mountTable = new MountTable();
+
+			var surfaceArea = new SurfaceAreaImplementation(parameters, mountTable);
 			var openByHandleAt = new OpenByHandleAt();
 
 			var fsm = new FileSystemMonitor(
 				parameters,
+				surfaceArea,
 				mountTable,
 				() => new FileAccessNotify(),
 				openByHandleAt);

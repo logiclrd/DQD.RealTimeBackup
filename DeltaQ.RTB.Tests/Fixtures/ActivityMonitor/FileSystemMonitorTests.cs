@@ -18,6 +18,7 @@ using NativeMethodsUnderTest = DeltaQ.RTB.Interop.NativeMethods;
 
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Interop;
+using DeltaQ.RTB.SurfaceArea;
 
 namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 {
@@ -34,12 +35,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				var parameters = new OperatingParameters();
 
+				var surfaceArea = Substitute.For<ISurfaceArea>();
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 				var sut = new FileSystemMonitor(
 					parameters,
+					surfaceArea,
 					mountTable,
 					() => fileAccessNotify,
 					openByHandleAt);
@@ -102,12 +105,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				var parameters = new OperatingParameters();
 
+				var surfaceArea = Substitute.For<ISurfaceArea>();
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 				var sut = new FileSystemMonitor(
 					parameters,
+					surfaceArea,
 					mountTable,
 					() => fileAccessNotify,
 					openByHandleAt);
@@ -188,12 +193,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				var parameters = new OperatingParameters();
 
+				var surfaceArea = Substitute.For<ISurfaceArea>();
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 				var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 				var sut = new FileSystemMonitor(
 					parameters,
+					surfaceArea,
 					mountTable,
 					() => fileAccessNotify,
 					openByHandleAt);
@@ -249,17 +256,19 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 		}
 
 		[Test]
-		public void SetUpFANotify_should_open_all_physical_mounts_including_ZFS()
+		public void SetUpFANotify_should_open_all_mounts_in_surface_area()
 		{
 			// Arrange
 			var parameters = new OperatingParameters();
 
+			var surfaceArea = Substitute.For<ISurfaceArea>();
 			var mountTable = Substitute.For<IMountTable>();
 			var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 			var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 			var sut = new FileSystemMonitor(
 				parameters,
+				surfaceArea,
 				mountTable,
 				() => fileAccessNotify,
 				openByHandleAt);
@@ -285,8 +294,6 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				});
 
 			var mounts = new List<IMount>();
-			var goodMounts = new List<IMount>();
-
 			var used = new HashSet<string>();
 
 			// Conventional mounts
@@ -310,35 +317,6 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				mount.Options.Returns("rw");
 
 				mount.TestDeviceAccess().Returns(true);
-
-				mounts.Add(mount);
-				goodMounts.Add(mount);
-			}
-
-			// Virtual device mounts
-			for (int i = 0; i < 10; i++)
-			{
-				string devNode = _faker.Internet.DomainWord();
-				string mountPoint = _faker.System.DirectoryPath();
-				string type = _faker.Internet.DomainWord();
-				bool access = _faker.Random.Bool();
-
-				if (type == "zfs")
-					type = "notzfs";
-
-				// Ensure that the mount points are all unique.
-				while (!used.Add(mountPoint))
-					mountPoint = _faker.System.DirectoryPath();
-
-				var mount = Substitute.For<IMount>();
-
-				mount.DeviceName.Returns(devNode);
-				mount.Root.Returns("/");
-				mount.MountPoint.Returns(mountPoint);
-				mount.FileSystemType.Returns(type);
-				mount.Options.Returns("rw");
-
-				mount.TestDeviceAccess().Returns(access);
 
 				mounts.Add(mount);
 			}
@@ -366,10 +344,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				mount.TestDeviceAccess().Returns(false);
 
 				mounts.Add(mount);
-				goodMounts.Add(mount);
 			}
 
-			mountTable.EnumerateMounts().Returns(mounts);
+			surfaceArea.Mounts.Returns(mounts);
 
 			sut.InitializeFileAccessNotify();
 
@@ -382,14 +359,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				.Select(call => call.GetArguments().Single()!.ToString())
 				.ToList();
 
-			markedPaths.Should().Contain("/");
-			openMountPoints.Keys.Should().Contain("/");
-
-			var openRootMount = openMountPoints["/"];
-
-			sut.MountDescriptorByFileSystemID[openRootMount.FileSystemID].Should().Be(openRootMount.FileDescriptor);
-
-			foreach (var mount in goodMounts)
+			foreach (var mount in mounts)
 			{
 				markedPaths.Should().Contain(mount.MountPoint);
 				openMountPoints.Keys.Should().Contain(mount.MountPoint);
@@ -406,12 +376,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// Arrange
 			var parameters = new OperatingParameters();
 
+			var surfaceArea = Substitute.For<ISurfaceArea>();
 			var mountTable = Substitute.For<IMountTable>();
 			var fileAccessNotify = Substitute.For<IFileAccessNotify>();
 			var openByHandleAt = Substitute.For<IOpenByHandleAt>();
 
 			var sut = new FileSystemMonitor(
 				parameters,
+				surfaceArea,
 				mountTable,
 				() => fileAccessNotify,
 				openByHandleAt);
