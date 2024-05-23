@@ -8,6 +8,8 @@ namespace DeltaQ.RTB.FileSystem
 		string _snapshotName;
 		bool _disposed;
 
+		public event EventHandler? Disposed;
+
 		public string SnapshotName => _snapshotName;
 
 		public ZFSSnapshot(OperatingParameters parameters, string deviceName, string snapshotName)
@@ -23,6 +25,7 @@ namespace DeltaQ.RTB.FileSystem
 			if (!_disposed)
 			{
 				ExecuteZFSCommand($"destroy {_deviceName}@{_snapshotName}");
+				Disposed?.Invoke(this, EventArgs.Empty);
 				_disposed = true;
 			}
 		}

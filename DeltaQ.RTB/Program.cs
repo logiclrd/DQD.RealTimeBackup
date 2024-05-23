@@ -6,12 +6,12 @@ using System.Threading;
 using System.Xml.Serialization;
 
 using Autofac;
-
 using DeltaQ.CommandLineParser;
 
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.FileSystem;
+using DeltaQ.RTB.InitialBackup;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
@@ -19,6 +19,8 @@ using DeltaQ.RTB.SurfaceArea;
 using DeltaQ.RTB.Utility;
 
 using Timer = DeltaQ.RTB.Utility.Timer;
+
+using Bytewizer.Backblaze.Client;
 
 namespace DeltaQ.RTB
 {
@@ -51,7 +53,7 @@ namespace DeltaQ.RTB
 				parameters.Verbosity = Verbosity.Quiet;
 			if (args.Verbose)
 				parameters.Verbosity = Verbosity.Verbose;
-			if (args.DisableFAN)
+			if (args.DisableFAN || args.InitialBackupThenExit)
 				parameters.EnableFileAccessNotify = false;
 
 			return parameters;
@@ -63,6 +65,16 @@ namespace DeltaQ.RTB
 
 			builder.RegisterInstance(parameters);
 
+			var backblazeAgentOptions =
+				new ClientOptions
+				{
+					KeyId = parameters.RemoteStorageKeyID,
+					ApplicationKey = parameters.RemoteStorageApplicationKey
+				};
+
+			builder.AddBackblazeAgent(backblazeAgentOptions);
+
+			builder.RegisterType<InitialBackupOrchestrator>().AsImplementedInterfaces();
 			builder.RegisterType<BackupAgent>().AsImplementedInterfaces();
 			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces();
 			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces();
@@ -88,6 +100,14 @@ namespace DeltaQ.RTB
 			try
 			{
 				args = new CommandLine().Parse<CommandLineArguments>();
+
+				if (args.InitialBackupThenMonitor && args.DisableFAN)
+				{
+					Console.Error.WriteLine("Conflicting command-line switches: Cannot begin monitoring if the fanotify integration is disabled.");
+					Console.Error.WriteLine("=> /DISABLEFAN conflicts with /INITIALBACKUPTHENMONITOR");
+
+					return 2;
+				}
 
 				var parameters = BuildOperatingParameters(args);
 
@@ -133,6 +153,36 @@ namespace DeltaQ.RTB
 						Console.WriteLine("Starting backup agent...");
 					backupAgent.Start();
 
+					foreach (var move in args.PathsToMove)
+						backupAgent.NotifyMove(move.FromPath, move.ToPath);
+
+					foreach (var pathToCheck in args.PathsToCheck)
+						backupAgent.CheckPath(pathToCheck);
+
+					if (args.InitialBackupThenMonitor || args.InitialBackupThenExit)
+					{
+						backupAgent.PauseMonitor();
+
+						var orchestrator = container.Resolve<IInitialBackupOrchestrator>();
+
+						orchestrator.PerformInitialBackup(
+							statusUpdate =>
+							{
+								Console.CursorLeft = 0;
+								Console.Write(statusUpdate);
+							});
+
+						if (args.InitialBackupThenExit)
+							stopEvent.Set();
+						else
+						{
+							Console.WriteLine();
+							Console.WriteLine("Initial backup complete, switching to realtime mode");
+
+							backupAgent.UnpauseMonitor();
+						}
+					}
+
 					if (!parameters.Quiet)
 						Console.WriteLine("Waiting for stop signal");
 					stopEvent.WaitOne();
@@ -159,7 +209,7 @@ namespace DeltaQ.RTB
 					verbose = args.Verbose;
 				}
 
-				Console.Error.WriteLine(e.Message);
+				Console.Error.WriteLine(e);
 
 				if ((e.InnerException != null) && !quiet)
 				{

@@ -11,10 +11,11 @@ using System.Threading.Tasks;
 
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
+using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.ActivityMonitor
 {
-	public class FileSystemMonitor : IFileSystemMonitor
+	public class FileSystemMonitor : DiagnosticOutputBase, IFileSystemMonitor
 	{
 		OperatingParameters _parameters;
 
@@ -115,36 +116,20 @@ namespace DeltaQ.RTB.ActivityMonitor
 			if (_fileAccessNotify == null)
 				throw new Exception("Sanity check failure: Cannot set up FANotify before opening FANotify handles");
 
-			EventHandler<string> diagnosticOutput =
-				(sender, e) => Console.WriteLine(e);
+			OnDiagnosticOutput("About to mark");
 
-			try
+			foreach (var mount in _surfaceArea.Mounts)
 			{
-				_surfaceArea.DiagnosticOutput += diagnosticOutput;
+				OnDiagnosticOutput("Marking: {0}", mount.MountPoint);
 
-				diagnosticOutput(this, "Building surface area...");
+				_fileAccessNotify.MarkPath(mount.MountPoint);
 
-				_surfaceArea.BuildDefault();
+				var openMount = _mountTable.OpenMountForFileSystem(mount.MountPoint);
 
-				diagnosticOutput(this, "About to mark");
-
-				foreach (var mount in _surfaceArea.Mounts)
-				{
-					Console.WriteLine("Marking: {0}", mount.MountPoint);
-
-					_fileAccessNotify.MarkPath(mount.MountPoint);
-
-					var openMount = _mountTable.OpenMountForFileSystem(mount.MountPoint);
-
-					MountDescriptorByFileSystemID[openMount.FileSystemID] = openMount.FileDescriptor;
-				}
-
-				diagnosticOutput(this, "Done marking");
+				MountDescriptorByFileSystemID[openMount.FileSystemID] = openMount.FileDescriptor;
 			}
-			finally
-			{
-				_surfaceArea.DiagnosticOutput -= diagnosticOutput;
-			}
+
+			OnDiagnosticOutput("Done marking");
 		}
 
 		internal void InitializeFileAccessNotify()

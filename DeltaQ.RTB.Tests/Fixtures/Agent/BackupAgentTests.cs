@@ -22,6 +22,7 @@ using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
+using DeltaQ.RTB.SurfaceArea;
 using DeltaQ.RTB.Utility;
 
 using ITimer = DeltaQ.RTB.Utility.ITimer;
@@ -33,10 +34,11 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 	{
 		Faker _faker = new Faker();
 
-		BackupAgent CreateSUT(OperatingParameters parameters, out ITimer timer, out IChecksum checksum, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
+		BackupAgent CreateSUT(OperatingParameters parameters, out ITimer timer, out IChecksum checksum, out ISurfaceArea surfaceArea, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
 		{
 			timer = Substitute.For<ITimer>();
 			checksum = Substitute.For<IChecksum>();
+			surfaceArea = Substitute.For<ISurfaceArea>();
 			monitor = Substitute.For<IFileSystemMonitor>();
 			openFileHandles = Substitute.For<IOpenFileHandles>();
 			zfs = Substitute.For<IZFS>();
@@ -53,6 +55,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters,
 				timer,
 				checksum,
+				surfaceArea,
 				monitor,
 				openFileHandles,
 				zfs,
@@ -74,6 +77,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters,
 				out var timer,
 				out var checksum,
+				out var surfaceArea,
 				out var monitor,
 				out var openFileHandles,
 				out var zfs,
@@ -125,6 +129,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters,
 				out var timer,
 				out var checksum,
+				out var surfaceArea,
 				out var monitor,
 				out var openFileHandles,
 				out var zfs,
@@ -219,6 +224,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					parameters,
 					out var timer,
 					out var checksum,
+					out var surfaceArea,
 					out var monitor,
 					out var openFileHandles,
 					out var zfs,
@@ -281,6 +287,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					parameters,
 					out var timer,
 					out var checksum,
+					out var surfaceArea,
 					out var monitor,
 					out var openFileHandles,
 					out var zfs,
@@ -336,6 +343,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					parameters,
 					out var timer,
 					out var checksum,
+					out var surfaceArea,
 					out var monitor,
 					out var openFileHandles,
 					out var zfs,
@@ -391,6 +399,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters,
 				out var timer,
 				out var checksum,
+				out var surfaceArea,
 				out var monitor,
 				out var openFileHandles,
 				out var zfs,

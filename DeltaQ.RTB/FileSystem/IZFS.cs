@@ -11,6 +11,9 @@ namespace DeltaQ.RTB.FileSystem
 
 		string DeviceName { get; }
 		string MountPoint { get; }
+
+		IEnumerable<IZFSSnapshot> CurrentSnapshots { get; }
+		int CurrentSnapshotCount { get; }
 	}
 }
 

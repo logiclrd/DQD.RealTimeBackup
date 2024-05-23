@@ -2,13 +2,12 @@ using System;
 using System.Collections.Generic;
 
 using DeltaQ.RTB.Interop;
+using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.SurfaceArea
 {
-	public interface ISurfaceArea
+	public interface ISurfaceArea : IDiagnosticOutput
 	{
-		event EventHandler<string>? DiagnosticOutput;
-
 		IEnumerable<IMount> Mounts { get; }
 
 		void ClearMounts();

@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 
 using DeltaQ.RTB.Interop;
+using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.SurfaceArea
 {
-	public class SurfaceAreaImplementation : ISurfaceArea
+	public class SurfaceAreaImplementation : DiagnosticOutputBase, ISurfaceArea
 	{
 		OperatingParameters _parameters;
 		IMountTable _mountTable;
@@ -19,19 +20,6 @@ namespace DeltaQ.RTB.SurfaceArea
 		{
 			_parameters = parameters;
 			_mountTable = mountTable;
-		}
-
-		public event EventHandler<string>? DiagnosticOutput;
-
-		protected virtual void OnDiagnosticOutput(string line)
-		{
-			DiagnosticOutput?.Invoke(this, line);
-		}
-
-		protected virtual void OnDiagnosticOutput(string format, params object[] args)
-		{
-			if (DiagnosticOutput != null)
-				OnDiagnosticOutput(string.Format(format, args));
 		}
 
 		public void ClearMounts()

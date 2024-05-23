@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -9,6 +10,7 @@ using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
+using DeltaQ.RTB.SurfaceArea;
 using DeltaQ.RTB.Utility;
 
 using ITimer = DeltaQ.RTB.Utility.ITimer;
@@ -29,6 +31,7 @@ namespace DeltaQ.RTB.Agent
 
 		ITimer _timer;
 		IChecksum _checksum;
+		ISurfaceArea _surfaceArea;
 		IFileSystemMonitor _monitor;
 		IOpenFileHandles _openFileHandles;
 		IZFS _zfs;
@@ -36,12 +39,13 @@ namespace DeltaQ.RTB.Agent
 		IRemoteFileStateCache _remoteFileStateCache;
 		IRemoteStorage _storage;
 
-		public BackupAgent(OperatingParameters parameters, ITimer timer, IChecksum checksum, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
+		public BackupAgent(OperatingParameters parameters, ITimer timer, IChecksum checksum, ISurfaceArea surfaceArea, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
 		{
 			_parameters = parameters;
 
 			_timer = timer;
 			_checksum = checksum;
+			_surfaceArea = surfaceArea;
 			_monitor = monitor;
 			_openFileHandles = openFileHandles;
 			_zfs = zfs;
@@ -56,17 +60,133 @@ namespace DeltaQ.RTB.Agent
 
 		void monitor_PathUpdate(object? sender, PathUpdate update)
 		{
+			if (_paused)
+			{
+				lock (_pauseSync)
+				{
+					if (_paused)
+					{
+						_pathsWithActivityWhilePaused.Add(update.Path);
+						return;
+					}
+				}
+			}
+
 			BeginQueuePathForOpenFilesCheck(update.Path);
 		}
 
 		void monitor_PathMove(object? sender, PathMove move)
 		{
+			if (_paused)
+			{
+				lock (_pauseSync)
+				{
+					if (_paused)
+					{
+						// This effectively collapses a move event into a delete and a recreate, but this only happens while paused (i.e., during initial backup).
+						_pathsWithActivityWhilePaused.Add(move.PathFrom);
+						_pathsWithActivityWhilePaused.Add(move.PathTo);
+						return;
+					}
+				}
+			}
+
 			AddActionToBackupQueue(new MoveAction(move.PathFrom, move.PathTo));
 		}
 
 		void monitor_PathDelete(object? sender, PathDelete delete)
 		{
+			if (_paused)
+			{
+				lock (_pauseSync)
+				{
+					if (_paused)
+					{
+						_pathsWithActivityWhilePaused.Add(delete.Path);
+						return;
+					}
+				}
+			}
+
 			AddActionToBackupQueue(new DeleteAction(delete.Path));
+		}
+
+		public void PauseMonitor()
+		{
+			lock (_pauseSync)
+			{
+				_paused = true;
+				_pathsWithActivityWhilePaused.Clear();
+			}
+		}
+
+		public void UnpauseMonitor()
+		{
+			lock (_pauseSync)
+			{
+				string[] capturedPaths = _pathsWithActivityWhilePaused.ToArray();
+
+				_pathsWithActivityWhilePaused.Clear();
+
+				_paused = false;
+
+				foreach (string path in capturedPaths)
+				{
+					try
+					{
+						Monitor.Exit(_pauseSync);
+
+						if (File.Exists(path))
+							BeginQueuePathForOpenFilesCheck(path);
+						else
+							AddActionToBackupQueue(new DeleteAction(path));
+					}
+					finally
+					{
+						Monitor.Enter(_pauseSync);
+					}
+				}
+			}
+		}
+
+		object _pauseSync = new object();
+		bool _paused;
+		HashSet<string> _pathsWithActivityWhilePaused = new HashSet<string>();
+
+		public BackupAgentQueueSizes GetQueueSizes()
+		{
+			var queueSizes = new BackupAgentQueueSizes();
+
+			lock (_snapshotSharingDelaySync)
+				queueSizes.NumberOfFilesPendingIntake = _snapshotSharingBatch.Count;
+			lock (_openFilesSync)
+				queueSizes.NumberOfFilesPollingOpenHandles = _openFiles.Count;
+			lock (_longPollingSync)
+				queueSizes.NumberOfFilesPollingContentChanges = _longPollingQueue.Count;
+			lock (_backupQueueSync)
+				queueSizes.NumberOfBackupQueueActions = _backupQueue.Count;
+			lock (_uploadQueueSync)
+				queueSizes.NumberOfQueuedUploads = _uploadQueue.Count;
+
+			return queueSizes;
+		}
+
+		public void CheckPath(string path)
+		{
+			if (File.Exists(path))
+				BeginQueuePathForOpenFilesCheck(path);
+			else if (_remoteFileStateCache.ContainsPath(path))
+				AddActionToBackupQueue(new DeleteAction(path));
+		}
+
+		public void CheckPaths(IEnumerable<string> paths)
+		{
+			BeginQueuePathsForOpenFilesCheckAndCheckForDeletions(paths);
+		}
+
+		public void NotifyMove(string fromPath, string toPath)
+		{
+			AddActionToBackupQueue(new MoveAction(fromPath, toPath));
 		}
 
 		object _snapshotSharingDelaySync = new object();
@@ -82,6 +202,34 @@ namespace DeltaQ.RTB.Agent
 
 				_snapshotSharingBatch.Add(path);
 			}
+		}
+
+		void BeginQueuePathsForOpenFilesCheckAndCheckForDeletions(IEnumerable<string> paths)
+		{
+			List<DeleteAction>? deleteActions = null;
+
+			lock (_snapshotSharingDelaySync)
+			{
+				bool haveAdditions = false;
+
+				foreach (string path in paths)
+					if (File.Exists(path))
+					{
+						_snapshotSharingBatch.Add(path);
+						haveAdditions = true;
+					}
+					else if (_remoteFileStateCache.ContainsPath(path))
+					{
+						deleteActions ??= new List<DeleteAction>();
+						deleteActions.Add(new DeleteAction(path));
+					}
+
+				if (haveAdditions && (_snapshotSharingDelay == null))
+					_snapshotSharingDelay = _timer.ScheduleAction(_parameters.SnapshotSharingWindow, EndQueuePathForOpenFilesCheck);
+			}
+
+			if (deleteActions != null)
+				AddActionsToBackupQueue(deleteActions);
 		}
 
 		void EndQueuePathForOpenFilesCheck()
@@ -502,22 +650,30 @@ namespace DeltaQ.RTB.Agent
 
 					break;
 				case MoveAction moveAction:
+					var fileState = _remoteFileStateCache.GetFileState(moveAction.FromPath);
+
+					if (fileState == null)
+						throw new Exception($"Consistency error: The remote file state cache does not have an entry for the 'from' path {moveAction.FromPath}. Maybe you just need a check action for the path?");
+
 					_storage.MoveFile(
 						moveAction.FromPath,
 						moveAction.ToPath,
 						_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
 
+					_remoteFileStateCache.RemoveFileState(moveAction.FromPath);
+					_remoteFileStateCache.UpdateFileState(moveAction.ToPath, fileState);
+
 					break;
 				case DeleteAction deleteAction:
-					_storage.DeleteFile(
-						deleteAction.Path,
-						_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+					if (_remoteFileStateCache.RemoveFileState(deleteAction.Path))
+					{
+						_storage.DeleteFile(
+							deleteAction.Path,
+							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+					}
 
 					break;
 			}
-			/*
-       * Restrict number of concurrent tasks (separately for small vs. large files)
-       * */
 		}
 
 		object _uploadQueueSync = new object();
@@ -608,7 +764,6 @@ namespace DeltaQ.RTB.Agent
 					using (fileToUpload)
 					{
 						// TODO: write down that we're now uploading this file so that if we get interrupted, we can pick up where we left off
-						//
 						_storage.UploadFile(Path.Combine("/content", fileToUpload.Path), fileToUpload.Stream, cancellationToken);
 					}
 				}
@@ -622,10 +777,21 @@ namespace DeltaQ.RTB.Agent
 		public void Start()
 		{
 			_stopping = false;
-			_monitor.Start();
+
+			using (var output = new DiagnosticOutputHook(_surfaceArea, Console.WriteLine))
+			{
+				output.WriteLine("Building surface area");
+				_surfaceArea.BuildDefault();
+			}
 
 			if (_parameters.EnableFileAccessNotify)
 			{
+				using (var output = new DiagnosticOutputHook(_monitor, Console.WriteLine))
+				{
+					output.WriteLine("Starting file system monitor");
+					_monitor.Start();
+				}
+
 				StartPollOpenFilesThread();
 				StartLongPollingThread();
 			}

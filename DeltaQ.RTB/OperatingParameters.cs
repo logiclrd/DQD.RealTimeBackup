@@ -63,6 +63,10 @@ namespace DeltaQ.RTB
 		// Number of concurrent upload processing threads.
 		public int UploadThreadCount = 4;
 
+		// Remote storage credentials.
+		public string RemoteStorageKeyID = "MUST BE SET IN CONFIGURATION FILE";
+		public string RemoteStorageApplicationKey = "MUST BE SET IN CONFIGURATION FILE";
+
 		// Bucket name within remote storage.
 		public string RemoteStorageBucketID = "MUST BE SET IN CONFIGURATION FILE";
 	}

@@ -267,7 +267,82 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 		}
 
 		[Test]
-		public void UploadCurrentBatch_should_send_batch_to_remote_storage()
+		public void RemoveFileState_should_update_cache()
+		{
+			// Arrange
+			var faker = CreateAutoFaker();
+
+			var fileState = faker.Generate<FileState>();
+
+			var dummyStorage = new DummyStorage();
+
+			dummyStorage.InitializeWithBatches(new[] { fileState });
+
+			var parameters = new OperatingParameters();
+			var timer = Substitute.For<ITimer>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			var sut = new RemoteFileStateCache(
+				parameters,
+				timer,
+				dummyStorage,
+				remoteStorage);
+
+			// Act
+			var before = sut.GetFileState(fileState.Path);
+
+			sut.RemoveFileState(fileState.Path);
+
+			var after = sut.GetFileState(fileState.Path);
+
+			// Assert
+			before.Should().BeEquivalentTo(fileState);
+			after.Should().BeNull();
+		}
+
+		[Test]
+		public void RemoveFileState_should_append_to_batch()
+		{
+			// Arrange
+			var faker = CreateAutoFaker();
+
+			var fileState = faker.Generate<FileState>();
+
+			var dummyStorage = new DummyStorage();
+
+			dummyStorage.InitializeWithBatches(new[] { fileState });
+
+			var parameters = new OperatingParameters();
+			var timer = Substitute.For<ITimer>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			var sut = new RemoteFileStateCache(
+				parameters,
+				timer,
+				dummyStorage,
+				remoteStorage);
+
+			// Act
+			var maxBatchNumberBefore = dummyStorage.EnumerateBatches().Max();
+
+			sut.RemoveFileState(fileState.Path);
+
+			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
+
+			// Assert
+			maxBatchNumberAfter.Should().Be(maxBatchNumberBefore + 1);
+
+			using (var reader = dummyStorage.OpenBatchFileReader(maxBatchNumberAfter))
+			{
+				var persistedFileState = FileState.Parse(reader.ReadLine()!);
+
+				persistedFileState.Path.Should().Be(fileState.Path);
+				persistedFileState.FileSize.Should().Be(RemoteFileStateCache.DeletedFileSize);
+				persistedFileState.Checksum.Should().Be(RemoteFileStateCache.DeletedChecksum);
+			}
+		}
+
+		public void UploadCurrentBatchAndBeginNext_should_begin_next_batch()
 		{
 			// Arrange
 			var faker = CreateAutoFaker();
@@ -315,7 +390,63 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			int batchNumber = sut.GetCurrentBatchNumberForTest();
 
 			// Act
-			sut.UploadCurrentBatch();
+			sut.UploadCurrentBatchAndBeginNext();
+
+			// Assert
+			sut.GetCurrentBatchNumberForTest().Should().Be(batchNumber + 1);
+			sut.GetCurrentBatchForTest().Should().BeEmpty();
+		}
+
+		[Test]
+		public void UploadCurrentBatchAndBeginNext_should_send_batch_to_remote_storage()
+		{
+			// Arrange
+			var faker = CreateAutoFaker();
+
+			var dummyStorage = new DummyStorage();
+
+			var fileStates = new List<FileState>();
+			var newFileStates = new List<FileState>();
+
+			for (int i=0; i < 10; i++)
+				fileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < 15; i++)
+				newFileStates.Add(faker.Generate<FileState>());
+
+			dummyStorage.InitializeWithBatches(fileStates);
+
+			var parameters = new OperatingParameters();
+			var timer = Substitute.For<ITimer>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			var uploads = new List<(string ServerPath, byte[] Content)>();
+
+			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+				x =>
+				{
+					var serverPath = x.Arg<string>();
+					var content = x.Arg<Stream>();
+
+					byte[] contentBytes = new byte[content.Length];
+
+					content.Read(contentBytes, 0, contentBytes.Length);
+
+					uploads.Add((serverPath, contentBytes));
+				});
+
+			var sut = new RemoteFileStateCache(
+				parameters,
+				timer,
+				dummyStorage,
+				remoteStorage);
+
+			foreach (var fileState in newFileStates)
+				sut.UpdateFileState(fileState.Path, fileState);
+
+			int batchNumber = sut.GetCurrentBatchNumberForTest();
+
+			// Act
+			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
 			uploads.Should().HaveCount(1);
@@ -342,6 +473,87 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			}
 
 			uploadedFileStates.Should().BeEquivalentTo(newFileStates);
+		}
+
+		public void UploadCurrentBatchAndBeginNext_should_consolidate_batches_when_threshold_is_hit()
+		{
+			// Arrange
+			var faker = CreateAutoFaker();
+
+			var dummyStorage = new DummyStorage();
+
+			var batch1FileStates = new List<FileState>();
+			var batch2FileStates = new List<FileState>();
+			var batch3FileStates = new List<FileState>();
+			var newFileStates = new List<FileState>();
+
+			for (int i=0; i < 10; i++)
+				batch1FileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < 20; i++)
+				batch2FileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < 5; i++)
+				batch3FileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < 15; i++)
+				newFileStates.Add(faker.Generate<FileState>());
+
+			// Ensure that some of the paths match.
+			for (int i=5; i < 10; i++)
+				batch2FileStates[i].Path = batch1FileStates[i].Path;
+
+			dummyStorage.InitializeWithBatches(
+				batch1FileStates,
+				batch2FileStates,
+				batch3FileStates);
+
+			var parameters = new OperatingParameters();
+			var timer = Substitute.For<ITimer>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			var uploads = new List<(string ServerPath, byte[] Content)>();
+			var deletions = new List<string>();
+
+			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+				x =>
+				{
+					var serverPath = x.Arg<string>();
+					var content = x.Arg<Stream>();
+
+					byte[] contentBytes = new byte[content.Length];
+
+					content.Read(contentBytes, 0, contentBytes.Length);
+
+					uploads.Add((serverPath, contentBytes));
+				});
+
+			remoteStorage.When(x => x.DeleteFile(Arg.Any<string>(), Arg.Any<CancellationToken>())).Do(
+				x =>
+				{
+					var serverPath = x.Arg<string>();
+
+					deletions.Add(serverPath);
+				});
+
+			var sut = new RemoteFileStateCache(
+				parameters,
+				timer,
+				dummyStorage,
+				remoteStorage);
+
+			foreach (var fileState in newFileStates)
+				sut.UpdateFileState(fileState.Path, fileState);
+
+			int batchNumber = sut.GetCurrentBatchNumberForTest();
+
+			// Act
+			sut.UploadCurrentBatchAndBeginNext();
+
+			// Assert
+			uploads.Should().HaveCount(2);
+			deletions.Should().HaveCount(1);
+
+			uploads.Should().Contain(upload => upload.ServerPath == "/state/" + batchNumber);
+			uploads.Should().Contain(upload => upload.ServerPath == "/state/2");
+			deletions.Should().Contain("/state/1");
 		}
 
 		public void ConsolidateOldestBatch_should_merge_oldest_batch_into_next_oldest()
@@ -385,6 +597,136 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 				if (!found)
 					expectedMergedFileStates.Add(fileState);
+			}
+
+			dummyStorage.InitializeWithBatches(
+				batch1FileStates,
+				batch2FileStates,
+				batch3FileStates);
+
+			var parameters = new OperatingParameters();
+			var timer = Substitute.For<ITimer>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			var uploads = new List<(string ServerPath, byte[] Content)>();
+
+			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+				x =>
+				{
+					var serverPath = x.Arg<string>();
+					var content = x.Arg<Stream>();
+
+					byte[] contentBytes = new byte[content.Length];
+
+					content.Read(contentBytes, 0, contentBytes.Length);
+
+					uploads.Add((serverPath, contentBytes));
+				});
+
+			var sut = new RemoteFileStateCache(
+				parameters,
+				timer,
+				dummyStorage,
+				remoteStorage);
+
+			// Act
+			int deletedBatchNumber = sut.ConsolidateOldestBatch();
+
+			// Assert
+			deletedBatchNumber.Should().Be(1);
+
+			int mergedBatchNumber = deletedBatchNumber + 1;
+
+			uploads.Should().HaveCount(1);
+
+			var upload = uploads.Single();
+
+			upload.ServerPath.Should().Be("/state/" + mergedBatchNumber);
+
+			var stream = new MemoryStream(upload.Content);
+
+			var uploadedFileStates = new List<FileState>();
+
+			using (var reader = new StreamReader(stream))
+			{
+				while (true)
+				{
+					string? line = reader.ReadLine();
+
+					if (line == null)
+						break;
+
+					uploadedFileStates.Add(FileState.Parse(line));
+				}
+			}
+
+			uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
+		}
+
+		[Test]
+		public void ConsolidateOldestBatch_should_omit_deleted_paths()
+		{
+			// Arrange
+			var faker = CreateAutoFaker();
+
+			var dummyStorage = new DummyStorage();
+
+			var batch1FileStates = new List<FileState>();
+			var batch2FileStates = new List<FileState>();
+			var batch3FileStates = new List<FileState>();
+
+			for (int i=0; i < 15; i++)
+				batch1FileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < 20; i++)
+				batch2FileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < 5; i++)
+				batch3FileStates.Add(faker.Generate<FileState>());
+
+			// Select paths to delete.
+			var pathsToDelete = batch1FileStates.Skip(5).Take(5).Select(s => s.Path).ToList();
+
+			// Ensure that they have corresponding update entries in batch 2.
+			for (int i=5; i < 10; i++)
+			{
+				batch2FileStates[i].Path = batch1FileStates[i].Path;
+			}
+
+			// Ensure that they have corresponding deletion entries in batch 2.
+			for (int i=10; i < 15; i++)
+			{
+				batch2FileStates[i].Path = batch1FileStates[i].Path;
+				batch2FileStates[i].FileSize = RemoteFileStateCache.DeletedFileSize;
+				batch2FileStates[i].Checksum = RemoteFileStateCache.DeletedChecksum;
+			}
+
+			var expectedMergedFileStates = new List<FileState>(batch1FileStates);
+
+			// Overlay batch 2 onto batch 1, preserving order
+			foreach (var fileState in batch2FileStates)
+			{
+				bool found = false;
+
+				for (int i=0; i < expectedMergedFileStates.Count; i++)
+				{
+					if (expectedMergedFileStates[i].Path == fileState.Path)
+					{
+						if (fileState.FileSize == RemoteFileStateCache.DeletedFileSize)
+							expectedMergedFileStates.RemoveAt(i);
+						else
+							expectedMergedFileStates[i] = fileState;
+
+						found = true;
+						break;
+					}
+				}
+
+				if (!found)
+				{
+					if (fileState.FileSize == RemoteFileStateCache.DeletedFileSize)
+						throw new Exception("Test consistency error: batch 2 contains a deletion entry with no matching path in batch 1");
+
+					expectedMergedFileStates.Add(fileState);
+				}
 			}
 
 			dummyStorage.InitializeWithBatches(

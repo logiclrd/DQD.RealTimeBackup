@@ -14,6 +14,27 @@ namespace DeltaQ.RTB.FileSystem
 		public string DeviceName => _deviceName;
 		public string MountPoint => _mountPoint;
 
+		object _currentSnapshotsSync = new object();
+		List<IZFSSnapshot> _currentSnapshots = new List<IZFSSnapshot>();
+
+		public IEnumerable<IZFSSnapshot> CurrentSnapshots
+		{
+			get
+			{
+				lock (_currentSnapshotsSync)
+					return new List<IZFSSnapshot>(_currentSnapshots);
+			}
+		}
+
+		public int CurrentSnapshotCount
+		{
+			get
+			{
+				lock (_currentSnapshotsSync)
+					return _currentSnapshots.Count;
+			}
+		}
+
 		const string Dummy = "dummy";
 
 		public ZFS(OperatingParameters parameters)
@@ -79,12 +100,30 @@ namespace DeltaQ.RTB.FileSystem
 			}
 		}
 
+		void AddSnapshot(IZFSSnapshot snapshot)
+		{
+			lock (_currentSnapshotsSync)
+				_currentSnapshots.Add(snapshot);
+		}
+
+		void RemoveSnapshot(IZFSSnapshot snapshot)
+		{
+			lock (_currentSnapshotsSync)
+				_currentSnapshots.Remove(snapshot);
+		}
+
 		public IZFSSnapshot CreateSnapshot(string snapshotName)
 		{
 			if (_deviceName == Dummy)
 				throw new InvalidOperationException("This ZFS instance is not attached to a specific device name.");
 
-			return new ZFSSnapshot(_parameters, _deviceName, snapshotName);
+			var snapshot = new ZFSSnapshot(_parameters, _deviceName, snapshotName);
+
+			AddSnapshot(snapshot);
+
+			snapshot.Disposed += (_, _) => RemoveSnapshot(snapshot);
+
+			return snapshot;
 		}
 
 		public ZFSVolume FindVolume(string deviceName)

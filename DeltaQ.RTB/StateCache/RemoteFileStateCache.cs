@@ -37,6 +37,9 @@ namespace DeltaQ.RTB.StateCache
 		volatile int _busyCount;
 		object _busySync = new object();
 
+		internal const long DeletedFileSize = -1;
+		internal const string DeletedChecksum = "-";
+
 		class BusyScope : IDisposable
 		{
 			RemoteFileStateCache? _owner;
@@ -75,6 +78,7 @@ namespace DeltaQ.RTB.StateCache
 
 		internal Dictionary<string, FileState> GetCacheForTest() => _cache;
 		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
+		internal List<FileState> GetCurrentBatchForTest() => _currentBatch;
 
 		public RemoteFileStateCache(OperatingParameters parameters, ITimer timer, IRemoteFileStateCacheStorage cacheStorage, IRemoteStorage remoteStorage)
 		{
@@ -85,6 +89,11 @@ namespace DeltaQ.RTB.StateCache
 			_remoteStorage = remoteStorage;
 
 			LoadCache();
+		}
+
+		public bool ContainsPath(string path)
+		{
+			return _cache.ContainsKey(path);
 		}
 
 		public FileState? GetFileState(string path)
@@ -103,6 +112,29 @@ namespace DeltaQ.RTB.StateCache
 				newFileState.Path = path; // Just in case.
 
 				AppendNewFileStateToCurrentBatch(newFileState);
+			}
+		}
+
+		public bool RemoveFileState(string path)
+		{
+			lock (this)
+			{
+				if (_cache.TryGetValue(path, out var fileState))
+				{
+					_cache.Remove(path);
+
+					AppendNewFileStateToCurrentBatch(
+						new FileState()
+						{
+							Path = fileState.Path,
+							FileSize = DeletedFileSize,
+							Checksum = DeletedChecksum,
+						});
+
+					return true;
+				}
+
+				return false;
 			}
 		}
 
@@ -128,8 +160,13 @@ namespace DeltaQ.RTB.StateCache
 
 						var fileState = FileState.Parse(line);
 
-						// Overwrite if already present, as the one we just loaded will be newer.
-						_cache[fileState.Path] = fileState;
+						if (fileState.FileSize == DeletedFileSize)
+							_cache.Remove(fileState.Path);
+						else
+						{
+							// Overwrite if already present, as the one we just loaded will be newer.
+							_cache[fileState.Path] = fileState;
+						}
 					}
 				}
 			}
@@ -169,19 +206,16 @@ namespace DeltaQ.RTB.StateCache
 
 			if (!_stopping)
 				using (Busy())
-					UploadCurrentBatch();
+					UploadCurrentBatchAndBeginNext();
 		}
 
-		internal void UploadCurrentBatch()
+		internal void UploadCurrentBatchAndBeginNext()
 		{
 			int batchNumberToUpload;
-			string currentBatchRemotePath;
 
 			lock (this)
 			{
 				batchNumberToUpload = _currentBatchNumber;
-
-				currentBatchRemotePath = "/state/" + _currentBatchNumber;
 
 				_currentBatchNumber++;
 				_currentBatch.Clear();
@@ -189,8 +223,7 @@ namespace DeltaQ.RTB.StateCache
 				_currentBatchWriter = null;
 			}
 
-			using (var stream = _cacheStorage.OpenBatchFileStream(batchNumberToUpload))
-				_remoteStorage.UploadFile(currentBatchRemotePath, stream, CancellationToken.None);
+			UploadBatch(batchNumberToUpload);
 
 			bool shouldConsolidate = false;
 
@@ -225,6 +258,14 @@ namespace DeltaQ.RTB.StateCache
 			}
 		}
 
+		internal void UploadBatch(int batchNumberToUpload)
+		{
+			string batchRemotePath = "/state/" + batchNumberToUpload;
+
+			using (var stream = _cacheStorage.OpenBatchFileStream(batchNumberToUpload))
+				_remoteStorage.UploadFile(batchRemotePath, stream, CancellationToken.None);
+		}
+
 		internal int ConsolidateOldestBatch()
 		{
 			// Find the two oldest batches.
@@ -239,8 +280,12 @@ namespace DeltaQ.RTB.StateCache
 			var oldestBatchNumber = batchNumbers[0];
 			var mergeIntoBatchNumber = batchNumbers[1];
 
-			// Load in the merge-into batch.
+			// Load in the merge-into batch. If it contains any deletions of file states from the previous batch, we
+			// need to make sure we don't merge those deleted entries in. But, we don't need to keep them because
+			// after the consolidation, there won't be any older state that needs to be deleted in the first place.
 			var mergeIntoBatch = new Dictionary<string, FileState>();
+
+			var deletedPaths = new HashSet<string>();
 
 			using (var reader = _cacheStorage.OpenBatchFileReader(mergeIntoBatchNumber))
 			{
@@ -253,12 +298,17 @@ namespace DeltaQ.RTB.StateCache
 
 					var fileState = FileState.Parse(line);
 
-					mergeIntoBatch[fileState.Path] = fileState;
+					if (fileState.FileSize == DeletedFileSize)
+						deletedPaths.Add(fileState.Path);
+					else
+						mergeIntoBatch[fileState.Path] = fileState;
 				}
 			}
 
 			// Merge the oldest batch into the merge-into batch. Only entries that aren't superseded in the merge-into
 			// batch are used. When the merge-into branch already has a newer FileState, the older one is discarded.
+			// If we encounter a path that the merge-into branch had a deletion for, we don't want to merge it in --
+			// otherwise we'd be effectively undoing the deletion.
 			using (var reader = _cacheStorage.OpenBatchFileReader(oldestBatchNumber))
 			{
 				while (true)
@@ -270,7 +320,8 @@ namespace DeltaQ.RTB.StateCache
 
 					var fileState = FileState.Parse(line);
 
-					if (!mergeIntoBatch.ContainsKey(fileState.Path))
+					if (!deletedPaths.Contains(fileState.Path)
+					 && !mergeIntoBatch.ContainsKey(fileState.Path))
 						mergeIntoBatch[fileState.Path] = fileState;
 				}
 			}
@@ -285,6 +336,8 @@ namespace DeltaQ.RTB.StateCache
 			_cacheStorage.SwitchToConsolidatedFile(
 				oldestBatchNumber,
 				mergeIntoBatchNumber);
+
+			UploadBatch(mergeIntoBatchNumber);
 
 			// Return the batch number that no longer exists so that the caller can remove it from remote storage.
 			return oldestBatchNumber;
