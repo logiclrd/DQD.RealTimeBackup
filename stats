@@ -1,0 +1,10 @@
+#!/bin/bash
+
+printf "Line count: "
+
+wc -l `find . -name '*.cs'` --total=only
+
+printf "TODO count: "
+
+grep TODO `find . -name '*.cs'` | wc -l
+
