@@ -10,7 +10,7 @@
 			"request": "launch",
 			"name": "Start Initial Backup Then Exit",
 			"program": "${workspaceFolder}/DeltaQ.RTB/bin/Debug/net8.0/DeltaQ.RTB.dll",
-			"args": [ "/INITIALBACKUPTHENEXIT" ],
+			"args": [ "/INITIALBACKUPTHENEXIT", "/VERBOSE" ],
 		},
 		{
 			"type": "dotnet",

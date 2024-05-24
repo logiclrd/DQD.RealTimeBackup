@@ -16,12 +16,17 @@ namespace DeltaQ.RTB.Interop
 			_parameters = parameters;
 		}
 
+		public IEnumerable<OpenFileHandle> EnumerateAll()
+			=> RunLSOFCommandAndParseOutput("-l -F -w");
 		public IEnumerable<OpenFileHandle> Enumerate(string path)
+			=> RunLSOFCommandAndParseOutput("-l -F -w -- \"" + path + "\"");
+
+		IEnumerable<OpenFileHandle> RunLSOFCommandAndParseOutput(string arguments)
 		{
 			var psi = new ProcessStartInfo();
 
 			psi.FileName = _parameters.LSOFBinaryPath;
-			psi.Arguments = "-l -F -w -- \"" + path + "\"";
+			psi.Arguments = arguments;
 			psi.RedirectStandardOutput = true;
 
 			using (var process = Process.Start(psi)!)
@@ -58,10 +63,11 @@ namespace DeltaQ.RTB.Interop
 
 					if (line[0] == 'f')
 					{
-						if (handle != null)
+						if ((handle != null) && (handle.FileDescriptor >= 0))
 							yield return handle;
 
 						handle = new OpenFileHandle();
+
 						handle.ProcessID = processID;
 						handle.ProcessGroupID = processGroupID;
 						handle.ParentProcessID = parentProcessID;
@@ -89,7 +95,13 @@ namespace DeltaQ.RTB.Interop
 						// File Set fields
 						switch (field)
 						{
-							case 'f': handle.FileDescriptor = int.Parse(fieldValue); break;
+							case 'f':
+								if (!int.TryParse(fieldValue, out var fd))
+									fd = -1;
+
+								handle.FileDescriptor = fd;
+
+								break;
 							case 'a':
 								handle.FileAccess =
 									(fieldValue.Contains("r") ? FileAccess.Read : default) |

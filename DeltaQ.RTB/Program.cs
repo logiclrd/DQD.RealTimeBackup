@@ -125,6 +125,14 @@ namespace DeltaQ.RTB
 
 				var stopEvent = new ManualResetEvent(initialState: false);
 				var stoppedEvent = new ManualResetEvent(initialState: false);
+				var cancellationTokenSource = new CancellationTokenSource();
+
+				void Abort()
+				{
+					stopEvent.Set();
+					cancellationTokenSource.Cancel();
+					stoppedEvent.WaitOne();
+				}
 
 				try
 				{
@@ -133,8 +141,9 @@ namespace DeltaQ.RTB
 						{
 							if (parameters.Verbose)
 								Console.WriteLine("Received SIGINT");
-							stopEvent.Set();
-							stoppedEvent.WaitOne();
+
+							Abort();
+
 							if (parameters.Verbose)
 								Console.WriteLine("Returning from SIGINT handler");
 						};
@@ -144,8 +153,9 @@ namespace DeltaQ.RTB
 						{
 							if (parameters.Verbose)
 								Console.WriteLine("Received SIGTERM");
-							stopEvent.Set();
-							stoppedEvent.WaitOne();
+
+							Abort();
+
 							if (parameters.Verbose)
 								Console.WriteLine("Returning from SIGTERM handler");
 						};
@@ -186,12 +196,21 @@ namespace DeltaQ.RTB
 
 						var orchestrator = container.Resolve<IInitialBackupOrchestrator>();
 
+						string headings = InitialBackupStatus.Headings;
+						string separator = InitialBackupStatus.Separator;
+
 						orchestrator.PerformInitialBackup(
 							statusUpdate =>
 							{
-								Console.CursorLeft = 0;
+								Console.WriteLine();
+								Console.WriteLine(headings);
+								Console.WriteLine(separator);
 								Console.Write(statusUpdate);
-							});
+
+								Console.CursorLeft = 0;
+								Console.CursorTop = Math.Max(0, Console.CursorTop - 3);
+							},
+							cancellationTokenSource.Token);
 
 						if (args.InitialBackupThenExit)
 							stopEvent.Set();

@@ -5,6 +5,7 @@ namespace DeltaQ.RTB.Interop
 {
 	public interface IOpenFileHandles
 	{
+		IEnumerable<OpenFileHandle> EnumerateAll();
 		IEnumerable<OpenFileHandle> Enumerate(string path);
 	}
 }

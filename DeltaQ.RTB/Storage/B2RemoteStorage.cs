@@ -70,9 +70,28 @@ namespace DeltaQ.RTB.Storage
 			}
 		}
 
+		async Task<IApiResults<TResult>> RetryIfNoTomesAreAvailable<TResult>(Func<Task<IApiResults<TResult>>> action)
+		{
+			while (true)
+			{
+				var result = await action();
+
+				if ((result.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+				 && (result.HttpResponse.ReasonPhrase != null)
+				 && result.HttpResponse.ReasonPhrase.Contains("no tomes available"))
+				{
+					VerboseWriteLine("[B@] No tomes available, waiting a few seconds and retrying");
+					await Task.Delay(TimeSpan.FromSeconds(2));
+					continue;
+				}
+
+				return result;
+			}
+		}
+
 		async Task<IApiResults<TResult>> AutomaticallyReauthenticateAsync<TResult>(Func<Task<IApiResults<TResult>>> action)
 		{
-			var result = await action();
+			var result = await RetryIfNoTomesAreAvailable(action);
 
 			if (result.IsSuccessStatusCode)
 				return result;
@@ -81,7 +100,7 @@ namespace DeltaQ.RTB.Storage
 			{
 				Authenticate();
 
-				result = await action();
+				result = await RetryIfNoTomesAreAvailable(action);
 
 				result.EnsureSuccessStatusCode();
 

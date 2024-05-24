@@ -1,11 +1,10 @@
 using System;
-
-using DeltaQ.RTB.Agent;
+using System.Threading;
 
 namespace DeltaQ.RTB.InitialBackup
 {
 	public interface IInitialBackupOrchestrator
 	{
-		void PerformInitialBackup(Action<InitialBackupStatus> statusUpdateCallback);
+		void PerformInitialBackup(Action<InitialBackupStatus> statusUpdateCallback, CancellationToken cancellationToken);
 	}
 }

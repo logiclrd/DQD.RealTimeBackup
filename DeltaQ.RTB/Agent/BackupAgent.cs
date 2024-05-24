@@ -233,6 +233,16 @@ namespace DeltaQ.RTB.Agent
 			if (_parameters.IsExcludedPath(path))
 				return;
 
+			try
+			{
+				if (!File.Exists(path) || (File.ResolveLinkTarget(path, returnFinalTarget: false) != null))
+					return;
+			}
+			catch (FileNotFoundException)
+			{
+				return;
+			}
+
 			lock (_snapshotSharingDelaySync)
 			{
 				if (_snapshotSharingDelay == null)
@@ -258,16 +268,20 @@ namespace DeltaQ.RTB.Agent
 					if (_parameters.IsExcludedPath(path))
 						continue;
 
-					if (File.Exists(path))
+					try
 					{
-						_snapshotSharingBatch.Add(path);
-						haveAdditions = true;
+						if (File.Exists(path) && (File.ResolveLinkTarget(path, returnFinalTarget: false) == null))
+						{
+							_snapshotSharingBatch.Add(path);
+							haveAdditions = true;
+						}
+						else if (_remoteFileStateCache.ContainsPath(path))
+						{
+							deleteActions ??= new List<DeleteAction>();
+							deleteActions.Add(new DeleteAction(path));
+						}
 					}
-					else if (_remoteFileStateCache.ContainsPath(path))
-					{
-						deleteActions ??= new List<DeleteAction>();
-						deleteActions.Add(new DeleteAction(path));
-					}
+					catch (FileNotFoundException) { }
 				}
 
 				if (haveAdditions && (_snapshotSharingDelay == null))
@@ -302,6 +316,7 @@ namespace DeltaQ.RTB.Agent
 
 				var snapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
 
+				lock (_openFilesSync)
 				foreach (string path in _snapshotSharingBatch)
 				{
 					VerboseWriteLine("[IN] => {0}", path);
@@ -318,11 +333,21 @@ namespace DeltaQ.RTB.Agent
 					{
 						VerboseWriteLine("[IN]   * ZFS snapshot needed on volume {0}", zfs.MountPoint);
 
-						var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
+						// Temporary release the lock while creating the snapshot.
+						Monitor.Exit(_openFilesSync);
 
-						snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+						try
+						{
+							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
 
-						snapshots[zfs] = snapshotReferenceTracker;
+							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+
+							snapshots[zfs] = snapshotReferenceTracker;
+						}
+						finally
+						{
+							Monitor.Enter(_openFilesSync);
+						}
 					}
 
 					VerboseWriteLine("[IN]   * Queuing path for open files check");
@@ -431,18 +456,33 @@ namespace DeltaQ.RTB.Agent
 						openFilesCached.AddRange(_openFiles);
 				}
 
+				VerboseWriteLine("[OF] Collecting open file handles");
+
+				var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
+					.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
+					.Select(handle => handle.FileName)
+					.ToHashSet();
+
 				VerboseWriteLine("[OF] Inspecting {0} file(s)", openFilesCached.Count);
+
+				var deadlineUTC = DateTime.UtcNow.AddSeconds(5);
 
 				for (int i = openFilesCached.Count - 1; i >= 0; i--)
 				{
 					var fileReference = openFilesCached[i];
 
-					if (!_openFileHandles.Enumerate(fileReference.SnapshotReference.Path).Any(handle => handle.FileAccess.HasFlag(FileAccess.Write)))
+					if (!openWriteFileHandleSet.Contains(fileReference.SnapshotReference.Path))
 					{
 						VerboseWriteLine("[OF] => Ready: {0}", fileReference.SnapshotReference.Path);
 
 						filesToPromote.Add(fileReference);
 						openFilesCached.RemoveAt(i);
+
+						if (DateTime.UtcNow >= deadlineUTC)
+						{
+							VerboseWriteLine("[OF] Passing {0} files off to the backup queue", filesToPromote.Count);
+							break;
+						}
 					}
 				}
 
@@ -451,8 +491,34 @@ namespace DeltaQ.RTB.Agent
 					VerboseWriteLine("[OF] Promoting {0} file(s)", filesToPromote.Count);
 
 					lock (_openFilesSync)
-						foreach (var reference in filesToPromote)
-							_openFiles.Remove(reference);
+					{
+						// _openFiles is just a List<>, making a naive implementation of this O(n^2). This is fine until an initial backup dumps 700,000 files on us all at once. Then,
+						// this statement begins to take rather a long time to complete:
+						//
+						// foreach (var reference in filesToPromote)
+						//   _openFiles.Remove(reference);
+						//
+						// In addition, we are typically removing a bunch of files from the start of the list but may have literally hundreds of thousands at the end. Repeatedly
+						// removing one element at a time means copying those hundreds of thousands of keepers over and over. So, instead, we compact the list intelligently, by
+						// maintaining a pointer to the insertion point of the last element we want to keep, and then as we walk through, when we find further keepers, we copy
+						// them directly to their final position, and when we find ones to remove, we simply skip over them. When we get to the end, we now have a bunch of
+						// garbage data (redundant references and references that should be removed) after that final index, but we can simply truncate the list to length.
+						var filesToPromoteSet = filesToPromote.ToHashSet();
+
+						int keepIndex = 0;
+
+						for (int i = 0; i < _openFiles.Count; i++)
+						{
+							if (!filesToPromoteSet.Contains(_openFiles[i]))
+							{
+								_openFiles[keepIndex] = _openFiles[i];
+								keepIndex++;
+							}
+						}
+
+						if (keepIndex < _openFiles.Count)
+							_openFiles.RemoveRange(keepIndex, _openFiles.Count - keepIndex);
+					}
 
 					AddActionsToBackupQueue(filesToPromote
 						.Select(reference => reference.SnapshotReference)
@@ -526,10 +592,14 @@ namespace DeltaQ.RTB.Agent
 
 		void AddLongPollingItem(SnapshotReference snapshotReference)
 		{
-			lock (_longPollingSync)
+			// Make sure the file didn't get deleted between us picking it up and creating the initial snapshot.
+			if (File.Exists(snapshotReference.SnapshottedPath))
 			{
-				_longPollingQueue.Add(new LongPollingItem(snapshotReference, _parameters.MaximumLongPollingTime));
-				Monitor.PulseAll(_longPollingSync);
+				lock (_longPollingSync)
+				{
+					_longPollingQueue.Add(new LongPollingItem(snapshotReference, _parameters.MaximumLongPollingTime));
+					Monitor.PulseAll(_longPollingSync);
+				}
 			}
 		}
 
@@ -574,17 +644,33 @@ namespace DeltaQ.RTB.Agent
 
 					var now = DateTime.UtcNow;
 
-					var snapshot = _zfs.CreateSnapshot("RTB-" + now.Ticks);
-
-					var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+					var newZFSSnapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
 
 					for (int i = _longPollingQueue.Count - 1; i >= 0; i--)
 					{
 						var item = _longPollingQueue[i];
 
-						var newSnapshotReference = new SnapshotReference(
-							snapshotReferenceTracker,
-							item.CurrentSnapshotReference.Path);
+						var zfs = FindZFSVolumeForPath(item.CurrentSnapshotReference.Path);
+
+						if (zfs == null)
+						{
+							Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
+							_longPollingQueue.RemoveAt(i);
+							continue;
+						}
+
+						if (!newZFSSnapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
+						{
+							VerboseWriteLine("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
+
+							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
+
+							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+
+							newZFSSnapshots[zfs] = snapshotReferenceTracker;
+						}
+
+						var newSnapshotReference = snapshotReferenceTracker.AddReference(item.CurrentSnapshotReference.Path);
 
 						bool promoteFile = false;
 
@@ -596,6 +682,13 @@ namespace DeltaQ.RTB.Agent
 						}
 						else
 						{
+							if (!File.Exists(newSnapshotReference.SnapshottedPath))
+							{
+								// Looks like the file got deleted.
+								_longPollingQueue.RemoveAt(i);
+								continue;
+							}
+
 							bool fileLooksStable = FileUtility.FilesAreEqual(
 								item.CurrentSnapshotReference.SnapshottedPath,
 								newSnapshotReference.SnapshottedPath,
@@ -950,6 +1043,12 @@ namespace DeltaQ.RTB.Agent
 			foreach (var volume in _zfs.EnumerateVolumes())
 			{
 				NonQuietWriteLine("* {0}", volume.MountPoint);
+
+				if (!Directory.Exists(Path.Combine(volume.MountPoint!, ".zfs")))
+				{
+					NonQuietWriteLine("  => Not a real mount!");
+					continue;
+				}
 
 				var volumeZFS = new ZFS(_parameters, volume);
 

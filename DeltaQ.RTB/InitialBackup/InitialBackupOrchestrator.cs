@@ -27,7 +27,7 @@ namespace DeltaQ.RTB.InitialBackup
 			_stat = stat;
 		}
 
-		public void PerformInitialBackup(Action<InitialBackupStatus> statusUpdateCallback)
+		public void PerformInitialBackup(Action<InitialBackupStatus> statusUpdateCallback, CancellationToken cancellationToken)
 		{
 			InitialBackupStatus status = new InitialBackupStatus();
 
@@ -43,6 +43,9 @@ namespace DeltaQ.RTB.InitialBackup
 
 					foreach (var path in EnumerateAllFilesInSurfaceArea(status))
 					{
+						if (cancellationToken.IsCancellationRequested)
+							break;
+
 						intermediate.Add(path);
 
 						if (intermediate.Count == 100)
@@ -63,7 +66,7 @@ namespace DeltaQ.RTB.InitialBackup
 			thread.Start(thread);
 
 			// Poll status
-			while (true)
+			while (!cancellationToken.IsCancellationRequested)
 			{
 				status.BackupAgentQueueSizes = _backupAgent.GetQueueSizes();
 				status.ZFSSnapshotCount = _zfs.CurrentSnapshotCount;
@@ -93,11 +96,11 @@ namespace DeltaQ.RTB.InitialBackup
 
 					Interlocked.Decrement(ref status.DirectoryQueueSize);
 
-					var enumerator = new FileSystemEnumerable<string>(
+					var enumerable = new FileSystemEnumerable<string>(
 						path,
 						(ref FileSystemEntry entry) => entry.ToFullPath());
 
-					enumerator.ShouldIncludePredicate =
+					enumerable.ShouldIncludePredicate =
 						(ref FileSystemEntry entry) =>
 						{
 							if (!entry.IsDirectory)
@@ -119,10 +122,29 @@ namespace DeltaQ.RTB.InitialBackup
 							}
 						};
 
-					foreach (string filePath in enumerator)
+					// Things come and go quickly. This applies everywhere in the filesystem, but especially in /tmp, out of which we may be
+					// enumerating files. It is entirely possible that a directory may get removed between its discovery and its enumeration.
+					// Unfortunately, we can't have a yield return statement inside a try/catch, so we have to expand out the foreach and
+					// don't get the nice syntax.
+
+					using (var enumerator = enumerable.GetEnumerator())
 					{
-						Interlocked.Increment(ref status.FilesDiscovered);
-						yield return filePath;
+						while (true)
+						{
+							bool hasNext = false;
+
+							try
+							{
+								hasNext = enumerator.MoveNext();
+							}
+							catch (DirectoryNotFoundException) { }
+
+							if (!hasNext)
+								break;
+
+							Interlocked.Increment(ref status.FilesDiscovered);
+							yield return enumerator.Current;
+						}
 					}
 				}
 

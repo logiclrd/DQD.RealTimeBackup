@@ -1,0 +1,3 @@
+#!/bin/bash
+
+zfs list -t snapshot | grep RTB- | xargs --max-args 1 --no-run-if-empty zfs destroy 

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using DeltaQ.RTB.Agent;
 
@@ -27,33 +28,47 @@ namespace DeltaQ.RTB.InitialBackup
 				return new string(' ', fieldSize + 2);
 		}
 
+		static string[] HeadingLabels =
+			new[]
+			{
+				"Mounts Processed",
+				"Files Discovered",
+				"Directory Queue Size",
+				"Files Pending Intake",
+				"Open Handles Check",
+				"Files Polling Content",
+				"Backup Queue Size",
+				"Queued Uploads",
+				"ZFS Snapshots",
+			};
+
 		static string FormatLine(
 			object mountsProcessed, object filesDiscovered, object directoryQueueSize,
 			object? filesPendingIntake, object? filesPollingOpenHandles, object? filesPollingContentChanges, object? backupQueueActions, object? queuedUploads,
 			object zfsSnapshotCount)
 		{
 			return
-				FormatItem(mountsProcessed, 16) + "|" +
-				FormatItem(filesDiscovered, 16) + "|" +
-				FormatItem(directoryQueueSize, 20) + "|" +
-				FormatItem(filesPendingIntake, 20) + "|" +
-				FormatItem(filesPollingOpenHandles, 21) + "|" +
-				FormatItem(filesPollingContentChanges, 21) + "|" +
-				FormatItem(backupQueueActions, 17) + "|" +
-				FormatItem(queuedUploads, 14) + "|" +
-				FormatItem(zfsSnapshotCount, 13);
+				FormatItem(mountsProcessed, HeadingLabels[0].Length) + "|" +
+				FormatItem(filesDiscovered, HeadingLabels[1].Length) + "|" +
+				FormatItem(directoryQueueSize, HeadingLabels[2].Length) + "|" +
+				FormatItem(filesPendingIntake, HeadingLabels[3].Length) + "|" +
+				FormatItem(filesPollingOpenHandles, HeadingLabels[4].Length) + "|" +
+				FormatItem(filesPollingContentChanges, HeadingLabels[5].Length) + "|" +
+				FormatItem(backupQueueActions, HeadingLabels[6].Length) + "|" +
+				FormatItem(queuedUploads, HeadingLabels[7].Length) + "|" +
+				FormatItem(zfsSnapshotCount, HeadingLabels[8].Length);
 		}
 
 		public static string Headings => FormatLine(
-			"Mounts Processed",
-			"Files Discovered",
-			"Directory Queue Size",
-			"Files Pending Intake",
-			"Files w/ Open Handles",
-			"Files Polling Content",
-			"Backup Queue Size",
-			"Queued Uploads",
-			"ZFS Snapshots");
+			HeadingLabels[0],
+			HeadingLabels[1],
+			HeadingLabels[2],
+			HeadingLabels[3],
+			HeadingLabels[4],
+			HeadingLabels[5],
+			HeadingLabels[6],
+			HeadingLabels[7],
+			HeadingLabels[8]);
 
 		public static string Separator
 		{
@@ -65,7 +80,7 @@ namespace DeltaQ.RTB.InitialBackup
 					if (builder[i] == '|')
 						builder[i] = '+';
 					else
-						builder[i] = ' ';
+						builder[i] = '-';
 
 				return builder.ToString();
 			}
