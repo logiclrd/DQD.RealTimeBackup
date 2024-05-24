@@ -8,6 +8,7 @@ namespace DeltaQ.RTB.StateCache
 		FileState? GetFileState(string path);
 		void UpdateFileState(string path, FileState newFileState);
 		bool RemoveFileState(string path);
+		void Start();
 		void Stop();
 		void WaitWhileBusy();
 		void UploadCurrentBatchAndBeginNext(bool deferConsolidation = false);

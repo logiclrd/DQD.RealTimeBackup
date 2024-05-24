@@ -1089,6 +1089,9 @@ namespace DeltaQ.RTB.Agent
 				}
 			}
 
+			NonQuietDiagnosticOutput("Starting remote file state cache");
+			_remoteFileStateCache.Start();
+
 			NonQuietDiagnosticOutput("Authenticating with remote storage");
 			_storage.Authenticate();
 
@@ -1107,11 +1110,11 @@ namespace DeltaQ.RTB.Agent
 		{
 			_stopping = true;
 
-			NonQuietDiagnosticOutput("Stopping file system monitor (if running)");
-			_monitor.Stop();
-
 			NonQuietDiagnosticOutput("Stopping remote file state cache");
 			_remoteFileStateCache.Stop();
+
+			NonQuietDiagnosticOutput("Stopping file system monitor (if running)");
+			_monitor.Stop();
 
 			NonQuietDiagnosticOutput("Waking threads so they can exit:");
 			NonQuietDiagnosticOutput("=> Open files poller");
