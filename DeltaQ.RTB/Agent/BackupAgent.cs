@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
-
+using System.Xml;
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
@@ -39,6 +41,8 @@ namespace DeltaQ.RTB.Agent
 		IRemoteFileStateCache _remoteFileStateCache;
 		IRemoteStorage _storage;
 
+		List<(string MountPoint, IZFS ZFS)> _zfsInstanceByMountPoint; // Sorted by decreasing length of MountPoint
+
 		public BackupAgent(OperatingParameters parameters, ITimer timer, IChecksum checksum, ISurfaceArea surfaceArea, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
 		{
 			_parameters = parameters;
@@ -52,6 +56,8 @@ namespace DeltaQ.RTB.Agent
 			_staging = staging;
 			_remoteFileStateCache = remoteFileStateCache;
 			_storage = storage;
+
+			_zfsInstanceByMountPoint = new List<(string MountPoint, IZFS ZFS)>();
 
 			_monitor.PathUpdate += monitor_PathUpdate;
 			_monitor.PathMove += monitor_PathMove;
@@ -195,6 +201,9 @@ namespace DeltaQ.RTB.Agent
 
 		void BeginQueuePathForOpenFilesCheck(string path)
 		{
+			if (_parameters.IsExcludedPath(path))
+				return;
+
 			lock (_snapshotSharingDelaySync)
 			{
 				if (_snapshotSharingDelay == null)
@@ -213,6 +222,10 @@ namespace DeltaQ.RTB.Agent
 				bool haveAdditions = false;
 
 				foreach (string path in paths)
+				{
+					if (_parameters.IsExcludedPath(path))
+						continue;
+
 					if (File.Exists(path))
 					{
 						_snapshotSharingBatch.Add(path);
@@ -223,6 +236,7 @@ namespace DeltaQ.RTB.Agent
 						deleteActions ??= new List<DeleteAction>();
 						deleteActions.Add(new DeleteAction(path));
 					}
+				}
 
 				if (haveAdditions && (_snapshotSharingDelay == null))
 					_snapshotSharingDelay = _timer.ScheduleAction(_parameters.SnapshotSharingWindow, EndQueuePathForOpenFilesCheck);
@@ -232,6 +246,19 @@ namespace DeltaQ.RTB.Agent
 				AddActionsToBackupQueue(deleteActions);
 		}
 
+		IZFS? FindZFSVolumeForPath(string path)
+		{
+			foreach (var instance in _zfsInstanceByMountPoint)
+			{
+				if ((path.Length > instance.MountPoint.Length)
+				 && ((instance.MountPoint == "/")
+				  || ((path[instance.MountPoint.Length] == '/') && path.StartsWith(instance.MountPoint))))
+					return instance.ZFS;
+			}
+
+			return null;
+		}
+
 		void EndQueuePathForOpenFilesCheck()
 		{
 			lock (_snapshotSharingDelaySync)
@@ -239,12 +266,29 @@ namespace DeltaQ.RTB.Agent
 				_snapshotSharingDelay?.Dispose();
 				_snapshotSharingDelay = null;
 
-				var snapshot = _zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
-
-				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+				var snapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
 
 				foreach (string path in _snapshotSharingBatch)
+				{
+					var zfs = FindZFSVolumeForPath(path);
+
+					if (zfs == null)
+					{
+						Console.Error.WriteLine("Can't process file because it doesn't appear to be on a ZFS volume: {0}", path);
+						continue;
+					}
+
+					if (!snapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
+					{
+						var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
+
+						snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+
+						snapshots[zfs] = snapshotReferenceTracker;
+					}
+
 					QueuePathForOpenFilesCheck(snapshotReferenceTracker.AddReference(path));
+				}
 
 				_snapshotSharingBatch.Clear();
 			}
@@ -655,13 +699,23 @@ namespace DeltaQ.RTB.Agent
 					if (fileState == null)
 						throw new Exception($"Consistency error: The remote file state cache does not have an entry for the 'from' path {moveAction.FromPath}. Maybe you just need a check action for the path?");
 
-					_storage.MoveFile(
-						moveAction.FromPath,
-						moveAction.ToPath,
-						_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+					if (_parameters.IsExcludedPath(moveAction.ToPath))
+					{
+						// Convert to a DeleteAction if we can't see the file any more.
+						var deleteAction = new DeleteAction(moveAction.FromPath);
 
-					_remoteFileStateCache.RemoveFileState(moveAction.FromPath);
-					_remoteFileStateCache.UpdateFileState(moveAction.ToPath, fileState);
+						ProcessBackupQueueAction(deleteAction);
+					}
+					else
+					{
+						_storage.MoveFile(
+							moveAction.FromPath,
+							moveAction.ToPath,
+							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+
+						_remoteFileStateCache.RemoveFileState(moveAction.FromPath);
+						_remoteFileStateCache.UpdateFileState(moveAction.ToPath, fileState);
+					}
 
 					break;
 				case DeleteAction deleteAction:
@@ -777,6 +831,21 @@ namespace DeltaQ.RTB.Agent
 		public void Start()
 		{
 			_stopping = false;
+
+			Console.WriteLine("Indexing ZFS volumes");
+
+			_zfsInstanceByMountPoint.Clear();
+
+			foreach (var volume in _zfs.EnumerateVolumes())
+			{
+				Console.WriteLine("* {0}", volume.MountPoint);
+
+				var volumeZFS = new ZFS(_parameters, volume);
+
+				_zfsInstanceByMountPoint.Add((volume.MountPoint!, volumeZFS));
+			}
+
+			_zfsInstanceByMountPoint.Sort((left, right) => right.MountPoint.Length - left.MountPoint.Length);
 
 			using (var output = new DiagnosticOutputHook(_surfaceArea, Console.WriteLine))
 			{

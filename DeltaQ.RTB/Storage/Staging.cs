@@ -6,10 +6,15 @@ namespace DeltaQ.RTB.Storage
 	public class Staging : IStaging
 	{
 		public IStagedFile StageFile(string path)
-			=> throw new NotImplementedException("TODO");
-
-		public IStagedFile StageFile(Stream path)
-			=> throw new NotImplementedException("TODO");
+		{
+			using (var stream = File.OpenRead(path))
+				return StageFile(stream);
+		}
+		
+		public IStagedFile StageFile(Stream data)
+		{
+			return new StagedFile(data);
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ using System.Threading;
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
+using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.FileActivityTrace
 {
@@ -58,9 +59,15 @@ namespace DeltaQ.RTB.FileActivityTrace
 					Console.WriteLine("Path deleted: {0}", e.Path);
 				};
 
+			Console.WriteLine("Building surface area");
+
+			using (new DiagnosticOutputHook(surfaceArea, Console.WriteLine))
+				surfaceArea.BuildDefault();
+
 			Console.WriteLine("Monitoring");
 
-			fsm.Start();
+			using (new DiagnosticOutputHook(fsm, Console.WriteLine))
+				fsm.Start();
 
 			stopping.WaitOne();
 

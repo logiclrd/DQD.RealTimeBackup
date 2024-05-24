@@ -48,6 +48,8 @@ namespace DeltaQ.RTB.Interop
 		[DllImport("c", SetLastError = true)]
 		public static extern int pipe(int[] pipeFDs);
 		[DllImport("c", SetLastError = true)]
+		public static extern int stat(string pathname, out StatInfo statbuf);
+		[DllImport("c", SetLastError = true)]
 		public static extern int open(string pathname, int flags);
 		[DllImport("c", SetLastError = true)]
 		public static extern int open_by_handle_at(int dirfd, byte[] handle, int flags);

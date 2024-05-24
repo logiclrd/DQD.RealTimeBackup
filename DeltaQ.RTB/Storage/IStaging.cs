@@ -6,7 +6,7 @@ namespace DeltaQ.RTB.Storage
 	public interface IStaging
 	{
 		IStagedFile StageFile(string path);
-		IStagedFile StageFile(Stream path);
+		IStagedFile StageFile(Stream data);
 	}
 }
 

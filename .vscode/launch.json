@@ -1,0 +1,22 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations":
+	[
+		{
+			"type": "coreclr",
+			"request": "launch",
+			"name": "Start Initial Backup Then Exit",
+			"program": "${workspaceFolder}/DeltaQ.RTB/bin/Debug/net8.0/DeltaQ.RTB.dll",
+			"args": [ "/INITIALBACKUPTHENEXIT" ],
+		},
+		{
+			"type": "dotnet",
+			"request": "launch",
+			"name": "Start File Activity Trace",
+			"projectPath": "${workspaceFolder}/DeltaQ.RTB.FileActivityTrace/DeltaQ.RTB.FileActivityTrace.csproj",
+		}
+	]
+}

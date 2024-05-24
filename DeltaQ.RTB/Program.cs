@@ -74,21 +74,22 @@ namespace DeltaQ.RTB
 
 			builder.AddBackblazeAgent(backblazeAgentOptions);
 
-			builder.RegisterType<InitialBackupOrchestrator>().AsImplementedInterfaces();
-			builder.RegisterType<BackupAgent>().AsImplementedInterfaces();
-			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces();
-			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces();
-			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces();
-			builder.RegisterType<SurfaceAreaImplementation>().AsImplementedInterfaces();
-			builder.RegisterType<MountTable>().AsImplementedInterfaces();
-			builder.RegisterType<OpenByHandleAt>().AsImplementedInterfaces();
-			builder.RegisterType<OpenFileHandles>().AsImplementedInterfaces();
-			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces();
-			builder.RegisterType<RemoteFileStateCacheStorage>().AsImplementedInterfaces();
-			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces();
-			builder.RegisterType<Staging>().AsImplementedInterfaces();
-			builder.RegisterType<Timer>().AsImplementedInterfaces();
-			builder.RegisterType<ZFS>().AsImplementedInterfaces();
+			builder.RegisterType<InitialBackupOrchestrator>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<BackupAgent>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<SurfaceAreaImplementation>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<MountTable>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<StatImplementation>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<OpenByHandleAt>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<OpenFileHandles>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<RemoteFileStateCacheStorage>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<Staging>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<ZFS>().AsImplementedInterfaces().SingleInstance();
 
 			return builder.Build();
 		}

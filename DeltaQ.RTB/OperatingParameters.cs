@@ -15,13 +15,44 @@ namespace DeltaQ.RTB
 		// this is used to achieve initial backup.
 		public bool EnableFileAccessNotify = true;
 
+		public List<string> ExcludePaths = new List<string>() { "/var", "/run", "/tmp" };
+
+		public bool IsExcludedPath(string path)
+		{
+			// This is implemented in a slightly less readable way for performance reasons, since it will be
+			// called over and over and over. We avoid constructing objects.
+			//
+			// Semantics:
+			//   * If the path is exactly equal to an ExcludePaths member, return true.
+			//   * If the path starts with an ExcludePaths member which is then immediately followed by a '/', return true.
+			//   * Otherwise, return false.
+
+			for (int i=0; i < ExcludePaths.Count; i++)
+			{
+				string excluded = ExcludePaths[i];
+
+				if (path.Length >= excluded.Length)
+				{
+					if ((path.Length == excluded.Length) || (path[excluded.Length] == '/'))
+					{
+						if (string.Compare(path, 0, excluded, 0, excluded.Length) == 0)
+						{
+							return true;
+						}
+					}
+				}
+			}
+
+			return false;
+		}
+
 		// Used to resolve situations where the same device is mounted to multiple places. When this
 		// happens, if one of those places is in this list, only that one will be used. If none of the
 		// mounts are in this list, then an error will be generated.
 		public List<string> PreferredMountPoints = new List<string>();
 
 		// Specifies filesystem types that should be monitored.
-		public List<string> MonitorFileSystemTypes = new List<string>() { "zfs", "ext4", "ext3", "ext2", "ext", "reiserfs", "minix", "xfs", "jfs", "xiafs", "msdos", "umsdos", "vfat", "ntfs", "sysv" };
+		public List<string> MonitorFileSystemTypes = new List<string>() { "zfs" };
 
 		// When submitting a file, if its size is less than this then it will be copied to /tmp and
 		// the ZFS snapshot released. If its size is greater than or equal to this, then the ZFS

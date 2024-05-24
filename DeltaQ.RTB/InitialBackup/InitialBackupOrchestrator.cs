@@ -7,6 +7,7 @@ using System.Threading;
 
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.FileSystem;
+using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
 
 namespace DeltaQ.RTB.InitialBackup
@@ -16,12 +17,14 @@ namespace DeltaQ.RTB.InitialBackup
 		ISurfaceArea _surfaceArea;
 		IBackupAgent _backupAgent;
 		IZFS _zfs;
+		IStat _stat;
 
-		public InitialBackupOrchestrator(ISurfaceArea surfaceArea, IBackupAgent backupAgent, IZFS zfs)
+		public InitialBackupOrchestrator(ISurfaceArea surfaceArea, IBackupAgent backupAgent, IZFS zfs, IStat stat)
 		{
 			_surfaceArea = surfaceArea;
 			_backupAgent = backupAgent;
 			_zfs = zfs;
+			_stat = stat;
 		}
 
 		public void PerformInitialBackup(Action<InitialBackupStatus> statusUpdateCallback)
@@ -77,6 +80,8 @@ namespace DeltaQ.RTB.InitialBackup
 		{
 			foreach (var mount in _surfaceArea.Mounts)
 			{
+				var mountPointStat = _stat.Stat(mount.MountPoint);
+
 				Queue<string> directoryQueue = new Queue<string>();
 
 				directoryQueue.Enqueue(mount.MountPoint);
@@ -98,8 +103,17 @@ namespace DeltaQ.RTB.InitialBackup
 								return true;
 							else
 							{
-								directoryQueue.Enqueue(entry.ToFullPath());
-								Interlocked.Increment(ref status.DirectoryQueueSize);
+								// Make sure we don't cross devices.
+								string path = entry.ToFullPath();
+
+								var subdirStat = _stat.Stat(path);
+
+								if (subdirStat.ContainerDeviceID == mountPointStat.ContainerDeviceID)
+								{
+									directoryQueue.Enqueue(entry.ToFullPath());
+									Interlocked.Increment(ref status.DirectoryQueueSize);
+								}
+
 								return false;
 							}
 						};
