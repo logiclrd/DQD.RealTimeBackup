@@ -993,9 +993,10 @@ namespace DeltaQ.RTB.Agent
 						{
 							_storage.UploadFile(PlaceInContentPath(fileToUpload.Path), fileToUpload.Stream, cancellationToken);
 						}
-						catch (TaskCanceledException)
+						catch (Exception ex)
 						{
-							OnDiagnosticOutput("Upload task cancelled");
+							OnDiagnosticOutput("Upload task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
+							OnDiagnosticOutput("Returning file to the intake queue");
 							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 							continue;
 						}
