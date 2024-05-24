@@ -868,10 +868,22 @@ namespace DeltaQ.RTB.Agent
 					{
 						VerboseDiagnosticOutput("[BQ] Registering file move in storage");
 
-						_storage.MoveFile(
-							PlaceInContentPath(moveAction.FromPath),
-							PlaceInContentPath(moveAction.ToPath),
-							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+						try
+						{
+							_storage.MoveFile(
+								PlaceInContentPath(moveAction.FromPath),
+								PlaceInContentPath(moveAction.ToPath),
+								_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+						}
+						catch (Exception ex)
+						{
+							OnDiagnosticOutput("Move task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
+							OnDiagnosticOutput("Sending file to the intake queue: {0}", moveAction.FromPath);
+							BeginQueuePathForOpenFilesCheck(moveAction.FromPath);
+							OnDiagnosticOutput("Sending file to the intake queue: {0}", moveAction.ToPath);
+							BeginQueuePathForOpenFilesCheck(moveAction.ToPath);
+							break;
+						}
 
 						VerboseDiagnosticOutput("[BQ] Registering file move in Remote File State Cache");
 
@@ -891,9 +903,19 @@ namespace DeltaQ.RTB.Agent
 					{
 						VerboseDiagnosticOutput("[BQ] Deleting file from storage");
 
-						_storage.DeleteFile(
-							PlaceInContentPath(deleteAction.Path),
-							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+						try
+						{
+							_storage.DeleteFile(
+								PlaceInContentPath(deleteAction.Path),
+								_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+						}
+						catch (Exception ex)
+						{
+							OnDiagnosticOutput("Delete task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
+							break;
+						}
+
+						_remoteFileStateCache.RemoveFileState(deleteAction.Path);
 					}
 
 					break;

@@ -279,8 +279,8 @@ namespace DeltaQ.RTB.Storage
 		{
 			var contentKey = DownloadFileString(_parameters.RemoteStorageBucketID, serverPath, cancellationToken);
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, contentKey)));
 			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath)));
+			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, contentKey)));
 		}
 	}
 }
