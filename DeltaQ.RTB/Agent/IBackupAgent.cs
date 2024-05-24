@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 
+using DeltaQ.RTB.Utility;
+
 namespace DeltaQ.RTB.Agent
 {
-	public interface IBackupAgent
+	public interface IBackupAgent : IDiagnosticOutput
 	{
 		void Start();
 		void Stop();

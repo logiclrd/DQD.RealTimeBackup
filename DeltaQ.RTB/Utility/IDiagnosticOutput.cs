@@ -4,6 +4,6 @@ namespace DeltaQ.RTB.Utility
 {
 	public interface IDiagnosticOutput
 	{
-		event EventHandler<string> DiagnosticOutput;
+		event EventHandler<DiagnosticMessage> DiagnosticOutput;
 	}
 }

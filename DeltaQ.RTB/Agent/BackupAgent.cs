@@ -4,6 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
@@ -16,7 +17,7 @@ using ITimer = DeltaQ.RTB.Utility.ITimer;
 
 namespace DeltaQ.RTB.Agent
 {
-	public class BackupAgent : IBackupAgent
+	public class BackupAgent : DiagnosticOutputBase, IBackupAgent
 	{
 		// - get events from FileSystemMonitor
 		// - check for open file handles with OpenFileHandles
@@ -59,30 +60,6 @@ namespace DeltaQ.RTB.Agent
 			_monitor.PathUpdate += monitor_PathUpdate;
 			_monitor.PathMove += monitor_PathMove;
 			_monitor.PathDelete += monitor_PathDelete;
-		}
-
-		void VerboseWriteLine(object line)
-		{
-			if (_parameters.Verbose)
-				Console.WriteLine(line);
-		}
-
-		void VerboseWriteLine(string format, params object?[] args)
-		{
-			if (_parameters.Verbose)
-				Console.WriteLine(format, args);
-		}
-
-		void NonQuietWriteLine(object line)
-		{
-			if (!_parameters.Quiet)
-				Console.WriteLine(line);
-		}
-
-		void NonQuietWriteLine(string format, params object?[] args)
-		{
-			if (!_parameters.Quiet)
-				Console.WriteLine(format, args);
 		}
 
 		static string PlaceInContentPath(string path)
@@ -247,7 +224,7 @@ namespace DeltaQ.RTB.Agent
 			{
 				if (_snapshotSharingDelay == null)
 				{
-					VerboseWriteLine("[IN] Setting timer to end the queue path operation");
+					VerboseDiagnosticOutput("[IN] Setting timer to end the queue path operation");
 					_snapshotSharingDelay = _timer.ScheduleAction(_parameters.SnapshotSharingWindow, EndQueuePathForOpenFilesCheck);
 				}
 
@@ -309,7 +286,7 @@ namespace DeltaQ.RTB.Agent
 		{
 			lock (_snapshotSharingDelaySync)
 			{
-				VerboseWriteLine("[IN] End queue path operation, collecting batch");
+				VerboseDiagnosticOutput("[IN] End queue path operation, collecting batch");
 
 				_snapshotSharingDelay?.Dispose();
 				_snapshotSharingDelay = null;
@@ -319,7 +296,7 @@ namespace DeltaQ.RTB.Agent
 				lock (_openFilesSync)
 				foreach (string path in _snapshotSharingBatch)
 				{
-					VerboseWriteLine("[IN] => {0}", path);
+					VerboseDiagnosticOutput("[IN] => {0}", path);
 
 					var zfs = FindZFSVolumeForPath(path);
 
@@ -331,7 +308,7 @@ namespace DeltaQ.RTB.Agent
 
 					if (!snapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
 					{
-						VerboseWriteLine("[IN]   * ZFS snapshot needed on volume {0}", zfs.MountPoint);
+						VerboseDiagnosticOutput("[IN]   * ZFS snapshot needed on volume {0}", zfs.MountPoint);
 
 						// Temporary release the lock while creating the snapshot.
 						Monitor.Exit(_openFilesSync);
@@ -350,7 +327,7 @@ namespace DeltaQ.RTB.Agent
 						}
 					}
 
-					VerboseWriteLine("[IN]   * Queuing path for open files check");
+					VerboseDiagnosticOutput("[IN]   * Queuing path for open files check");
 
 					QueuePathForOpenFilesCheck(snapshotReferenceTracker.AddReference(path));
 				}
@@ -381,7 +358,7 @@ namespace DeltaQ.RTB.Agent
 
 				withTimeout.TimeoutUTC = DateTime.UtcNow + _parameters.MaximumTimeToWaitForNoOpenFileHandles;
 
-				VerboseWriteLine("[->OF] Path queued with timeout {0}", withTimeout.TimeoutUTC);
+				VerboseDiagnosticOutput("[->OF] Path queued with timeout {0}", withTimeout.TimeoutUTC);
 
 				_openFiles.Add(withTimeout);
 				Monitor.PulseAll(_openFilesSync);
@@ -408,7 +385,7 @@ namespace DeltaQ.RTB.Agent
 
 		void PollOpenFilesThreadProc()
 		{
-			VerboseWriteLine("[OF] Thread started");
+			VerboseDiagnosticOutput("[OF] Thread started");
 
 			var openFilesCached = new List<SnapshotReferenceWithTimeout>();
 			var filesToPromote = new List<SnapshotReferenceWithTimeout>();
@@ -424,11 +401,11 @@ namespace DeltaQ.RTB.Agent
 					// If we don't have any open files, wait indefinitely but break as soon as open files become available.
 					if (!haveOpenFiles)
 					{
-						VerboseWriteLine("[OF] Going to sleep");
+						VerboseDiagnosticOutput("[OF] Going to sleep");
 
 						Monitor.Wait(_openFilesSync);
 
-						VerboseWriteLine("[OF] Woken up");
+						VerboseDiagnosticOutput("[OF] Woken up");
 
 						if (_stopping)
 							return;
@@ -443,7 +420,7 @@ namespace DeltaQ.RTB.Agent
 				{
 					lock (_openFileHandlePollingSync)
 					{
-						VerboseWriteLine("[OF] Waiting until next check: {0}", _parameters.OpenFileHandlePollingInterval);
+						VerboseDiagnosticOutput("[OF] Waiting until next check: {0}", _parameters.OpenFileHandlePollingInterval);
 						Monitor.Wait(_openFileHandlePollingSync, _parameters.OpenFileHandlePollingInterval);
 					}
 
@@ -456,14 +433,14 @@ namespace DeltaQ.RTB.Agent
 						openFilesCached.AddRange(_openFiles);
 				}
 
-				VerboseWriteLine("[OF] Collecting open file handles");
+				VerboseDiagnosticOutput("[OF] Collecting open file handles");
 
 				var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
 					.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
 					.Select(handle => handle.FileName)
 					.ToHashSet();
 
-				VerboseWriteLine("[OF] Inspecting {0} file(s)", openFilesCached.Count);
+				VerboseDiagnosticOutput("[OF] Inspecting {0} file(s)", openFilesCached.Count);
 
 				var deadlineUTC = DateTime.UtcNow.AddSeconds(5);
 
@@ -473,14 +450,14 @@ namespace DeltaQ.RTB.Agent
 
 					if (!openWriteFileHandleSet.Contains(fileReference.SnapshotReference.Path))
 					{
-						VerboseWriteLine("[OF] => Ready: {0}", fileReference.SnapshotReference.Path);
+						VerboseDiagnosticOutput("[OF] => Ready: {0}", fileReference.SnapshotReference.Path);
 
 						filesToPromote.Add(fileReference);
 						openFilesCached.RemoveAt(i);
 
 						if (DateTime.UtcNow >= deadlineUTC)
 						{
-							VerboseWriteLine("[OF] Passing {0} files off to the backup queue", filesToPromote.Count);
+							VerboseDiagnosticOutput("[OF] Passing {0} files off to the backup queue", filesToPromote.Count);
 							break;
 						}
 					}
@@ -488,7 +465,7 @@ namespace DeltaQ.RTB.Agent
 
 				if (filesToPromote.Any())
 				{
-					VerboseWriteLine("[OF] Promoting {0} file(s)", filesToPromote.Count);
+					VerboseDiagnosticOutput("[OF] Promoting {0} file(s)", filesToPromote.Count);
 
 					lock (_openFilesSync)
 					{
@@ -661,7 +638,7 @@ namespace DeltaQ.RTB.Agent
 
 						if (!newZFSSnapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
 						{
-							VerboseWriteLine("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
+							VerboseDiagnosticOutput("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
 
 							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
 
@@ -727,7 +704,7 @@ namespace DeltaQ.RTB.Agent
 		{
 			lock (_backupQueueSync)
 			{
-				VerboseWriteLine("[BQ] Queuing {0}", action.GetType().Name);
+				VerboseDiagnosticOutput("[BQ] Queuing {0}", action.GetType().Name);
 
 				_backupQueue.Add(action);
 				Monitor.PulseAll(_backupQueueSync);
@@ -738,7 +715,7 @@ namespace DeltaQ.RTB.Agent
 		{
 			lock (_backupQueueSync)
 			{
-				VerboseWriteLine("[BQ] Queuing {0} actions", actions.Count());
+				VerboseDiagnosticOutput("[BQ] Queuing {0} actions", actions.Count());
 
 				_backupQueue.AddRange(actions);
 				Monitor.PulseAll(_backupQueueSync);
@@ -797,11 +774,11 @@ namespace DeltaQ.RTB.Agent
 							if (_stopping)
 								return;
 
-							VerboseWriteLine("[BQ] Going to sleep");
+							VerboseDiagnosticOutput("[BQ] Going to sleep");
 
 							Monitor.Wait(_backupQueueSync);
 
-							VerboseWriteLine("[BQ] Woken up");
+							VerboseDiagnosticOutput("[BQ] Woken up");
 						}
 
 						if (_stopping)
@@ -811,7 +788,7 @@ namespace DeltaQ.RTB.Agent
 						_backupQueue.RemoveAt(_backupQueue.Count - 1);
 					}
 
-					VerboseWriteLine("[BQ] Dispatching: {0}", backupAction);
+					VerboseDiagnosticOutput("[BQ] Dispatching: {0}", backupAction);
 
 					ProcessBackupQueueAction(backupAction);
 				}
@@ -824,14 +801,14 @@ namespace DeltaQ.RTB.Agent
 
 		internal void ProcessBackupQueueAction(BackupAction action)
 		{
-			VerboseWriteLine("[BQ] Beginning processing of backup action");
+			VerboseDiagnosticOutput("[BQ] Beginning processing of backup action");
 
 			switch (action)
 			{
 				case UploadAction uploadAction:
-					VerboseWriteLine("[BQ] => UploadAction");
-					VerboseWriteLine("[BQ]   * Path: {0}", uploadAction.ToPath);
-					VerboseWriteLine("[BQ]   * Snapshotted Path: {0}", uploadAction.Source.SnapshottedPath);
+					VerboseDiagnosticOutput("[BQ] => UploadAction");
+					VerboseDiagnosticOutput("[BQ]   * Path: {0}", uploadAction.ToPath);
+					VerboseDiagnosticOutput("[BQ]   * Snapshotted Path: {0}", uploadAction.Source.SnapshottedPath);
 
 					FileReference fileReference;
 
@@ -841,19 +818,19 @@ namespace DeltaQ.RTB.Agent
 					var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);
 
 					if ((backedUpFileState != null) && (currentLocalFileChecksum == backedUpFileState.Checksum))
-						VerboseWriteLine("[BQ] Remote File State Cache says this exact file is already uploaded, skipping");
+						VerboseDiagnosticOutput("[BQ] Remote File State Cache says this exact file is already uploaded, skipping");
 					else
 					{
 						var currentLastModifiedUTC = File.GetLastWriteTimeUtc(uploadAction.Source.Path);
 
 						if (stream.Length > _parameters.MaximumFileSizeForStagingCopy)
 						{
-							VerboseWriteLine("[BQ] Large file, uploading from snapshot");
+							VerboseDiagnosticOutput("[BQ] Large file, uploading from snapshot");
 							fileReference = new FileReference(uploadAction.Source, stream, currentLastModifiedUTC, currentLocalFileChecksum);
 						}
 						else
 						{
-							VerboseWriteLine("[BQ] Small file, staging file and releasing snapshot");
+							VerboseDiagnosticOutput("[BQ] Small file, staging file and releasing snapshot");
 
 							var stagedCopy = _staging.StageFile(stream);
 
@@ -869,9 +846,9 @@ namespace DeltaQ.RTB.Agent
 
 					break;
 				case MoveAction moveAction:
-					VerboseWriteLine("[BQ] => MoveAction");
-					VerboseWriteLine("[BQ]   * From Path: {0}", moveAction.FromPath);
-					VerboseWriteLine("[BQ]   * To Path: {0}", moveAction.ToPath);
+					VerboseDiagnosticOutput("[BQ] => MoveAction");
+					VerboseDiagnosticOutput("[BQ]   * From Path: {0}", moveAction.FromPath);
+					VerboseDiagnosticOutput("[BQ]   * To Path: {0}", moveAction.ToPath);
 
 					var fileState = _remoteFileStateCache.GetFileState(moveAction.FromPath);
 
@@ -880,7 +857,7 @@ namespace DeltaQ.RTB.Agent
 
 					if (_parameters.IsExcludedPath(moveAction.ToPath))
 					{
-						VerboseWriteLine("[BQ] Move target is an excluded path, converting to DeleteAction");
+						VerboseDiagnosticOutput("[BQ] Move target is an excluded path, converting to DeleteAction");
 
 						// Convert to a DeleteAction if we can't see the file any more.
 						var deleteAction = new DeleteAction(moveAction.FromPath);
@@ -889,14 +866,14 @@ namespace DeltaQ.RTB.Agent
 					}
 					else
 					{
-						VerboseWriteLine("[BQ] Registering file move in storage");
+						VerboseDiagnosticOutput("[BQ] Registering file move in storage");
 
 						_storage.MoveFile(
 							PlaceInContentPath(moveAction.FromPath),
 							PlaceInContentPath(moveAction.ToPath),
 							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
 
-						VerboseWriteLine("[BQ] Registering file move in Remote File State Cache");
+						VerboseDiagnosticOutput("[BQ] Registering file move in Remote File State Cache");
 
 						_remoteFileStateCache.RemoveFileState(moveAction.FromPath);
 						_remoteFileStateCache.UpdateFileState(moveAction.ToPath, fileState);
@@ -904,15 +881,15 @@ namespace DeltaQ.RTB.Agent
 
 					break;
 				case DeleteAction deleteAction:
-					VerboseWriteLine("[BQ] => DeleteAction:");
-					VerboseWriteLine("[BQ]   * Path: {0}", deleteAction.Path);
-					VerboseWriteLine("[BQ] Removing from Remote File State Cache");
+					VerboseDiagnosticOutput("[BQ] => DeleteAction:");
+					VerboseDiagnosticOutput("[BQ]   * Path: {0}", deleteAction.Path);
+					VerboseDiagnosticOutput("[BQ] Removing from Remote File State Cache");
 
 					if (!_remoteFileStateCache.RemoveFileState(deleteAction.Path))
-						VerboseWriteLine("[BQ] Nothing to do, file was already not in the Remote File State Cache");
+						VerboseDiagnosticOutput("[BQ] Nothing to do, file was already not in the Remote File State Cache");
 					else
 					{
-						VerboseWriteLine("[BQ] Deleting file from storage");
+						VerboseDiagnosticOutput("[BQ] Deleting file from storage");
 
 						_storage.DeleteFile(
 							PlaceInContentPath(deleteAction.Path),
@@ -1010,19 +987,36 @@ namespace DeltaQ.RTB.Agent
 
 					using (fileToUpload)
 					{
-						VerboseWriteLine("[UP] Uploading: {0}", fileToUpload.Path);
+						VerboseDiagnosticOutput("[UP] Uploading: {0}", fileToUpload.Path);
 
-						_storage.UploadFile(PlaceInContentPath(fileToUpload.Path), fileToUpload.Stream, cancellationToken);
+						try
+						{
+							_storage.UploadFile(PlaceInContentPath(fileToUpload.Path), fileToUpload.Stream, cancellationToken);
+						}
+						catch (TaskCanceledException)
+						{
+							OnDiagnosticOutput("Upload task cancelled");
+							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
+							continue;
+						}
 
-						VerboseWriteLine("[UP] Registering file state change");
-						_remoteFileStateCache.UpdateFileState(
-							fileToUpload.Path,
-							new FileState()
-							{
-								FileSize = fileToUpload.Stream.Length,
-								LastModifiedUTC = fileToUpload.LastModifiedUTC,
-								Checksum = fileToUpload.Checksum,
-							});
+						VerboseDiagnosticOutput("[UP] Registering file state change");
+
+						try
+						{
+							_remoteFileStateCache.UpdateFileState(
+								fileToUpload.Path,
+								new FileState()
+								{
+									FileSize = fileToUpload.Stream.Length,
+									LastModifiedUTC = fileToUpload.LastModifiedUTC,
+									Checksum = fileToUpload.Checksum,
+								});
+						}
+						catch (TaskCanceledException)
+						{
+							Console.Error.WriteLine("A remote file state cache upload operation was cancelled. This may result in consistency errors.");
+						}
 					}
 				}
 			}
@@ -1036,17 +1030,17 @@ namespace DeltaQ.RTB.Agent
 		{
 			_stopping = false;
 
-			NonQuietWriteLine("Indexing ZFS volumes");
+			NonQuietDiagnosticOutput("Indexing ZFS volumes");
 
 			_zfsInstanceByMountPoint.Clear();
 
 			foreach (var volume in _zfs.EnumerateVolumes())
 			{
-				NonQuietWriteLine("* {0}", volume.MountPoint);
+				NonQuietDiagnosticOutput("* {0}", volume.MountPoint);
 
 				if (!Directory.Exists(Path.Combine(volume.MountPoint!, ".zfs")))
 				{
-					NonQuietWriteLine("  => Not a real mount!");
+					NonQuietDiagnosticOutput("  => Not a real mount!");
 					continue;
 				}
 
@@ -1057,7 +1051,7 @@ namespace DeltaQ.RTB.Agent
 
 			_zfsInstanceByMountPoint.Sort((left, right) => right.MountPoint.Length - left.MountPoint.Length);
 
-			using (var output = new DiagnosticOutputHook(_surfaceArea, NonQuietWriteLine))
+			using (var output = new DiagnosticOutputHook(_surfaceArea, NonQuietDiagnosticOutput))
 			{
 				output.WriteLine("Building surface area");
 				_surfaceArea.BuildDefault();
@@ -1065,24 +1059,24 @@ namespace DeltaQ.RTB.Agent
 
 			if (_parameters.EnableFileAccessNotify)
 			{
-				using (var output = new DiagnosticOutputHook(_monitor, NonQuietWriteLine))
+				using (var output = new DiagnosticOutputHook(_monitor, NonQuietDiagnosticOutput))
 				{
 					output.WriteLine("Starting file system monitor");
 					_monitor.Start();
 				}
 			}
 
-			NonQuietWriteLine("Authenticating with remote storage");
+			NonQuietDiagnosticOutput("Authenticating with remote storage");
 			_storage.Authenticate();
 
-			NonQuietWriteLine("Starting worker threads:");
-			NonQuietWriteLine("=> Open files poller");
+			NonQuietDiagnosticOutput("Starting worker threads:");
+			NonQuietDiagnosticOutput("=> Open files poller");
 			StartPollOpenFilesThread();
-			NonQuietWriteLine("=> Long poller");
+			NonQuietDiagnosticOutput("=> Long poller");
 			StartLongPollingThread();
-			NonQuietWriteLine("=> Backup queue processor");
+			NonQuietDiagnosticOutput("=> Backup queue processor");
 			StartProcessBackupQueueThread();
-			NonQuietWriteLine("=> Uploader");
+			NonQuietDiagnosticOutput("=> Uploader");
 			StartUploadThreads();
 		}
 
@@ -1090,18 +1084,18 @@ namespace DeltaQ.RTB.Agent
 		{
 			_stopping = true;
 
-			NonQuietWriteLine("Stopping file system monitor (if running)");
+			NonQuietDiagnosticOutput("Stopping file system monitor (if running)");
 			_monitor.Stop();
 
-			NonQuietWriteLine("Stopping remote file state cache");
+			NonQuietDiagnosticOutput("Stopping remote file state cache");
 			_remoteFileStateCache.Stop();
 
-			NonQuietWriteLine("Waking threads so they can exit:");
-			NonQuietWriteLine("=> Open files poller");
+			NonQuietDiagnosticOutput("Waking threads so they can exit:");
+			NonQuietDiagnosticOutput("=> Open files poller");
 			WakePollOpenFilesThread();
-			NonQuietWriteLine("=> Long poller");
+			NonQuietDiagnosticOutput("=> Long poller");
 			WakeLongPollingThread();
-			NonQuietWriteLine("=> Backup queue processor");
+			NonQuietDiagnosticOutput("=> Backup queue processor");
 			WakeProcessBackupQueueThread();
 
 			if (!WaitForProcessBackupQueueThreadToExit(TimeSpan.FromSeconds(3)))
@@ -1112,17 +1106,25 @@ namespace DeltaQ.RTB.Agent
 
 			// We don't need to sync to the open file handles polling thread exiting because it doesn't take actions.
 
-			NonQuietWriteLine("=> Uploader");
+			NonQuietDiagnosticOutput("=> Uploader");
 			InterruptUploadThreads();
 
 			WaitForUploadThreadsToExit();
 
-			NonQuietWriteLine("Flushing remote file state cache");
+			NonQuietDiagnosticOutput("Flushing remote file state cache");
 
 			_remoteFileStateCache.WaitWhileBusy();
-			_remoteFileStateCache.UploadCurrentBatchAndBeginNext();
 
-			NonQuietWriteLine("Cleaning up resources");
+			try
+			{
+				_remoteFileStateCache.UploadCurrentBatchAndBeginNext();
+			}
+			catch (TaskCanceledException)
+			{
+				Console.Error.WriteLine("The remote file state cache upload operation was cancelled. This may result in consistency errors.");
+			}
+
+			NonQuietDiagnosticOutput("Cleaning up resources");
 
 			CleanUpLongPollingThread();
 			CleanUpProcessBackupQueueThread();

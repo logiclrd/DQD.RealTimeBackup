@@ -20,9 +20,9 @@ namespace DeltaQ.RTB.Utility
 			_subject.DiagnosticOutput -= subject_DiagnosticOutput;
 		}
 
-		void subject_DiagnosticOutput(object? sender, string message)
+		void subject_DiagnosticOutput(object? sender, DiagnosticMessage message)
 		{
-			WriteLine(message);
+			WriteLine(message.Message);
 		}
 
 		public void WriteLine(string format, object[] args)

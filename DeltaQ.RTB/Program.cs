@@ -21,6 +21,7 @@ using DeltaQ.RTB.Utility;
 using Timer = DeltaQ.RTB.Utility.Timer;
 
 using Bytewizer.Backblaze.Client;
+using System.Runtime.InteropServices.ObjectiveC;
 
 namespace DeltaQ.RTB
 {
@@ -96,6 +97,8 @@ namespace DeltaQ.RTB
 
 		static int Main()
 		{
+			Console.Write("\x1B[;r\x1B[2J");
+
 			CommandLineArguments? args = null;
 
 			try
@@ -162,11 +165,24 @@ namespace DeltaQ.RTB
 
 					var container = InitializeContainer(parameters);
 
-					var qq = container.Resolve<IStorageClient>();
-
-					var response = qq.Connect();
-
 					var backupAgent = container.Resolve<IBackupAgent>();
+
+					object scrollWindowSync = new object();
+
+					backupAgent.DiagnosticOutput +=
+						(sender, e) =>
+						{
+							if (e.IsVerbose && !parameters.Verbose)
+								return;
+							if (e.IsUnimportant && parameters.Quiet)
+								return;
+
+							lock (scrollWindowSync)
+							{
+								Console.WriteLine(e.Message);
+								Console.Out.Flush();
+							}
+						};
 
 					if (!parameters.Quiet)
 						Console.WriteLine("Starting backup agent...");
@@ -174,19 +190,23 @@ namespace DeltaQ.RTB
 					backupAgent.Start();
 
 					if (!parameters.Quiet)
-						Console.WriteLine("Processing manual submissions");
+							Console.WriteLine("Processing manual submissions");
 
 					foreach (var move in args.PathsToMove)
 					{
 						if (!parameters.Quiet)
-							Console.WriteLine("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
+							lock (scrollWindowSync)
+								Console.WriteLine("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
+
 						backupAgent.NotifyMove(move.FromPath, move.ToPath);
 					}
 
 					foreach (var pathToCheck in args.PathsToCheck)
 					{
 						if (!parameters.Quiet)
-							Console.WriteLine("=> CHECK '{0}'", pathToCheck);
+							lock (scrollWindowSync)
+								Console.WriteLine("=> CHECK '{0}'", pathToCheck);
+
 						backupAgent.CheckPath(pathToCheck);
 					}
 
@@ -199,18 +219,31 @@ namespace DeltaQ.RTB
 						string headings = InitialBackupStatus.Headings;
 						string separator = InitialBackupStatus.Separator;
 
-						orchestrator.PerformInitialBackup(
-							statusUpdate =>
-							{
-								Console.WriteLine();
-								Console.WriteLine(headings);
-								Console.WriteLine(separator);
-								Console.Write(statusUpdate);
+						// Clear the screen.
+						Console.Write("\x1B[;r\x1B[2J");
 
-								Console.CursorLeft = 0;
-								Console.CursorTop = Math.Max(0, Console.CursorTop - 3);
-							},
-							cancellationTokenSource.Token);
+						using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 3))
+						{
+							orchestrator.PerformInitialBackup(
+								statusUpdate =>
+								{
+									lock (scrollWindowSync)
+									{
+										using (scrollWindow.Suspend())
+										{
+											Console.CursorLeft = 0;
+											Console.CursorTop = Console.WindowHeight - 3;
+
+											Console.WriteLine(headings);
+											Console.WriteLine(separator);
+											Console.Write(statusUpdate);
+
+											scrollWindow.LastRow = Console.WindowHeight - 4;
+										}
+									}
+								},
+								cancellationTokenSource.Token);
+						}
 
 						if (args.InitialBackupThenExit)
 							stopEvent.Set();
