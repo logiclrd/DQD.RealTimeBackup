@@ -365,7 +365,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();
@@ -421,7 +421,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();
@@ -610,7 +610,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();
@@ -740,7 +740,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();

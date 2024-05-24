@@ -10,6 +10,7 @@ namespace DeltaQ.RTB.StateCache
 		bool RemoveFileState(string path);
 		void Stop();
 		void WaitWhileBusy();
+		void UploadCurrentBatchAndBeginNext(bool deferConsolidation = false);
 	}
 }
 

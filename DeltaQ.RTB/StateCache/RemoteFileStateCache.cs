@@ -188,6 +188,9 @@ namespace DeltaQ.RTB.StateCache
 
 				if (_currentBatchWriter == null)
 				{
+					if (_parameters.Verbose)
+						Console.WriteLine("[RFSC] Opening batch writer for batch number {0}", _currentBatchNumber);
+
 					_currentBatchWriter = _cacheStorage.OpenBatchFileWriter(_currentBatchNumber);
 					_currentBatchWriter.AutoFlush = true;
 				}
@@ -209,21 +212,25 @@ namespace DeltaQ.RTB.StateCache
 					UploadCurrentBatchAndBeginNext();
 		}
 
-		internal void UploadCurrentBatchAndBeginNext()
+		public void UploadCurrentBatchAndBeginNext(bool deferConsolidation = false)
 		{
-			int batchNumberToUpload;
+			int batchNumberToUpload = -1;
 
 			lock (this)
 			{
-				batchNumberToUpload = _currentBatchNumber;
+				if (_currentBatch.Any())
+				{
+					batchNumberToUpload = _currentBatchNumber;
 
-				_currentBatchNumber++;
-				_currentBatch.Clear();
-				_currentBatchWriter?.Close();
-				_currentBatchWriter = null;
+					_currentBatchNumber++;
+					_currentBatch.Clear();
+					_currentBatchWriter?.Close();
+					_currentBatchWriter = null;
+				}
 			}
 
-			UploadBatch(batchNumberToUpload);
+			if (batchNumberToUpload > 0)
+				UploadBatch(batchNumberToUpload);
 
 			bool shouldConsolidate = false;
 
@@ -233,28 +240,38 @@ namespace DeltaQ.RTB.StateCache
 					shouldConsolidate = true;
 			}
 
-			if (shouldConsolidate)
+			if (shouldConsolidate && !deferConsolidation)
 			{
-				lock (_consolidationSync)
+				bool consolidated;
+
+				do
 				{
-					lock (this)
-					{
-						if (_cacheStorage.EnumerateBatches().Count() <= 3)
-							shouldConsolidate = false;
-					}
+					consolidated = false;
 
-					if (shouldConsolidate)
+					lock (_consolidationSync)
 					{
-						int removedBatchNumber = ConsolidateOldestBatch();
-
-						if (removedBatchNumber >= 0)
+						lock (this)
 						{
-							string remoteBatchPath = "/state/" + removedBatchNumber;
+							if (_cacheStorage.EnumerateBatches().Count() <= 3)
+								shouldConsolidate = false;
+						}
 
-							_remoteStorage.DeleteFile(remoteBatchPath, CancellationToken.None);
+						if (shouldConsolidate)
+						{
+							int removedBatchNumber = ConsolidateOldestBatch();
+
+							if (removedBatchNumber >= 0)
+							{
+								consolidated = true;
+
+								string remoteBatchPath = "/state/" + removedBatchNumber;
+
+								_remoteStorage.DeleteFile(remoteBatchPath, CancellationToken.None);
+							}
 						}
 					}
 				}
+				while (consolidated);
 			}
 		}
 
@@ -263,7 +280,7 @@ namespace DeltaQ.RTB.StateCache
 			string batchRemotePath = "/state/" + batchNumberToUpload;
 
 			using (var stream = _cacheStorage.OpenBatchFileStream(batchNumberToUpload))
-				_remoteStorage.UploadFile(batchRemotePath, stream, CancellationToken.None);
+				_remoteStorage.UploadFileDirect(batchRemotePath, stream, CancellationToken.None);
 		}
 
 		internal int ConsolidateOldestBatch()

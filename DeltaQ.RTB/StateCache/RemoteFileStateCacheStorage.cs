@@ -24,10 +24,14 @@ namespace DeltaQ.RTB.StateCache
 
 		public StreamWriter OpenBatchFileWriter(int batchNumber)
 		{
-			return new StreamWriter(
-				Path.Combine(
-					_parameters.RemoteFileStateCachePath,
-					batchNumber.ToString()));
+			var path = Path.Combine(
+				_parameters.RemoteFileStateCachePath,
+				batchNumber.ToString());
+
+			if (_parameters.Verbose)
+				Console.WriteLine("[RFSCS] OpenBatchFileWriter, path is {0}", path);
+
+			return new StreamWriter(path);
 		}
 
 		public StreamReader OpenBatchFileReader(int batchNumber)

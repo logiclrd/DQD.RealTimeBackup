@@ -135,6 +135,8 @@ namespace DeltaQ.RTB
 								Console.WriteLine("Received SIGINT");
 							stopEvent.Set();
 							stoppedEvent.WaitOne();
+							if (parameters.Verbose)
+								Console.WriteLine("Returning from SIGINT handler");
 						};
 
 					AppDomain.CurrentDomain.ProcessExit +=
@@ -144,21 +146,39 @@ namespace DeltaQ.RTB
 								Console.WriteLine("Received SIGTERM");
 							stopEvent.Set();
 							stoppedEvent.WaitOne();
+							if (parameters.Verbose)
+								Console.WriteLine("Returning from SIGTERM handler");
 						};
 
 					var container = InitializeContainer(parameters);
+
+					var qq = container.Resolve<IStorageClient>();
+
+					var response = qq.Connect();
 
 					var backupAgent = container.Resolve<IBackupAgent>();
 
 					if (!parameters.Quiet)
 						Console.WriteLine("Starting backup agent...");
+
 					backupAgent.Start();
 
+					if (!parameters.Quiet)
+						Console.WriteLine("Processing manual submissions");
+
 					foreach (var move in args.PathsToMove)
+					{
+						if (!parameters.Quiet)
+							Console.WriteLine("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
 						backupAgent.NotifyMove(move.FromPath, move.ToPath);
+					}
 
 					foreach (var pathToCheck in args.PathsToCheck)
+					{
+						if (!parameters.Quiet)
+							Console.WriteLine("=> CHECK '{0}'", pathToCheck);
 						backupAgent.CheckPath(pathToCheck);
+					}
 
 					if (args.InitialBackupThenMonitor || args.InitialBackupThenExit)
 					{
@@ -177,8 +197,11 @@ namespace DeltaQ.RTB
 							stopEvent.Set();
 						else
 						{
-							Console.WriteLine();
-							Console.WriteLine("Initial backup complete, switching to realtime mode");
+							if (!parameters.Quiet)
+							{
+								Console.WriteLine();
+								Console.WriteLine("Initial backup complete, switching to realtime mode");
+							}
 
 							backupAgent.UnpauseMonitor();
 						}
@@ -191,6 +214,9 @@ namespace DeltaQ.RTB
 					if (!parameters.Quiet)
 						Console.WriteLine("Stopping backup agent...");
 					backupAgent.Stop();
+
+					if (!parameters.Quiet)
+						Console.WriteLine("All done! Goodbye :-)");
 				}
 				finally
 				{

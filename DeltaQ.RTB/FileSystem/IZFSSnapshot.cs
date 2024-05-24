@@ -2,7 +2,7 @@ using System;
 
 namespace DeltaQ.RTB.FileSystem
 {
-	public interface IZFSSnapshot : IDisposable
+	public interface IZFSSnapshot : IZFS, IDisposable
 	{
 		string SnapshotName { get; }
 

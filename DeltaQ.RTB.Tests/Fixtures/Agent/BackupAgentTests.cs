@@ -383,7 +383,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 				var fileReference = sut.PeekUploadQueue().Single();
 
-				fileReference.Path.Should().Be(stagedFilePath);
+				fileReference.Path.Should().Be(file.Path);
+				fileReference.StagedFile.Should().NotBeNull();
+				fileReference.StagedFile!.Path.Should().Be(stagedFilePath);
 			}
 		}
 

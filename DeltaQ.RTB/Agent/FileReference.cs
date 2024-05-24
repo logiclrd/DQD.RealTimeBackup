@@ -13,19 +13,25 @@ namespace DeltaQ.RTB.Agent
 		public IStagedFile? StagedFile;
 
 		public Stream Stream;
+		public DateTime LastModifiedUTC;
+		public string Checksum;
 
-		public FileReference(SnapshotReference snapshotReference, Stream stream)
+		public FileReference(SnapshotReference snapshotReference, Stream stream, DateTime lastModifiedUTC, string checksum)
 		{
 			this.Path = snapshotReference.Path;
 			this.SnapshotReference = snapshotReference;
 			this.Stream = stream;
+			this.LastModifiedUTC = lastModifiedUTC;
+			this.Checksum = checksum;
 		}
 
-		public FileReference(string path, IStagedFile stagedFile)
+		public FileReference(string path, IStagedFile stagedFile, DateTime lastModifiedUTC, string checksum)
 		{
-			this.Path = stagedFile.Path;
+			this.Path = path;
 			this.StagedFile = stagedFile;
 			this.Stream = File.OpenRead(stagedFile.Path);
+			this.LastModifiedUTC = lastModifiedUTC;
+			this.Checksum = checksum;
 		}
 
 		public void Dispose()

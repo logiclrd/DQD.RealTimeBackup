@@ -59,6 +59,7 @@ namespace DeltaQ.RTB.InitialBackup
 					self.Priority = ThreadPriority.Normal;
 				});
 
+			thread.Name = "Initial Backup Queue Thread";
 			thread.Start(thread);
 
 			// Poll status
