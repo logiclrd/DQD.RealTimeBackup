@@ -62,7 +62,7 @@ namespace DeltaQ.RTB.Agent
 			_monitor.PathDelete += monitor_PathDelete;
 		}
 
-		static string PlaceInContentPath(string path)
+		static internal string PlaceInContentPath(string path)
 		{
 			if (path.StartsWith("/"))
 				return "/content" + path;
@@ -839,7 +839,7 @@ namespace DeltaQ.RTB.Agent
 						if (stream.Length > _parameters.MaximumFileSizeForStagingCopy)
 						{
 							VerboseDiagnosticOutput("[BQ] Large file, uploading from snapshot");
-							fileReference = new FileReference(uploadAction.Source, stream, currentLastModifiedUTC, currentLocalFileChecksum);
+							fileReference = new FileReference(uploadAction.Source, currentLastModifiedUTC, currentLocalFileChecksum);
 						}
 						else
 						{
@@ -1026,7 +1026,11 @@ namespace DeltaQ.RTB.Agent
 
 						try
 						{
-							_storage.UploadFile(PlaceInContentPath(fileToUpload.Path), fileToUpload.Stream, cancellationToken);
+							using (var stream = File.OpenRead(fileToUpload.SourcePath))
+							{
+								fileToUpload.FileSize = stream.Length;
+								_storage.UploadFile(PlaceInContentPath(fileToUpload.Path), stream, cancellationToken);
+							}
 						}
 						catch (Exception ex)
 						{
@@ -1044,7 +1048,7 @@ namespace DeltaQ.RTB.Agent
 								fileToUpload.Path,
 								new FileState()
 								{
-									FileSize = fileToUpload.Stream.Length,
+									FileSize = fileToUpload.FileSize,
 									LastModifiedUTC = fileToUpload.LastModifiedUTC,
 									Checksum = fileToUpload.Checksum,
 								});
@@ -1080,7 +1084,7 @@ namespace DeltaQ.RTB.Agent
 					continue;
 				}
 
-				var volumeZFS = new ZFS(_parameters, volume);
+				var volumeZFS = new ZFS(_parameters, volume, _zfs);
 
 				_zfsInstanceByMountPoint.Add((volume.MountPoint!, volumeZFS));
 			}

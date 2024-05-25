@@ -12,8 +12,8 @@ namespace DeltaQ.RTB.FileSystem
 
 		public string SnapshotName => _snapshotName;
 
-		public ZFSSnapshot(OperatingParameters parameters, string deviceName, string snapshotName)
-			: base(parameters, deviceName)
+		public ZFSSnapshot(OperatingParameters parameters, string deviceName, string snapshotName, IZFS? rootInstance)
+			: base(parameters, deviceName, rootInstance)
 		{
 			_snapshotName = snapshotName;
 

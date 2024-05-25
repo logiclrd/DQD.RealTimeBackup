@@ -123,6 +123,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			// Act
@@ -130,6 +131,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Assert
@@ -153,6 +155,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			// Act
@@ -160,6 +163,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Assert
@@ -177,6 +181,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			// Act
@@ -184,6 +189,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Assert
@@ -205,12 +211,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Act
@@ -240,12 +248,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Act
@@ -280,12 +290,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Act
@@ -314,12 +326,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Act
@@ -361,6 +375,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
@@ -382,6 +397,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			foreach (var fileState in newFileStates)
@@ -417,6 +433,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
@@ -438,7 +455,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
+
+			sut.Start();
 
 			foreach (var fileState in newFileStates)
 				sut.UpdateFileState(fileState.Path, fileState);
@@ -449,6 +469,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
+			sut.DrainActionQueue();
+
 			uploads.Should().HaveCount(1);
 
 			var upload = uploads.Single();
@@ -507,6 +529,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
@@ -537,6 +560,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			foreach (var fileState in newFileStates)
@@ -606,6 +630,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
@@ -627,6 +652,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
 
 			// Act
@@ -736,6 +762,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var parameters = new OperatingParameters();
 			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var uploads = new List<(string ServerPath, byte[] Content)>();
@@ -757,12 +784,17 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				parameters,
 				timer,
 				dummyStorage,
+				cacheActionLog,
 				remoteStorage);
+
+			sut.Start();
 
 			// Act
 			int deletedBatchNumber = sut.ConsolidateOldestBatch();
 
 			// Assert
+			sut.DrainActionQueue();
+
 			deletedBatchNumber.Should().Be(1);
 
 			int mergedBatchNumber = deletedBatchNumber + 1;

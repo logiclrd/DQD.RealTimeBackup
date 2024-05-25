@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -137,26 +138,25 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				out var remoteFileStateCache,
 				out var storage);
 
+			string filePath = _faker.System.FilePath();
+
 			bool hasOpenFileHandles = true;
 
-			openFileHandles.Enumerate(Arg.Any<string>()).Returns(
+			openFileHandles.EnumerateAll().Returns(
 				x =>
 				{
-					var path = x.Arg<string>();
-
 					if (hasOpenFileHandles)
 					{
 						var openFileHandle = autoFaker.Generate<OpenFileHandle>();
 
 						openFileHandle.FileAccess = FileAccess.Write;
+						openFileHandle.FileName = filePath;
 
 						return new[] { openFileHandle };
 					}
 					else
 						return new OpenFileHandle[0];
 				});
-
-			string filePath = _faker.System.FilePath();
 
 			var snapshot = Substitute.For<IZFSSnapshot>();
 
@@ -182,14 +182,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				Thread.Sleep(parameters.OpenFileHandlePollingInterval * 1.5);
 
 				sut.BackupQueue.Should().BeEmpty();
-				openFileHandles.Received().Enumerate(filePath);
+				openFileHandles.Received().EnumerateAll();
 				openFileHandles.ClearReceivedCalls();
 
 				hasOpenFileHandles = false;
 
 				Thread.Sleep(parameters.OpenFileHandlePollingInterval);
 
-				openFileHandles.Received().Enumerate(filePath);
+				openFileHandles.Received().EnumerateAll();
 				sut.BackupQueue.Should().Contain(x => (x is UploadAction) && (((UploadAction)x).Source == reference));
 			}
 			finally
@@ -393,8 +393,6 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 		public void UploadThreadProc_should_upload_files()
 		{
 			// Arrange
-			var autoFaker = AutoFaker.Create();
-
 			var parameters = new OperatingParameters();
 
 			var sut = CreateSUT(
@@ -411,19 +409,64 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			sut.Start();
 
-			var fileReferences =
-				new[]
-				{
-					autoFaker.Generate<FileReference>(),
-					autoFaker.Generate<FileReference>(),
-					autoFaker.Generate<FileReference>(),
-				};
+			var fileReferences = new List<FileReference>();
+			var temporaryFiles = new List<TemporaryFile>();
 
-			foreach (var reference in fileReferences)
-				reference.Stream = new MemoryStream();
+			void CreateFakeFileReference()
+			{
+				var temporaryFile = new TemporaryFile();
+
+				temporaryFiles.Add(temporaryFile);
+
+				File.WriteAllText(temporaryFile.Path, _faker.Lorem.Paragraph());
+
+				string path = _faker.System.FilePath();;
+				var stagedFile = Substitute.For<IStagedFile>();
+				DateTime lastModifiedUTC = _faker.Date.Recent();
+				var checksum = _faker.Random.Hash(length: 32);
+
+				stagedFile.Path.Returns(temporaryFile.Path);
+
+				var fileReference = new FileReference(path, stagedFile, lastModifiedUTC, checksum);
+
+				fileReferences.Add(fileReference);
+			}
+
+			CreateFakeFileReference();
+			CreateFakeFileReference();
+			CreateFakeFileReference();
 
 			try
 			{
+				var fileContents = new List<string>();
+
+				var uploadedFiles = new List<(string Path, string Content)>();
+
+				foreach (var reference in fileReferences)
+				{
+					var temporaryFile = new TemporaryFile();
+
+					reference.SourcePath = temporaryFile.Path;
+
+					string contents = Guid.NewGuid().ToString();
+
+					File.WriteAllText(reference.SourcePath, contents);
+
+					fileContents.Add(contents);
+				}
+
+				storage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						string path = x.Arg<string>();
+						Stream stream = x.Arg<Stream>();
+
+						string contents = new StreamReader(stream).ReadToEnd();
+
+						lock (uploadedFiles)
+							uploadedFiles.Add((path, contents));
+					});
+
 				// Act
 				foreach (var reference in fileReferences)
 					sut.AddFileReferenceToUploadQueue(reference);
@@ -439,12 +482,22 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				// Assert
 				sut.PeekUploadQueue().Should().BeEmpty();
 
-				foreach (var reference in fileReferences)
-					storage.Received().UploadFile(Arg.Any<string>(), Arg.Is(reference.Stream), Arg.Any<CancellationToken>());
+				uploadedFiles.Should().HaveSameCount(fileReferences);
+
+				for (int i=0; i < fileReferences.Count; i++)
+				{
+					var uploadedFile = uploadedFiles.Single(file => file.Path == BackupAgent.PlaceInContentPath(fileReferences[i].Path));
+
+					uploadedFiles.Remove(uploadedFile);
+
+					uploadedFile.Content.Should().Be(fileContents[i]);
+				}
 			}
 			finally
 			{
 				sut.Stop();
+
+				temporaryFiles.ForEach(file => file.Dispose());
 			}
 		}
 	}

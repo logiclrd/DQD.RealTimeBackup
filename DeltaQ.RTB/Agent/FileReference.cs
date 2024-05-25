@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Storage;
 
@@ -12,15 +11,17 @@ namespace DeltaQ.RTB.Agent
 		public SnapshotReference? SnapshotReference;
 		public IStagedFile? StagedFile;
 
-		public Stream Stream;
+		public string SourcePath;
+		public long FileSize;
 		public DateTime LastModifiedUTC;
 		public string Checksum;
 
-		public FileReference(SnapshotReference snapshotReference, Stream stream, DateTime lastModifiedUTC, string checksum)
+		public FileReference(SnapshotReference snapshotReference, DateTime lastModifiedUTC, string checksum)
 		{
 			this.Path = snapshotReference.Path;
 			this.SnapshotReference = snapshotReference;
-			this.Stream = stream;
+			this.SourcePath = snapshotReference.SnapshottedPath;
+			this.FileSize = new FileInfo(this.SourcePath).Length;
 			this.LastModifiedUTC = lastModifiedUTC;
 			this.Checksum = checksum;
 		}
@@ -29,7 +30,8 @@ namespace DeltaQ.RTB.Agent
 		{
 			this.Path = path;
 			this.StagedFile = stagedFile;
-			this.Stream = File.OpenRead(stagedFile.Path);
+			this.SourcePath = stagedFile.Path;
+			this.FileSize = new FileInfo(this.SourcePath).Length;
 			this.LastModifiedUTC = lastModifiedUTC;
 			this.Checksum = checksum;
 		}
@@ -38,8 +40,6 @@ namespace DeltaQ.RTB.Agent
 		{
 			SnapshotReference?.Dispose();
 			StagedFile?.Dispose();
-
-			Stream?.Dispose();
 		}
 	}
 }

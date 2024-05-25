@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection.Metadata;
 using System.Threading;
 
 using DeltaQ.RTB.Storage;
@@ -26,6 +25,7 @@ namespace DeltaQ.RTB.StateCache
 
 		ITimer _timer;
 		IRemoteFileStateCacheStorage _cacheStorage;
+		ICacheActionLog _cacheActionLog;
 		IRemoteStorage _remoteStorage;
 		Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
 		List<FileState> _currentBatch = new List<FileState>();
@@ -65,15 +65,9 @@ namespace DeltaQ.RTB.StateCache
 
 		public void Start()
 		{
-			string actionQueuePath = Path.Combine(_parameters.RemoteFileStateCachePath, ActionQueueDirectoryName);
+			_cacheActionLog.EnsureDirectoryExists();
 
-			Directory.CreateDirectory(actionQueuePath);
-
-			List<long> outstandingActionKeys = new List<long>();
-
-			foreach (string fileName in Directory.GetFiles(actionQueuePath))
-				if (long.TryParse(fileName, out var actionKey))
-					outstandingActionKeys.Add(actionKey);
+			List<long> outstandingActionKeys = new List<long>(_cacheActionLog.EnumerateActionKeys());
 
 			outstandingActionKeys.Sort();
 
@@ -83,7 +77,7 @@ namespace DeltaQ.RTB.StateCache
 
 				foreach (var key in outstandingActionKeys)
 				{
-					string path = GetQueueActionFileName(key);
+					string path = _cacheActionLog.GetQueueActionFileName(key);
 
 					try
 					{
@@ -95,7 +89,7 @@ namespace DeltaQ.RTB.StateCache
 					}
 					catch (Exception e)
 					{
-						Console.Error.WriteLine("Possible consistency problem. Error rehydrating Remote File State Cache action from path: " + actionQueuePath);
+						Console.Error.WriteLine("Possible consistency problem. Error rehydrating Remote File State Cache action from path: " + _cacheActionLog.ActionQueuePath);
 						Console.Error.WriteLine("=> {0}: {1}", e.GetType().Name, e.Message);
 					}
 				}
@@ -123,12 +117,13 @@ namespace DeltaQ.RTB.StateCache
 		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
 		internal List<FileState> GetCurrentBatchForTest() => _currentBatch;
 
-		public RemoteFileStateCache(OperatingParameters parameters, ITimer timer, IRemoteFileStateCacheStorage cacheStorage, IRemoteStorage remoteStorage)
+		public RemoteFileStateCache(OperatingParameters parameters, ITimer timer, IRemoteFileStateCacheStorage cacheStorage, ICacheActionLog cacheActionLog, IRemoteStorage remoteStorage)
 		{
 			_parameters = parameters;
 
 			_timer = timer;
 			_cacheStorage = cacheStorage;
+			_cacheActionLog = cacheActionLog;
 			_remoteStorage = remoteStorage;
 
 			LoadCache();
@@ -412,8 +407,6 @@ namespace DeltaQ.RTB.StateCache
 			return oldestBatchNumber;
 		}
 
-		const string ActionQueueDirectoryName = "ActionQueue";
-
 		void StartActionThread()
 		{
 			Thread thread = new Thread(ActionThreadProc);
@@ -428,29 +421,9 @@ namespace DeltaQ.RTB.StateCache
 				Monitor.PulseAll(_actionThreadSync);
 		}
 
-		string GetQueueActionFileName(long key)
-		{
-			return Path.Combine(_parameters.RemoteFileStateCachePath, ActionQueueDirectoryName, key.ToString());
-		}
-
 		void QueueAction(CacheAction action)
 		{
-			long actionKey = DateTime.UtcNow.Ticks;
-
-			string actionFileName = GetQueueActionFileName(actionKey);
-
-			while (true)
-			{
-				if (!File.Exists(actionFileName))
-					break;
-
-				actionKey++;
-				actionFileName = GetQueueActionFileName(actionKey);
-			}
-
-			action.ActionFileName = actionFileName;
-
-			File.WriteAllText(actionFileName, action.Serialize());
+			_cacheActionLog.LogAction(action);
 
 			lock (_actionThreadSync)
 			{
@@ -459,84 +432,15 @@ namespace DeltaQ.RTB.StateCache
 			}
 		}
 
+		internal void DrainActionQueue()
+		{
+			lock (_actionThreadSync)
+				while (_actionQueue.Count > 0)
+					Monitor.Wait(_actionThreadSync, TimeSpan.FromSeconds(5));
+		}
+
 		object _actionThreadSync = new object();
 		Queue<CacheAction> _actionQueue = new Queue<CacheAction>();
-
-		class CacheAction
-		{
-			public CacheActionType CacheActionType;
-			public string? SourcePath;
-			public string? Path;
-
-			static void EncodeString(TextWriter writer, string? str)
-			{
-				if (str == null)
-					writer.WriteLine('N');
-				else
-				{
-					writer.Write('V');
-					writer.WriteLine(str);
-				}
-			}
-
-			static string? DecodeString(string? encoded)
-			{
-				if (encoded == null)
-					return null;
-				else if (encoded.StartsWith('V'))
-					return encoded.Substring(1);
-				else if (encoded.StartsWith('N'))
-					return null;
-				else
-					return encoded;
-			}
-
-			public string Serialize()
-			{
-				var buffer = new StringWriter();
-
-				buffer.WriteLine(CacheActionType);
-
-				EncodeString(buffer, Path);
-				EncodeString(buffer, SourcePath);
-
-				return buffer.ToString();
-			}
-
-			public static CacheAction Deserialize(string text)
-			{
-				var buffer = new StringReader(text);
-
-				var ret = new CacheAction();
-
-				Enum.TryParse(
-					typeof(CacheActionType),
-					buffer.ReadLine(),
-					out var parsed);
-
-				if (parsed is CacheActionType cacheActionType)
-					ret.CacheActionType = cacheActionType;
-
-				ret.Path = DecodeString(buffer.ReadLine());
-				ret.SourcePath = DecodeString(buffer.ReadLine());
-
-				return ret;
-			}
-
-			public string? ActionFileName;
-			public bool IsComplete;
-
-			public static CacheAction UploadFile(string sourcePath, string destinationPath)
-				=> new CacheAction() { CacheActionType = CacheActionType.UploadFile, SourcePath = sourcePath, Path = destinationPath };
-			public static CacheAction DeleteFile(string path)
-				=> new CacheAction() { CacheActionType = CacheActionType.DeleteFile, Path = path };
-		}
-
-		enum CacheActionType
-		{
-			UploadFile,
-			DeleteFile,
-		}
 
 		void ActionThreadProc()
 		{
@@ -560,9 +464,14 @@ namespace DeltaQ.RTB.StateCache
 					try
 					{
 						if (action.ActionFileName != null)
+						{
 							File.Delete(action.ActionFileName);
+							action.ActionFileName = null;
+						}
 					}
 					catch {}
+
+					Monitor.PulseAll(_actionThreadSync);
 				}
 			}
 		}
