@@ -106,9 +106,19 @@ namespace DeltaQ.RTB.InitialBackup
 
 					Interlocked.Decrement(ref status.DirectoryQueueSize);
 
-					var enumerable = new FileSystemEnumerable<string>(
-						path,
-						(ref FileSystemEntry entry) => entry.ToFullPath());
+					FileSystemEnumerable<string> enumerable;
+
+					try
+					{
+						enumerable = new FileSystemEnumerable<string>(
+							path,
+							(ref FileSystemEntry entry) => entry.ToFullPath());
+					}
+					catch (DirectoryNotFoundException)
+					{
+						// Removed between enumerating the parent and getting here.
+						continue;
+					}
 
 					enumerable.ShouldIncludePredicate =
 						(ref FileSystemEntry entry) =>

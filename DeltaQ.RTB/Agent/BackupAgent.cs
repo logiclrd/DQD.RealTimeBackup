@@ -1025,7 +1025,7 @@ namespace DeltaQ.RTB.Agent
 			_uploadThreadStatus = new UploadStatus[_parameters.UploadThreadCount];
 
 			for (int i = 0; i < _parameters.UploadThreadCount; i++)
-				new Thread(() => UploadThreadProc(i, _cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start();
+				new Thread(idx => UploadThreadProc((int)idx!, _cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start(i);
 		}
 
 		void InterruptUploadThreads()
@@ -1075,6 +1075,8 @@ namespace DeltaQ.RTB.Agent
 
 		void UploadThreadProc(int threadIndex, CancellationToken cancellationToken)
 		{
+			VerboseDiagnosticOutput("[UP{0}] Thread starting", threadIndex);
+
 			if (_uploadThreadStatus == null)
 				throw new Exception("Internal error");
 
@@ -1102,8 +1104,8 @@ namespace DeltaQ.RTB.Agent
 
 					using (fileToUpload)
 					{
-						VerboseDiagnosticOutput("[UP] Uploading: {0}", fileToUpload.Path);
-						VerboseDiagnosticOutput("[UP] Source path: {0}", fileToUpload.SourcePath);
+						VerboseDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
+						VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
 
 						try
 						{
@@ -1130,7 +1132,7 @@ namespace DeltaQ.RTB.Agent
 							continue;
 						}
 
-						VerboseDiagnosticOutput("[UP] Registering file state change");
+						VerboseDiagnosticOutput("[UP{0}] Registering file state change", threadIndex);
 
 						try
 						{
