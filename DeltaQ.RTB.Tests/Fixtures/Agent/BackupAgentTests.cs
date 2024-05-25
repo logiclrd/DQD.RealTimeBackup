@@ -455,7 +455,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					fileContents.Add(contents);
 				}
 
-				storage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+				storage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<Action<UploadProgress>>(), Arg.Any<CancellationToken>())).Do(
 					x =>
 					{
 						string path = x.Arg<string>();

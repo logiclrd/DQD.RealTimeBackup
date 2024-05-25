@@ -9,6 +9,8 @@ namespace DeltaQ.RTB.Agent
 		void Start();
 		void Stop();
 
+		int UploadThreadCount { get; }
+
 		BackupAgentQueueSizes GetQueueSizes();
 		int OpenFilesCount { get; }
 

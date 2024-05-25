@@ -535,7 +535,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var uploads = new List<(string ServerPath, byte[] Content)>();
 			var deletions = new List<string>();
 
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<Action<UploadProgress>>(), Arg.Any<CancellationToken>())).Do(
 				x =>
 				{
 					var serverPath = x.Arg<string>();

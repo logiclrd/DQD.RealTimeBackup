@@ -306,7 +306,9 @@ namespace DeltaQ.RTB
 						// Clear the screen.
 						Console.Write("\x1B[;r\x1B[2J");
 
-						using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 3))
+						int staticLineCount = 3 + backupAgent.UploadThreadCount;
+
+						using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 3 - backupAgent.UploadThreadCount))
 						{
 							orchestrator.PerformInitialBackup(
 								statusUpdate =>
@@ -316,13 +318,25 @@ namespace DeltaQ.RTB
 										using (scrollWindow.Suspend())
 										{
 											Console.CursorLeft = 0;
-											Console.CursorTop = Console.WindowHeight - 3;
+											Console.CursorTop = Console.WindowHeight - staticLineCount;
 
 											Console.WriteLine(headings);
 											Console.WriteLine(separator);
-											Console.Write(statusUpdate);
+											Console.WriteLine(statusUpdate);
 
-											scrollWindow.LastRow = Console.WindowHeight - 4;
+											if ((statusUpdate.BackupAgentQueueSizes != null)
+											 && (statusUpdate.BackupAgentQueueSizes.UploadThreads != null))
+											{
+												for (int i=0; i < statusUpdate.BackupAgentQueueSizes.UploadThreads.Length; i++)
+												{
+													if (i > 0)
+														Console.WriteLine();
+
+													Console.Write(statusUpdate.BackupAgentQueueSizes.UploadThreads[i]?.Format(Console.WindowWidth - 1));
+												}
+											}
+
+											scrollWindow.LastRow = Console.WindowHeight - staticLineCount - 1;
 										}
 									}
 								},

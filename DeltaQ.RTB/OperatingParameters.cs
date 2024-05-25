@@ -80,11 +80,11 @@ namespace DeltaQ.RTB
 
 		// When a queue hits this many items, things that feed into it will pause until it drops down
 		// to the low water mark.
-		public int QueueHighWaterMark = 100_000;
+		public int QueueHighWaterMark = 10_000;
 
 		// When a queue hits the high water mark, things that feed into it will pause and wait until it
 		// drops down to the low water mark.
-		public int QueueLowWaterMark = 50_000;
+		public int QueueLowWaterMark = 5_000;
 
 		// When polling for open file handles, this much time is the delay between checks.
 		public TimeSpan OpenFileHandlePollingInterval = TimeSpan.FromSeconds(4);

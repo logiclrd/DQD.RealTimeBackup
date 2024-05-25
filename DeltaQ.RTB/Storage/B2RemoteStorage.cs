@@ -1,9 +1,9 @@
 using System;
-using System.Data.Common;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
 using Bytewizer.Backblaze;
 using Bytewizer.Backblaze.Client;
 using Bytewizer.Backblaze.Models;
@@ -201,7 +201,27 @@ namespace DeltaQ.RTB.Storage
 			VerboseWriteLine("[B2] Upload complete");
 		}
 
-		public void UploadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		class UploadProgressProxy : IProgress<ICopyProgress>
+		{
+			Action<UploadProgress> _progressCallback;
+
+			public UploadProgressProxy(Action<UploadProgress> progressCallback)
+			{
+				_progressCallback = progressCallback;
+			}
+
+			public void Report(ICopyProgress value)
+			{
+				var uploadProgress = new UploadProgress();
+
+				uploadProgress.BytesPerSecond = value.BytesPerSecond;
+				uploadProgress.BytesTransferred = value.BytesTransferred;
+
+				_progressCallback(uploadProgress);
+			}
+		}
+
+		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
 		{
 			VerboseWriteLine("[B2] Checking for existing file: {0}", serverPath);
 
@@ -236,7 +256,7 @@ namespace DeltaQ.RTB.Storage
 				isHidden: false,
 				isArchive: true,
 				isCompressed: false,
-				progress: null,
+				progress: progressCallback == null ? default : new UploadProgressProxy(progressCallback),
 				cancel: cancellationToken)));
 
 			VerboseWriteLine("[B2] => Uploading reference to content key to subject path");

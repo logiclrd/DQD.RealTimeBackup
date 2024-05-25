@@ -177,8 +177,17 @@ namespace DeltaQ.RTB.Agent
 				queueSizes.NumberOfFilesPollingContentChanges = _longPollingQueue.Count;
 			lock (_backupQueueSync)
 				queueSizes.NumberOfBackupQueueActions = _backupQueue.Count;
+
 			lock (_uploadQueueSync)
+			{
 				queueSizes.NumberOfQueuedUploads = _uploadQueue.Count;
+
+				if (_uploadThreadStatus != null)
+				{
+					queueSizes.UploadThreads = new UploadStatus[_uploadThreadCount];
+					Array.Copy(_uploadThreadStatus, queueSizes.UploadThreads, _uploadThreadCount);
+				}
+			}
 
 			return queueSizes;
 		}
@@ -343,6 +352,9 @@ namespace DeltaQ.RTB.Agent
 					VerboseDiagnosticOutput("[IN]   * Queuing path for open files check");
 
 					QueuePathForOpenFilesCheck(snapshotReferenceTracker.AddReference(path));
+
+					if (_stopping)
+						break;
 				}
 
 				_snapshotSharingBatch.Clear();
@@ -474,6 +486,9 @@ namespace DeltaQ.RTB.Agent
 							break;
 						}
 					}
+
+					if (_stopping)
+						break;
 				}
 
 				if (filesToPromote.Any())
@@ -995,7 +1010,10 @@ namespace DeltaQ.RTB.Agent
 		CancellationTokenSource? _cancelUploadsCancellationTokenSource;
 		List<FileReference> _uploadQueue = new List<FileReference>();
 		int _uploadThreadCount;
+		UploadStatus?[]? _uploadThreadStatus;
 		Semaphore? _uploadThreadsExited;
+
+		public int UploadThreadCount => _uploadThreadCount;
 
 		void StartUploadThreads()
 		{
@@ -1004,8 +1022,10 @@ namespace DeltaQ.RTB.Agent
 
 			_cancelUploadsCancellationTokenSource = new CancellationTokenSource();
 
+			_uploadThreadStatus = new UploadStatus[_parameters.UploadThreadCount];
+
 			for (int i = 0; i < _parameters.UploadThreadCount; i++)
-				new Thread(() => UploadThreadProc(_cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start();
+				new Thread(() => UploadThreadProc(i, _cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start();
 		}
 
 		void InterruptUploadThreads()
@@ -1036,7 +1056,6 @@ namespace DeltaQ.RTB.Agent
 			_uploadThreadsExited = null;
 		}
 
-
 		public IEnumerable<FileReference> PeekUploadQueue()
 		{
 			lock (_uploadQueueSync)
@@ -1054,8 +1073,11 @@ namespace DeltaQ.RTB.Agent
 			}
 		}
 
-		void UploadThreadProc(CancellationToken cancellationToken)
+		void UploadThreadProc(int threadIndex, CancellationToken cancellationToken)
 		{
+			if (_uploadThreadStatus == null)
+				throw new Exception("Internal error");
+
 			var exited = _uploadThreadsExited;
 
 			try
@@ -1081,13 +1103,23 @@ namespace DeltaQ.RTB.Agent
 					using (fileToUpload)
 					{
 						VerboseDiagnosticOutput("[UP] Uploading: {0}", fileToUpload.Path);
+						VerboseDiagnosticOutput("[UP] Source path: {0}", fileToUpload.SourcePath);
 
 						try
 						{
 							using (var stream = File.OpenRead(fileToUpload.SourcePath))
 							{
 								fileToUpload.FileSize = stream.Length;
-								_storage.UploadFile(PlaceInContentPath(fileToUpload.Path), stream, cancellationToken);
+
+								_uploadThreadStatus[threadIndex] = new UploadStatus(fileToUpload.Path, fileToUpload.FileSize);
+
+								_storage.UploadFile(
+									PlaceInContentPath(fileToUpload.Path),
+									stream,
+									progress => _uploadThreadStatus[threadIndex]!.Progress = progress,
+									cancellationToken);
+
+								_uploadThreadStatus[threadIndex] = null;
 							}
 						}
 						catch (Exception ex)
