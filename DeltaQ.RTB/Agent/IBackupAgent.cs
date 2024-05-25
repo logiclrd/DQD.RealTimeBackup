@@ -10,12 +10,13 @@ namespace DeltaQ.RTB.Agent
 		void Stop();
 
 		BackupAgentQueueSizes GetQueueSizes();
+		int OpenFilesCount { get; }
 
 		void PauseMonitor();
 		void UnpauseMonitor();
 
-		void CheckPath(string path);
-		void CheckPaths(IEnumerable<string> paths);
+		int CheckPath(string path);
+		int CheckPaths(IEnumerable<string> paths);
 		void NotifyMove(string fromPath, string toPath);
 	}
 }

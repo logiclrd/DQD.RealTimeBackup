@@ -21,19 +21,16 @@ using DeltaQ.RTB.Utility;
 using Timer = DeltaQ.RTB.Utility.Timer;
 
 using Bytewizer.Backblaze.Client;
-using System.Runtime.InteropServices.ObjectiveC;
 
 namespace DeltaQ.RTB
 {
 	class Program
 	{
-		const string ConfigurationPath = "/etc/DeltaQ.RTB.xml";
-
 		static OperatingParameters BuildOperatingParameters(CommandLineArguments args)
 		{
 			OperatingParameters parameters;
 
-			if (!File.Exists(ConfigurationPath))
+			if (!File.Exists(args.ConfigurationPath))
 				parameters = new OperatingParameters();
 			else
 			{
@@ -41,12 +38,12 @@ namespace DeltaQ.RTB
 
 				try
 				{
-					using (var stream = File.OpenRead(ConfigurationPath))
+					using (var stream = File.OpenRead(args.ConfigurationPath))
 						parameters = (OperatingParameters)serializer.Deserialize(stream)!;
 				}
 				catch (Exception e)
 				{
-					throw new Exception("Unable to parse configuration file: " + ConfigurationPath, e);
+					throw new Exception("Unable to parse configuration file: " + args.ConfigurationPath, e);
 				}
 			}
 
@@ -95,6 +92,90 @@ namespace DeltaQ.RTB
 			return builder.Build();
 		}
 
+		static object _outputSync = new object();
+		static string? _outputPath;
+		static StreamWriter? _outputFileWriter;
+		static int _outputLineCount;
+		static int _maxOutputLineCount;
+
+		static void InitializeOutput(string? path, int maxLines)
+		{
+			if (path != null)
+			{
+				if (File.Exists(path))
+					File.Move(path, path + ".old", overwrite: true);
+
+				_outputPath = path;
+				_outputFileWriter = new StreamWriter(_outputPath) { AutoFlush = true };
+				_outputLineCount = 0;
+				_maxOutputLineCount = maxLines;
+			}
+		}
+
+		static void EmitOutput(TextWriter console, string line)
+		{
+			console.WriteLine(line);
+
+			if (_outputFileWriter != null)
+			{
+				lock (_outputSync)
+				{
+					_outputFileWriter.WriteLine(line);
+					_outputLineCount++;
+
+					if (_outputLineCount == _maxOutputLineCount)
+					{
+						_outputFileWriter.Close();
+
+						File.Move(_outputPath!, _outputPath + ".old", overwrite: true);
+
+						_outputFileWriter = new StreamWriter(_outputPath!) { AutoFlush = true };
+						_outputLineCount = 0;
+					}
+				}
+			}
+		}
+
+		static void Output()
+		{
+			EmitOutput(Console.Out, "");
+		}
+
+		static void Output(object arg)
+		{
+			EmitOutput(Console.Out, arg.ToString() ?? "(null)");
+		}
+
+		static void Output(string line)
+		{
+			EmitOutput(Console.Out, line);
+		}
+
+		static void Output(string format, params object?[] args)
+		{
+			EmitOutput(Console.Out, string.Format(format, args));
+		}
+
+		static void OutputError()
+		{
+			EmitOutput(Console.Error, "");
+		}
+
+		static void OutputError(object arg)
+		{
+			EmitOutput(Console.Error, arg.ToString() ?? "(null)");
+		}
+
+		static void OutputError(string line)
+		{
+			EmitOutput(Console.Error, line);
+		}
+
+		static void OutputError(string format, params object?[] args)
+		{
+			EmitOutput(Console.Error, string.Format(format, args));
+		}
+
 		static int Main()
 		{
 			Console.Write("\x1B[;r\x1B[2J");
@@ -105,10 +186,12 @@ namespace DeltaQ.RTB
 			{
 				args = new CommandLine().Parse<CommandLineArguments>();
 
+				InitializeOutput(args.LogFilePath, args.LogFileMaxLines);
+
 				if (args.InitialBackupThenMonitor && args.DisableFAN)
 				{
-					Console.Error.WriteLine("Conflicting command-line switches: Cannot begin monitoring if the fanotify integration is disabled.");
-					Console.Error.WriteLine("=> /DISABLEFAN conflicts with /INITIALBACKUPTHENMONITOR");
+					OutputError("Conflicting command-line switches: Cannot begin monitoring if the fanotify integration is disabled.");
+					OutputError("=> /DISABLEFAN conflicts with /INITIALBACKUPTHENMONITOR");
 
 					return 2;
 				}
@@ -117,13 +200,13 @@ namespace DeltaQ.RTB
 
 				if (parameters.Verbose)
 				{
-					Console.WriteLine("My process ID is: {0}", Process.GetCurrentProcess().Id);
-					Console.WriteLine("Command-line: {0}", Environment.CommandLine);
-					Console.WriteLine();
-					Console.WriteLine("Operating parameters:");
+					Output("Command-line: {0}", Environment.CommandLine);
+					Output("My process ID is: {0}", Process.GetCurrentProcess().Id);
+					Output();
+					Output("Operating parameters:");
 
 					foreach (var field in typeof(OperatingParameters).GetFields(BindingFlags.Instance | BindingFlags.Public))
-						Console.WriteLine("- {0}: {1}", field.Name, field.GetValue(parameters));
+						Output("- {0}: {1}", field.Name, field.GetValue(parameters));
 				}
 
 				var stopEvent = new ManualResetEvent(initialState: false);
@@ -143,24 +226,24 @@ namespace DeltaQ.RTB
 						(sender, e) =>
 						{
 							if (parameters.Verbose)
-								Console.WriteLine("Received SIGINT");
+								Output("Received SIGINT");
 
 							Abort();
 
 							if (parameters.Verbose)
-								Console.WriteLine("Returning from SIGINT handler");
+								Output("Returning from SIGINT handler");
 						};
 
 					AppDomain.CurrentDomain.ProcessExit +=
 						(sender, e) =>
 						{
 							if (parameters.Verbose)
-								Console.WriteLine("Received SIGTERM");
+								Output("Received SIGTERM");
 
 							Abort();
 
 							if (parameters.Verbose)
-								Console.WriteLine("Returning from SIGTERM handler");
+								Output("Returning from SIGTERM handler");
 						};
 
 					var container = InitializeContainer(parameters);
@@ -179,24 +262,24 @@ namespace DeltaQ.RTB
 
 							lock (scrollWindowSync)
 							{
-								Console.WriteLine(e.Message);
+								Output(e.Message);
 								Console.Out.Flush();
 							}
 						};
 
 					if (!parameters.Quiet)
-						Console.WriteLine("Starting backup agent...");
+						Output("Starting backup agent...");
 
 					backupAgent.Start();
 
 					if (!parameters.Quiet)
-							Console.WriteLine("Processing manual submissions");
+							Output("Processing manual submissions");
 
 					foreach (var move in args.PathsToMove)
 					{
 						if (!parameters.Quiet)
 							lock (scrollWindowSync)
-								Console.WriteLine("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
+								Output("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
 
 						backupAgent.NotifyMove(move.FromPath, move.ToPath);
 					}
@@ -205,7 +288,7 @@ namespace DeltaQ.RTB
 					{
 						if (!parameters.Quiet)
 							lock (scrollWindowSync)
-								Console.WriteLine("=> CHECK '{0}'", pathToCheck);
+								Output("=> CHECK '{0}'", pathToCheck);
 
 						backupAgent.CheckPath(pathToCheck);
 					}
@@ -251,8 +334,8 @@ namespace DeltaQ.RTB
 						{
 							if (!parameters.Quiet)
 							{
-								Console.WriteLine();
-								Console.WriteLine("Initial backup complete, switching to realtime mode");
+								Output();
+								Output("Initial backup complete, switching to realtime mode");
 							}
 
 							backupAgent.UnpauseMonitor();
@@ -260,15 +343,15 @@ namespace DeltaQ.RTB
 					}
 
 					if (!parameters.Quiet)
-						Console.WriteLine("Waiting for stop signal");
+						Output("Waiting for stop signal");
 					stopEvent.WaitOne();
 
 					if (!parameters.Quiet)
-						Console.WriteLine("Stopping backup agent...");
+						Output("Stopping backup agent...");
 					backupAgent.Stop();
 
 					if (!parameters.Quiet)
-						Console.WriteLine("All done! Goodbye :-)");
+						Output("All done! Goodbye :-)");
 				}
 				finally
 				{
@@ -288,16 +371,16 @@ namespace DeltaQ.RTB
 					verbose = args.Verbose;
 				}
 
-				Console.Error.WriteLine(e);
+				OutputError(e);
 
 				if ((e.InnerException != null) && !quiet)
 				{
-					Console.Error.WriteLine();
+					OutputError();
 
 					if (verbose)
-						Console.WriteLine(e);
+						OutputError(e);
 					else
-						Console.Error.WriteLine("{0}: {1}", e.InnerException.GetType().Name, e.InnerException.Message);
+						OutputError("{0}: {1}", e.InnerException.GetType().Name, e.InnerException.Message);
 				}
 
 				return 1;

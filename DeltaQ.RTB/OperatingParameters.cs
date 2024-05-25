@@ -15,7 +15,23 @@ namespace DeltaQ.RTB
 		// this is used to achieve initial backup.
 		public bool EnableFileAccessNotify = true;
 
-		public List<string> ExcludePaths = new List<string>() { "/var", "/run", "/tmp" };
+		public List<string> ExcludePaths =
+			new List<string>()
+			{
+				"/var",
+				"/run",
+				"/tmp",
+				"/bin",
+				"/lib",
+				"/lib32",
+				"/lib64",
+				"/libx32",
+				"/usr/bin",
+				"/usr/lib",
+				"/opt",
+				"/var/lib/dpkg",
+				"/var/lib/swcatalog",
+			};
 
 		public bool IsExcludedPath(string path)
 		{
@@ -27,7 +43,7 @@ namespace DeltaQ.RTB
 			//   * If the path starts with an ExcludePaths member which is then immediately followed by a '/', return true.
 			//   * Otherwise, return false.
 
-			for (int i=0; i < ExcludePaths.Count; i++)
+			for (int i = 0; i < ExcludePaths.Count; i++)
 			{
 				string excluded = ExcludePaths[i];
 
@@ -61,6 +77,14 @@ namespace DeltaQ.RTB
 
 		// Path to the LSOF binary.
 		public string LSOFBinaryPath = "/usr/bin/lsof";
+
+		// When a queue hits this many items, things that feed into it will pause until it drops down
+		// to the low water mark.
+		public int QueueHighWaterMark = 100_000;
+
+		// When a queue hits the high water mark, things that feed into it will pause and wait until it
+		// drops down to the low water mark.
+		public int QueueLowWaterMark = 50_000;
 
 		// When polling for open file handles, this much time is the delay between checks.
 		public TimeSpan OpenFileHandlePollingInterval = TimeSpan.FromSeconds(4);

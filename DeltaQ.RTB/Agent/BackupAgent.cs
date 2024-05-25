@@ -183,17 +183,30 @@ namespace DeltaQ.RTB.Agent
 			return queueSizes;
 		}
 
-		public void CheckPath(string path)
+		public int CheckPath(string path)
 		{
 			if (File.Exists(path))
 				BeginQueuePathForOpenFilesCheck(path);
 			else if (_remoteFileStateCache.ContainsPath(path))
 				AddActionToBackupQueue(new DeleteAction(path));
+
+			return OpenFilesCount;
 		}
 
-		public void CheckPaths(IEnumerable<string> paths)
+		public int CheckPaths(IEnumerable<string> paths)
 		{
 			BeginQueuePathsForOpenFilesCheckAndCheckForDeletions(paths);
+
+			return OpenFilesCount;
+		}
+
+		public int OpenFilesCount
+		{
+			get
+			{
+				lock (_openFilesSync)
+					return _openFiles.Count;
+			}
 		}
 
 		public void NotifyMove(string fromPath, string toPath)

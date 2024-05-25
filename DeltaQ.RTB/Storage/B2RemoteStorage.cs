@@ -225,7 +225,7 @@ namespace DeltaQ.RTB.Storage
 
 			VerboseWriteLine("[B2] Uploading file to path: {0}", serverPath);
 			VerboseWriteLine("[B2] => New content key: {0}", contentKey);
-			VerboseWriteLine("[B2] => Uploading {0} bytes to content path", contentStream.Length);
+			VerboseWriteLine("[B2] => Uploading {0:#,##0} bytes to content path", contentStream.Length);
 
 			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
 				_parameters.RemoteStorageBucketID,

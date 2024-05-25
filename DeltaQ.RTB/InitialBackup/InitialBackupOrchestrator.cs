@@ -14,13 +14,17 @@ namespace DeltaQ.RTB.InitialBackup
 {
 	public class InitialBackupOrchestrator : IInitialBackupOrchestrator
 	{
+		OperatingParameters _parameters;
+
 		ISurfaceArea _surfaceArea;
 		IBackupAgent _backupAgent;
 		IZFS _zfs;
 		IStat _stat;
 
-		public InitialBackupOrchestrator(ISurfaceArea surfaceArea, IBackupAgent backupAgent, IZFS zfs, IStat stat)
+		public InitialBackupOrchestrator(OperatingParameters parameters, ISurfaceArea surfaceArea, IBackupAgent backupAgent, IZFS zfs, IStat stat)
 		{
+			_parameters = parameters;
+
 			_surfaceArea = surfaceArea;
 			_backupAgent = backupAgent;
 			_zfs = zfs;
@@ -54,6 +58,12 @@ namespace DeltaQ.RTB.InitialBackup
 
 							_backupAgent.CheckPaths(intermediate);
 							intermediate.Clear();
+
+							if (_backupAgent.OpenFilesCount >= _parameters.QueueHighWaterMark)
+							{
+								while (_backupAgent.OpenFilesCount >= _parameters.QueueLowWaterMark)
+									Thread.Sleep(TimeSpan.FromSeconds(10));
+							}
 
 							self.Priority = ThreadPriority.Lowest;
 						}
