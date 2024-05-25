@@ -1,0 +1,12 @@
+#!/bin/bash
+
+CACHEPATH=/var/DeltaQ.RTB/FileStateCache
+
+if [ -d $CACHEPATH ]
+then
+  echo -d says go
+  du --total $CACHEPATH
+  rm -r $CACHEPATH
+else
+  echo Nothing to clean up.
+fi

@@ -1,7 +1,10 @@
 #!/bin/bash
 
-printf "Snapshots to be deleted: "
+NUMSNAPSHOTS=`zfs list -t snapshot | grep RTB- | wc -l`
 
-zfs list -t snapshot | grep RTB- | wc -l
+echo "Snapshots to be deleted: $NUMSNAPSHOTS"
 
-zfs list -t snapshot | grep RTB- | cut -f 1 -d ' ' | xargs --max-args 1 --no-run-if-empty zfs destroy
+if [ $NUMSNAPSHOTS -gt 0 ]
+then
+  zfs list -t snapshot | grep RTB- | cut -f 1 -d ' ' | xargs --max-args 1 --no-run-if-empty zfs destroy
+fi

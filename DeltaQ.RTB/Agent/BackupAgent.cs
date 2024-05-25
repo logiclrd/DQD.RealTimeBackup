@@ -514,6 +514,19 @@ namespace DeltaQ.RTB.Agent
 						.Select(reference => reference.SnapshotReference)
 						.Select(reference => new UploadAction(reference, reference.Path)));
 
+					lock (_backupQueueSync)
+					{
+						if (_backupQueue.Count >= _parameters.QueueHighWaterMark)
+						{
+							VerboseDiagnosticOutput("[OF] Throttle");
+
+							while (_backupQueue.Count >= _parameters.QueueLowWaterMark)
+								Monitor.Wait(_backupQueueSync, TimeSpan.FromSeconds(10));
+
+							VerboseDiagnosticOutput("[OF] Resuming");
+						}
+					}
+
 					filesToPromote.Clear();
 				}
 
@@ -772,13 +785,15 @@ namespace DeltaQ.RTB.Agent
 			_backupQueueExited = null;
 		}
 
+		bool _pauseQueuingUploads = false;
+
 		void ProcessBackupQueueThreadProc()
 		{
 			try
 			{
 				while (!_stopping)
 				{
-					BackupAction backupAction;
+					BackupAction? backupAction = null;
 
 					lock (_backupQueueSync)
 					{
@@ -797,13 +812,50 @@ namespace DeltaQ.RTB.Agent
 						if (_stopping)
 							return;
 
-						backupAction = _backupQueue[_backupQueue.Count - 1];
-						_backupQueue.RemoveAt(_backupQueue.Count - 1);
+						if (_pauseQueuingUploads == false)
+						{
+							backupAction = _backupQueue[_backupQueue.Count - 1];
+							_backupQueue.RemoveAt(_backupQueue.Count - 1);
+						}
+						else
+						{
+							for (int i = _backupQueue.Count - 1; i >= 0; i--)
+							{
+								if (!(_backupQueue[i] is UploadAction))
+								{
+									backupAction = _backupQueue[i];
+									_backupQueue.RemoveAt(i);
+									break;
+								}
+							}
+
+							if (backupAction == null)
+							{
+								lock (_uploadQueueSync)
+								{
+									if (_uploadQueue.Count < _parameters.QueueLowWaterMark)
+									{
+										VerboseDiagnosticOutput("[BQ] Resuming");
+										_pauseQueuingUploads = false;
+										continue;
+									}
+								}
+
+								VerboseDiagnosticOutput("[BQ] Don't have any non-Upload actions, going to sleep");
+
+								Monitor.Wait(_backupQueueSync);
+
+								VerboseDiagnosticOutput("[BQ] Woken up");
+							}
+						}
 					}
 
-					VerboseDiagnosticOutput("[BQ] Dispatching: {0}", backupAction);
+					if (backupAction != null)
+					{
+						VerboseDiagnosticOutput("[BQ] Dispatching: {0}", backupAction);
 
-					ProcessBackupQueueAction(backupAction);
+						ProcessBackupQueueAction(backupAction);
+					}
 				}
 			}
 			finally
@@ -854,7 +906,11 @@ namespace DeltaQ.RTB.Agent
 							uploadAction.Source.Dispose();
 						}
 
-						AddFileReferenceToUploadQueue(fileReference);
+						if (AddFileReferenceToUploadQueue(fileReference) >= _parameters.QueueHighWaterMark)
+						{
+							VerboseDiagnosticOutput("[BQ] Throttle");
+							_pauseQueuingUploads = true;
+						}
 					}
 
 					break;
@@ -987,12 +1043,14 @@ namespace DeltaQ.RTB.Agent
 				return _uploadQueue.ToList();
 		}
 
-		internal void AddFileReferenceToUploadQueue(FileReference fileReference)
+		internal int AddFileReferenceToUploadQueue(FileReference fileReference)
 		{
 			lock (_uploadQueueSync)
 			{
 				_uploadQueue.Add(fileReference);
 				Monitor.PulseAll(_uploadQueueSync);
+
+				return _uploadQueue.Count;
 			}
 		}
 
