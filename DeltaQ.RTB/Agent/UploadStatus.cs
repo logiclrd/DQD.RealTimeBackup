@@ -43,7 +43,7 @@ namespace DeltaQ.RTB.Agent
 			{
 				byteScale = 1.0;
 				byteFormat = "  #,##0";
-				byteUnit = " b";
+				byteUnit = "  b";
 			}
 			else if (FileSize < 1024 * 1024)
 			{
