@@ -332,7 +332,12 @@ namespace DeltaQ.RTB
 													if (i > 0)
 														Console.WriteLine();
 
-													Console.Write(statusUpdate.BackupAgentQueueSizes.UploadThreads[i]?.Format(Console.WindowWidth - 1));
+													string statusLine = statusUpdate.BackupAgentQueueSizes.UploadThreads[i]?.Format(Console.WindowWidth - 1) ?? "";
+
+													Console.Write(statusLine);
+
+													for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
+														Console.Write(' ');
 												}
 											}
 
