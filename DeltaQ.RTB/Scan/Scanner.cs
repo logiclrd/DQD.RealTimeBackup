@@ -3,26 +3,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Enumeration;
 using System.Linq;
-using System.Threading;
 
-using DeltaQ.RTB.Agent;
-using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
+using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Scan
 {
-	public abstract class Scanner
+	public abstract class Scanner : DiagnosticOutputBase
 	{
-		OperatingParameters _parameters;
-
 		ISurfaceArea _surfaceArea;
 		IStat _stat;
 
-		public Scanner(OperatingParameters parameters, ISurfaceArea surfaceArea, IStat stat)
+		public Scanner(ISurfaceArea surfaceArea, IStat stat)
 		{
-			_parameters = parameters;
-
 			_surfaceArea = surfaceArea;
 			_stat = stat;
 		}

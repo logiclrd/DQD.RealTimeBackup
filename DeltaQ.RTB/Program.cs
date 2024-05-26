@@ -253,10 +253,11 @@ namespace DeltaQ.RTB
 
 					var backupAgent = container.Resolve<IBackupAgent>();
 					var periodicRescanScheduler = container.Resolve<IPeriodicRescanScheduler>();
+					var periodicRescanOrchestrator = container.Resolve<IPeriodicRescanOrchestrator>();
 
 					object scrollWindowSync = new object();
 
-					backupAgent.DiagnosticOutput +=
+					EventHandler<DiagnosticMessage> DiagnosticOutputHandler =
 						(sender, e) =>
 						{
 							if (e.IsVerbose && !parameters.Verbose)
@@ -270,6 +271,9 @@ namespace DeltaQ.RTB
 								Console.Out.Flush();
 							}
 						};
+
+					backupAgent.DiagnosticOutput += DiagnosticOutputHandler;
+					periodicRescanOrchestrator.DiagnosticOutput += DiagnosticOutputHandler;
 
 					if (!parameters.Quiet)
 						Output("Starting backup agent...");

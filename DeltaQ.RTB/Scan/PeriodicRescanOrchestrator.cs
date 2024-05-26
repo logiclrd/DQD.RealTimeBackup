@@ -20,7 +20,7 @@ namespace DeltaQ.RTB.Scan
 		IRemoteFileStateCache _remoteFileStateCache;
 
 		public PeriodicRescanOrchestrator(OperatingParameters parameters, ISurfaceArea surfaceArea, IBackupAgent backupAgent, IRemoteFileStateCache remoteFileStateCache, IZFS zfs, IStat stat)
-			: base(parameters, surfaceArea, stat)
+			: base(surfaceArea, stat)
 		{
 			_parameters = parameters;
 
@@ -30,9 +30,13 @@ namespace DeltaQ.RTB.Scan
 
 		public void PerformPeriodicRescan(CancellationToken cancellationToken)
 		{
+			NonQuietDiagnosticOutput("[PR] Beginning periodic rescan");
+
 			var deletedPaths = new HashSet<string>();
 
 			deletedPaths.UnionWith(_remoteFileStateCache.EnumeratePaths());
+
+			NonQuietDiagnosticOutput("[PR] => {0} path{1} currently being tracked", deletedPaths.Count, deletedPaths.Count == 1 ? "" : "s");
 
 			foreach (var path in EnumerateAllFilesInSurfaceArea())
 			{
@@ -46,14 +50,20 @@ namespace DeltaQ.RTB.Scan
 				bool checkPath = false;
 
 				if (fileState == null)
+				{
+					NonQuietDiagnosticOutput("[PR] - New path: {0}", path);
 					checkPath = true;
+				}
 				else
 				{
 					var fileInfo = new FileInfo(fileState.Path);
 					
 					if ((fileState.FileSize != fileInfo.Length)
 					 || (fileState.LastModifiedUTC != fileInfo.LastWriteTimeUtc))
+					{
+						NonQuietDiagnosticOutput("[PR] - Changed path: {0}", path);
 						checkPath = true;
+					}
 				}
 
 				if (checkPath)
@@ -68,7 +78,15 @@ namespace DeltaQ.RTB.Scan
 				}
 			}
 
+			if (deletedPaths.Count < 50)
+				foreach (var deletedPath in deletedPaths)
+					NonQuietDiagnosticOutput("[PR] - Deleted path: {0}", deletedPath);
+			else
+				NonQuietDiagnosticOutput("[PR] - Detected {0:##0,0} deleted paths", deletedPaths.Count);
+
 			_backupAgent.CheckPaths(deletedPaths);
+
+			NonQuietDiagnosticOutput("[PR] Periodic rescan complete");
 		}
 	}
 }

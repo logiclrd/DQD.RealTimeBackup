@@ -13,17 +13,15 @@ namespace DeltaQ.RTB.Scan
 	{
 		OperatingParameters _parameters;
 
-		ISurfaceArea _surfaceArea;
 		IBackupAgent _backupAgent;
 		IZFS _zfs;
 		IStat _stat;
 
 		public InitialBackupOrchestrator(OperatingParameters parameters, ISurfaceArea surfaceArea, IBackupAgent backupAgent, IZFS zfs, IStat stat)
-			: base(parameters, surfaceArea, stat)
+			: base(surfaceArea, stat)
 		{
 			_parameters = parameters;
 
-			_surfaceArea = surfaceArea;
 			_backupAgent = backupAgent;
 			_zfs = zfs;
 			_stat = stat;
