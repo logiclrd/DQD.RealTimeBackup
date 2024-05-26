@@ -233,17 +233,36 @@ namespace DeltaQ.RTB.Storage
 				if (chunkLength < chunkBufferStream.Length)
 					chunkBufferStream.SetLength(chunkLength);
 
-				var partResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.UploadAsync(
-					uploadPartURL,
-					partNumber,
-					uploadAuthorizationToken,
-					chunkBufferStream,
-					progress: progressCallback == null ? default : new UploadProgressProxy(
-						progress =>
-						{
-							progress.BytesTransferred += offset;
-							progressCallback(progress);
-						}))));
+				// Chunks just sometimes randomly fail. Give 'em another go instead of giving up immediately.
+				IApiResults<UploadPartResponse>? partResponse = null;
+
+				for (int i = 0; i < 3; i++)
+				{
+					try
+					{
+						chunkBufferStream.Position = 0;
+
+						partResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.UploadAsync(
+							uploadPartURL,
+							partNumber,
+							uploadAuthorizationToken,
+							chunkBufferStream,
+							progress: progressCallback == null ? default : new UploadProgressProxy(
+								progress =>
+								{
+									progress.BytesTransferred += offset;
+									progressCallback(progress);
+								}))));
+
+						if (partResponse.IsSuccessStatusCode)
+							break;
+					}
+					catch {}
+				}
+
+				// I don't think this ever actually happens, but it satisfies the compiler's static analysis.
+				if (partResponse == null)
+					throw new Exception("Error uploading chunk: did not get an UploadPartResponse");
 
 				partResponse.EnsureSuccessStatusCode();
 
