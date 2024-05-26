@@ -27,6 +27,8 @@ namespace DeltaQ.RTB.StateCache
 		IRemoteFileStateCacheStorage _cacheStorage;
 		ICacheActionLog _cacheActionLog;
 		IRemoteStorage _remoteStorage;
+
+		object _sync = new object();
 		Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
 		List<FileState> _currentBatch = new List<FileState>();
 		int _currentBatchNumber;
@@ -131,19 +133,29 @@ namespace DeltaQ.RTB.StateCache
 
 		public bool ContainsPath(string path)
 		{
-			return _cache.ContainsKey(path);
+			lock (_sync)
+				return _cache.ContainsKey(path);
+		}
+
+		public IEnumerable<string> EnumeratePaths()
+		{
+			lock (_sync)
+				return _cache.Keys.ToList();
 		}
 
 		public FileState? GetFileState(string path)
 		{
-			_cache.TryGetValue(path, out var state);
+			lock (_sync)
+			{
+				_cache.TryGetValue(path, out var state);
 
-			return state;
+				return state;
+			}
 		}
 
 		public void UpdateFileState(string path, FileState newFileState)
 		{
-			lock (this)
+			lock (_sync)
 			{
 				_cache[path] = newFileState;
 
@@ -155,7 +167,7 @@ namespace DeltaQ.RTB.StateCache
 
 		public bool RemoveFileState(string path)
 		{
-			lock (this)
+			lock (_sync)
 			{
 				if (_cache.TryGetValue(path, out var fileState))
 				{
@@ -217,7 +229,7 @@ namespace DeltaQ.RTB.StateCache
 
 		internal void AppendNewFileStateToCurrentBatch(FileState newFileState)
 		{
-			lock (this)
+			lock (_sync)
 			{
 				_currentBatch.Add(newFileState);
 
@@ -239,7 +251,7 @@ namespace DeltaQ.RTB.StateCache
 
 		void BatchUploadTimerElapsed()
 		{
-			lock (this)
+			lock (_sync)
 			{
 				_batchUploadTimer?.Dispose();
 				_batchUploadTimer = null;
@@ -254,7 +266,7 @@ namespace DeltaQ.RTB.StateCache
 		{
 			int batchNumberToUpload = -1;
 
-			lock (this)
+			lock (_sync)
 			{
 				if (_currentBatch.Any())
 				{

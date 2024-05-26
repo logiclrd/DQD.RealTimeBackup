@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 using DeltaQ.RTB.Agent;
@@ -29,10 +30,16 @@ namespace DeltaQ.RTB.Scan
 
 		public void PerformPeriodicRescan(CancellationToken cancellationToken)
 		{
+			var deletedPaths = new HashSet<string>();
+
+			deletedPaths.UnionWith(_remoteFileStateCache.EnumeratePaths());
+
 			foreach (var path in EnumerateAllFilesInSurfaceArea())
 			{
 				if (cancellationToken.IsCancellationRequested)
 					break;
+
+				deletedPaths.Remove(path);
 
 				var fileState = _remoteFileStateCache.GetFileState(path);
 
@@ -60,6 +67,8 @@ namespace DeltaQ.RTB.Scan
 					}
 				}
 			}
+
+			_backupAgent.CheckPaths(deletedPaths);
 		}
 	}
 }

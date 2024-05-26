@@ -183,13 +183,27 @@ namespace DeltaQ.RTB.Agent
 				queueSizes.NumberOfQueuedUploads = _uploadQueue.Count;
 
 				if (_uploadThreadStatus != null)
-				{
-					queueSizes.UploadThreads = new UploadStatus[_uploadThreadCount];
-					Array.Copy(_uploadThreadStatus, queueSizes.UploadThreads, _uploadThreadCount);
-				}
+					queueSizes.UploadThreads = GetUploadThreads();
 			}
 
 			return queueSizes;
+		}
+
+		public UploadStatus?[] GetUploadThreads()
+		{
+			lock (_uploadQueueSync)
+			{
+				if (_uploadThreadStatus == null)
+					return Array.Empty<UploadStatus>();
+				else
+				{
+					var ret = new UploadStatus[_uploadThreadCount];
+
+					Array.Copy(_uploadThreadStatus, ret, _uploadThreadCount);
+
+					return ret;
+				}
+			}
 		}
 
 		public int CheckPath(string path)
