@@ -118,12 +118,21 @@ namespace DeltaQ.RTB
 		// Number of concurrent upload processing threads.
 		public int UploadThreadCount = 4;
 
+		// Interval between periodic rescans. These are disabled while an initial backup is in progress.
+		public TimeSpan PeriodicRescanInterval = TimeSpan.FromHours(6);
+
 		// Remote storage credentials.
 		public string RemoteStorageKeyID = "MUST BE SET IN CONFIGURATION FILE";
 		public string RemoteStorageApplicationKey = "MUST BE SET IN CONFIGURATION FILE";
 
 		// Bucket name within remote storage.
 		public string RemoteStorageBucketID = "MUST BE SET IN CONFIGURATION FILE";
+
+		// B2-specific: Files above this threshold will be uploaded in chunks.
+		public int B2LargeFileThreshold = 10 * 1048576;
+
+		// B2-specific: Files uploaded in chunks will use this chunk size.
+		public int B2LargeFileChunkSize = 5 * 1048576;
 	}
 }
 

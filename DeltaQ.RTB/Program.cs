@@ -11,7 +11,7 @@ using DeltaQ.CommandLineParser;
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.FileSystem;
-using DeltaQ.RTB.InitialBackup;
+using DeltaQ.RTB.Scan;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
@@ -74,6 +74,8 @@ namespace DeltaQ.RTB
 
 			builder.RegisterType<InitialBackupOrchestrator>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<BackupAgent>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<PeriodicRescanScheduler>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<PeriodicRescanOrchestrator>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces().SingleInstance();
@@ -250,6 +252,7 @@ namespace DeltaQ.RTB
 					var container = InitializeContainer(parameters);
 
 					var backupAgent = container.Resolve<IBackupAgent>();
+					var periodicRescanScheduler = container.Resolve<IPeriodicRescanScheduler>();
 
 					object scrollWindowSync = new object();
 
@@ -363,8 +366,16 @@ namespace DeltaQ.RTB
 					}
 
 					if (!parameters.Quiet)
+						Output("Starting periodic rescan scheduler");
+					periodicRescanScheduler.Start(cancellationTokenSource.Token);
+
+					if (!parameters.Quiet)
 						Output("Waiting for stop signal");
 					stopEvent.WaitOne();
+
+					if (!parameters.Quiet)
+						Output("Stopping periodic rescan scheduler");
+					periodicRescanScheduler.Stop();
 
 					if (!parameters.Quiet)
 						Output("Stopping backup agent...");

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,6 +9,8 @@ using System.Threading.Tasks;
 using Bytewizer.Backblaze;
 using Bytewizer.Backblaze.Client;
 using Bytewizer.Backblaze.Models;
+
+using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Storage
 {
@@ -172,35 +176,6 @@ namespace DeltaQ.RTB.Storage
 			return buffer.ToArray();
 		}
 
-		const string Alphabet = "0123456789abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ";
-
-		public void UploadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
-		{
-			VerboseWriteLine("[B2] Deleting existing file, if any: {0}", serverPath);
-
-			try
-			{
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath)));
-			}
-			catch { }
-
-			VerboseWriteLine("[B2] Uploading file, {0} bytes, directly to path: {1}", contentStream.Length, serverPath);
-
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
-				_parameters.RemoteStorageBucketID,
-				serverPath,
-				contentStream,
-				lastModified: DateTime.UtcNow,
-				isReadOnly: false,
-				isHidden: false,
-				isArchive: true,
-				isCompressed: false,
-				progress: null,
-				cancel: cancellationToken)));
-
-			VerboseWriteLine("[B2] Upload complete");
-		}
-
 		class UploadProgressProxy : IProgress<ICopyProgress>
 		{
 			Action<UploadProgress> _progressCallback;
@@ -219,6 +194,109 @@ namespace DeltaQ.RTB.Storage
 
 				_progressCallback(uploadProgress);
 			}
+		}
+
+		public void UploadFileInChunks(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
+		{
+			var startRequest = new StartLargeFileRequest(
+				_parameters.RemoteStorageBucketID,
+				serverPath);
+
+			var startResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.StartLargeFileAsync(startRequest)));
+
+			startResponse.EnsureSuccessStatusCode();
+
+			var getUploadPartURLResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.GetUploadUrlAsync(startResponse.Response.FileId)));
+
+			getUploadPartURLResponse.EnsureSuccessStatusCode();
+
+			var uploadAuthorizationToken = getUploadPartURLResponse.Response.AuthorizationToken;
+			var fileID = getUploadPartURLResponse.Response.FileId;
+			var uploadPartURL = getUploadPartURLResponse.Response.UploadUrl;
+
+			long offset = 0;
+			byte[] buffer = new byte[_parameters.B2LargeFileChunkSize];
+			int partNumber = 1;
+
+			var partChecksums = new List<string>();
+
+			while (offset < contentStream.Length)
+			{
+				long remainingBytes = contentStream.Length - offset;
+
+				int chunkLength = (int)Math.Min(remainingBytes, buffer.Length);
+
+				FileUtility.ReadFully(contentStream, buffer, chunkLength, cancellationToken);
+
+				var chunkBufferStream = new MemoryStream(buffer);
+
+				if (chunkLength < chunkBufferStream.Length)
+					chunkBufferStream.SetLength(chunkLength);
+
+				var partResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.UploadAsync(
+					uploadPartURL,
+					partNumber,
+					uploadAuthorizationToken,
+					chunkBufferStream,
+					progress: progressCallback == null ? default : new UploadProgressProxy(
+						progress =>
+						{
+							progress.BytesTransferred += offset;
+							progressCallback(progress);
+						}))));
+
+				partResponse.EnsureSuccessStatusCode();
+
+				partChecksums.Add(partResponse.Response.ContentSha1);
+
+				offset += chunkLength;
+				partNumber++;
+			}
+
+			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.FinishLargeFileAsync(startResponse.Response.FileId, partChecksums)));
+		}
+
+		void UploadFileImplementation(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
+		{
+			if (contentStream.Length > _parameters.B2LargeFileThreshold)
+				UploadFileInChunks(serverPath, contentStream, progressCallback, cancellationToken);
+			else
+			{
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
+					_parameters.RemoteStorageBucketID,
+					serverPath,
+					contentStream,
+					lastModified: DateTime.UtcNow,
+					isReadOnly: false,
+					isHidden: false,
+					isArchive: true,
+					isCompressed: false,
+					progress: progressCallback == null ? default : new UploadProgressProxy(progressCallback),
+					cancel: cancellationToken)));
+			}
+		}
+
+		const string Alphabet = "0123456789abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ";
+
+		public void UploadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		{
+			VerboseWriteLine("[B2] Deleting existing file, if any: {0}", serverPath);
+
+			try
+			{
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath)));
+			}
+			catch { }
+
+			VerboseWriteLine("[B2] Uploading file, {0} bytes, directly to path: {1}", contentStream.Length, serverPath);
+
+			UploadFileImplementation(
+				serverPath,
+				contentStream,
+				progressCallback: null,
+				cancellationToken);
+
+			VerboseWriteLine("[B2] Upload complete");
 		}
 
 		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
@@ -247,31 +325,19 @@ namespace DeltaQ.RTB.Storage
 			VerboseWriteLine("[B2] => New content key: {0}", contentKey);
 			VerboseWriteLine("[B2] => Uploading {0:#,##0} bytes to content path", contentStream.Length);
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
-				_parameters.RemoteStorageBucketID,
+			UploadFileImplementation(
 				contentKey,
 				contentStream,
-				lastModified: DateTime.UtcNow,
-				isReadOnly: false,
-				isHidden: false,
-				isArchive: true,
-				isCompressed: false,
-				progress: progressCallback == null ? default : new UploadProgressProxy(progressCallback),
-				cancel: cancellationToken)));
+				progressCallback,
+				cancellationToken);
 
 			VerboseWriteLine("[B2] => Uploading reference to content key to subject path");
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
-				_parameters.RemoteStorageBucketID,
+			UploadFileImplementation(
 				serverPath,
 				new MemoryStream(Encoding.UTF8.GetBytes(contentKey)),
-				lastModified: DateTime.UtcNow,
-				isReadOnly: false,
-				isHidden: false,
-				isArchive: true,
-				isCompressed: false,
-				progress: null,
-				cancel: cancellationToken)));
+				progressCallback: null,
+				cancellationToken);
 
 			VerboseWriteLine("[B2] Upload complete");
 		}
@@ -280,17 +346,11 @@ namespace DeltaQ.RTB.Storage
 		{
 			var contentKey = DownloadFileBytes(_parameters.RemoteStorageBucketID, serverPathFrom, cancellationToken);
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
-				_parameters.RemoteStorageBucketID,
+			UploadFileImplementation(
 				serverPathTo,
 				new MemoryStream(contentKey),
-				lastModified: DateTime.UtcNow,
-				isReadOnly: false,
-				isHidden: false,
-				isArchive: true,
-				isCompressed: false,
-				progress: null,
-				cancel: cancellationToken)));
+				progressCallback: null,
+				cancellationToken);
 
 			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPathFrom)));
 		}

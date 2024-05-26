@@ -10,87 +10,24 @@ using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
 
-namespace DeltaQ.RTB.InitialBackup
+namespace DeltaQ.RTB.Scan
 {
-	public class InitialBackupOrchestrator : IInitialBackupOrchestrator
+	public abstract class Scanner
 	{
 		OperatingParameters _parameters;
 
 		ISurfaceArea _surfaceArea;
-		IBackupAgent _backupAgent;
-		IZFS _zfs;
 		IStat _stat;
 
-		public InitialBackupOrchestrator(OperatingParameters parameters, ISurfaceArea surfaceArea, IBackupAgent backupAgent, IZFS zfs, IStat stat)
+		public Scanner(OperatingParameters parameters, ISurfaceArea surfaceArea, IStat stat)
 		{
 			_parameters = parameters;
 
 			_surfaceArea = surfaceArea;
-			_backupAgent = backupAgent;
-			_zfs = zfs;
 			_stat = stat;
 		}
 
-		public void PerformInitialBackup(Action<InitialBackupStatus> statusUpdateCallback, CancellationToken cancellationToken)
-		{
-			InitialBackupStatus status = new InitialBackupStatus();
-
-			// Start queue thread
-			Thread thread = new Thread(
-				arg =>
-				{
-					var self = (Thread)arg!;
-
-					var intermediate = new List<string>();
-
-					self.Priority = ThreadPriority.Lowest;
-
-					foreach (var path in EnumerateAllFilesInSurfaceArea(status))
-					{
-						if (cancellationToken.IsCancellationRequested)
-							break;
-
-						intermediate.Add(path);
-
-						if (intermediate.Count == 100)
-						{
-							self.Priority = ThreadPriority.AboveNormal;
-
-							_backupAgent.CheckPaths(intermediate);
-							intermediate.Clear();
-
-							if (_backupAgent.OpenFilesCount >= _parameters.QueueHighWaterMark)
-							{
-								while (_backupAgent.OpenFilesCount >= _parameters.QueueLowWaterMark)
-									Thread.Sleep(TimeSpan.FromSeconds(10));
-							}
-
-							self.Priority = ThreadPriority.Lowest;
-						}
-					}
-
-					self.Priority = ThreadPriority.Normal;
-				});
-
-			thread.Name = "Initial Backup Queue Thread";
-			thread.Start(thread);
-
-			// Poll status
-			while (!cancellationToken.IsCancellationRequested)
-			{
-				status.BackupAgentQueueSizes = _backupAgent.GetQueueSizes();
-				status.ZFSSnapshotCount = _zfs.CurrentSnapshotCount;
-
-				statusUpdateCallback?.Invoke(status);
-
-				if (!thread.IsAlive && !status.BackupAgentQueueSizes.IsBackupAgentBusy)
-					break;
-
-				Thread.Sleep(TimeSpan.FromSeconds(0.5));
-			}
-		}
-
-		IEnumerable<string> EnumerateAllFilesInSurfaceArea(InitialBackupStatus status)
+		protected IEnumerable<string> EnumerateAllFilesInSurfaceArea(Action? enqueued = null, Action? dequeued = null, Action? fileDiscovered = null, Action? mountProcessed = null)
 		{
 			foreach (var mount in _surfaceArea.Mounts)
 			{
@@ -104,7 +41,7 @@ namespace DeltaQ.RTB.InitialBackup
 				{
 					string path = directoryQueue.Dequeue();
 
-					Interlocked.Decrement(ref status.DirectoryQueueSize);
+					dequeued?.Invoke();
 
 					FileSystemEnumerable<string> enumerable;
 
@@ -135,7 +72,8 @@ namespace DeltaQ.RTB.InitialBackup
 								if (subdirStat.ContainerDeviceID == mountPointStat.ContainerDeviceID)
 								{
 									directoryQueue.Enqueue(entry.ToFullPath());
-									Interlocked.Increment(ref status.DirectoryQueueSize);
+
+									enqueued?.Invoke();
 								}
 
 								return false;
@@ -162,13 +100,13 @@ namespace DeltaQ.RTB.InitialBackup
 							if (!hasNext)
 								break;
 
-							Interlocked.Increment(ref status.FilesDiscovered);
+							fileDiscovered?.Invoke();
 							yield return enumerator.Current;
 						}
 					}
 				}
 
-				Interlocked.Increment(ref status.MountsProcessed);
+				mountProcessed?.Invoke();
 			}
 		}
 	}

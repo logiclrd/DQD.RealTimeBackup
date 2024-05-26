@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-namespace DeltaQ.RTB.InitialBackup
+namespace DeltaQ.RTB.Scan
 {
 	public interface IInitialBackupOrchestrator
 	{

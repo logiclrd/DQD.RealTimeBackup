@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using DeltaQ.RTB.Agent;
 
-namespace DeltaQ.RTB.InitialBackup
+namespace DeltaQ.RTB.Scan
 {
 	public class InitialBackupStatus
 	{

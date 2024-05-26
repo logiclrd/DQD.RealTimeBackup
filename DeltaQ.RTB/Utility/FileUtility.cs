@@ -23,32 +23,6 @@ namespace DeltaQ.RTB.Utility
 					byte[] buffer1 = new byte[bufferSize];
 					byte[] buffer2 = new byte[bufferSize];
 
-					bool ReadFully(FileStream file, byte[] buffer, int length)
-					{
-						long lengthAtStart = file.Length;
-
-						int offset = 0;
-
-						while (offset < length)
-						{
-							if (token.IsCancellationRequested)
-								return false;
-
-							int numRead = file.Read(buffer, offset, length - offset);
-
-							if (numRead <= 0)
-								return false;
-
-							// If the file's size changes as we're watching it, bail.
-							if (file.Length != lengthAtStart)
-								return false;
-
-							offset += numRead;
-						}
-
-						return true;
-					}
-
 					bool BuffersAreEqual(int size)
 					{
 						return buffer1.AsSpan(0, size).SequenceEqual(buffer2.AsSpan(0, size));
@@ -79,8 +53,8 @@ namespace DeltaQ.RTB.Utility
 					{
 						int readSize = (int)Math.Min(bufferSize, remaining);
 
-						if (!ReadFully(file1, buffer1, readSize)
-						 || !ReadFully(file2, buffer2, readSize))
+						if (!ReadFully(file1, buffer1, readSize, token)
+						 || !ReadFully(file2, buffer2, readSize, token))
 							return false;
 
 						if (!BuffersAreEqual(readSize))
@@ -97,6 +71,35 @@ namespace DeltaQ.RTB.Utility
 			{
 				return false;
 			}
+		}
+
+		public static bool ReadFully(Stream file, byte[] buffer, int length)
+			=> ReadFully(file, buffer, length, CancellationToken.None);
+
+		public static bool ReadFully(Stream file, byte[] buffer, int length, CancellationToken token)
+		{
+			long lengthAtStart = file.Length;
+
+			int offset = 0;
+
+			while (offset < length)
+			{
+				if (token.IsCancellationRequested)
+					return false;
+
+				int numRead = file.Read(buffer, offset, length - offset);
+
+				if (numRead <= 0)
+					return false;
+
+				// If the file's size changes as we're watching it, bail.
+				if (file.Length != lengthAtStart)
+					return false;
+
+				offset += numRead;
+			}
+
+			return true;
 		}
 	}
 }
