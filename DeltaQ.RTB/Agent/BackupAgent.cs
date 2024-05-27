@@ -1215,9 +1215,6 @@ namespace DeltaQ.RTB.Agent
 			NonQuietDiagnosticOutput("Starting remote file state cache");
 			_remoteFileStateCache.Start();
 
-			NonQuietDiagnosticOutput("Authenticating with remote storage");
-			_storage.Authenticate();
-
 			NonQuietDiagnosticOutput("Starting worker threads:");
 			NonQuietDiagnosticOutput("=> Open files poller");
 			StartPollOpenFilesThread();

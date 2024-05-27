@@ -54,6 +54,9 @@ namespace DeltaQ.RTB
 			if (args.DisableFAN || args.InitialBackupThenExit)
 				parameters.EnableFileAccessNotify = false;
 
+			if (args.RemoteFileStateCacheDebugLogPath != null)
+				parameters.RemoteFileStateCacheDebugLogPath = args.RemoteFileStateCacheDebugLogPath;
+
 			return parameters;
 		}
 
@@ -251,6 +254,7 @@ namespace DeltaQ.RTB
 
 					var container = InitializeContainer(parameters);
 
+					var storage = container.Resolve<IRemoteStorage>();
 					var backupAgent = container.Resolve<IBackupAgent>();
 					var periodicRescanScheduler = container.Resolve<IPeriodicRescanScheduler>();
 					var periodicRescanOrchestrator = container.Resolve<IPeriodicRescanOrchestrator>();
@@ -274,6 +278,10 @@ namespace DeltaQ.RTB
 
 					backupAgent.DiagnosticOutput += DiagnosticOutputHandler;
 					periodicRescanOrchestrator.DiagnosticOutput += DiagnosticOutputHandler;
+
+					if (!parameters.Quiet)
+						Output("Authenticating with remote storage");
+					storage.Authenticate();
 
 					if (!parameters.Quiet)
 						Output("Starting backup agent...");

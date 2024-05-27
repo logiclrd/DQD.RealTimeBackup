@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +24,8 @@ namespace DeltaQ.RTB.Storage
 
 		OperatingParameters _parameters;
 		IStorageClient _b2Client;
+
+		string? _bucketName;
 
 		static void Wait(Task task)
 		{
@@ -116,12 +118,35 @@ namespace DeltaQ.RTB.Storage
 			throw new Exception("Error (should not hit this line)");
 		}
 
+		string FindAndCacheBucketName()
+		{
+			if (_bucketName == null)
+			{
+				var request = new ListBucketsRequest(_b2Client.AccountId);
+
+				request.BucketId = _parameters.RemoteStorageBucketID;
+
+				var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Buckets.ListAsync(request, TimeSpan.FromSeconds(2))));
+
+				response.EnsureSuccessStatusCode();
+
+				var bucketInfo = response.Response.Buckets.SingleOrDefault(bucket => bucket.BucketId == _parameters.RemoteStorageBucketID);
+
+				if (bucketInfo == null)
+					throw new Exception("Configuration error: Unable to resolve bucket name for bucket id " + _parameters.RemoteStorageBucketID);
+
+				_bucketName = bucketInfo.BucketName;
+			}
+
+			return _bucketName;
+		}
+
 		// This method is intended for small resources.
-		string DownloadFileString(string bucketId, string serverPath, CancellationToken cancellationToken)
+		string DownloadFileString(string serverPath, CancellationToken cancellationToken)
 		{
 			var buffer = new MemoryStream();
 
-			var request = new DownloadFileByNameRequest(bucketId, serverPath);
+			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
 
 			var result = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.DownloadAsync(request, buffer, default, cancellationToken)));
 
@@ -131,11 +156,11 @@ namespace DeltaQ.RTB.Storage
 			return Encoding.UTF8.GetString(buffer.ToArray());
 		}
 
-		string? DownloadFileStringNoErrorIfNonexistent(string bucketId, string serverPath, CancellationToken cancellationToken)
+		string? DownloadFileStringNoErrorIfNonexistent(string serverPath, CancellationToken cancellationToken)
 		{
 			var buffer = new MemoryStream();
 
-			var request = new DownloadFileByNameRequest(bucketId, serverPath);
+			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
 
 			try
 			{
@@ -166,7 +191,7 @@ namespace DeltaQ.RTB.Storage
 		{
 			var buffer = new MemoryStream();
 
-			var request = new DownloadFileByNameRequest(bucketId, serverPath);
+			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
 
 			var result = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.DownloadAsync(request, buffer, default, cancellationToken)));
 
@@ -318,17 +343,47 @@ namespace DeltaQ.RTB.Storage
 			VerboseWriteLine("[B2] Upload complete");
 		}
 
+		string GetFileIdByName(string serverPath)
+		{
+			VerboseWriteLine("[B2] Resolving file id for name: {0}", serverPath);
+
+			var request = new ListFileVersionRequest(_parameters.RemoteStorageBucketID);
+
+			request.StartFileName = serverPath;
+			request.MaxFileCount = 1;
+
+			var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListVersionsAsync(request, cacheTTL: TimeSpan.FromSeconds(10))));
+
+			if (!response.IsSuccessStatusCode)
+				VerboseWriteLine("[B2] => response status: {0}", response.StatusCode);
+
+			response.EnsureSuccessStatusCode();
+
+			var fileId = response.Response.Files.Single(file => file.FileName == serverPath).FileId;
+
+			VerboseWriteLine("[B2] => file id: {0}", fileId);
+
+			return fileId;
+		}
+
+		public void DeleteFileDirect(string serverPath, CancellationToken cancellationToken)
+		{
+			string fileId = GetFileIdByName(serverPath);
+
+			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileId, serverPath)));
+		}
+
 		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
 		{
 			VerboseWriteLine("[B2] Checking for existing file: {0}", serverPath);
 
-			if (DownloadFileStringNoErrorIfNonexistent(_parameters.RemoteStorageBucketID, serverPath, cancellationToken) is string contentKey)
+			if (DownloadFileStringNoErrorIfNonexistent(serverPath, cancellationToken) is string contentKey)
 			{
 				VerboseWriteLine("[B2] => Existing content key: {0}", contentKey);
 				VerboseWriteLine("[B2] => Deleting...");
 
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, contentKey)));
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath)));
+				DeleteFileDirect(serverPath, cancellationToken);
+				DeleteFileDirect(contentKey, cancellationToken);
 			}
 
 			char[] contentKeyChars = new char[128];
@@ -376,10 +431,10 @@ namespace DeltaQ.RTB.Storage
 
 		public void DeleteFile(string serverPath, CancellationToken cancellationToken)
 		{
-			var contentKey = DownloadFileString(_parameters.RemoteStorageBucketID, serverPath, cancellationToken);
+			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath)));
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, contentKey)));
+			DeleteFileDirect(serverPath, cancellationToken);
+			DeleteFileDirect(contentKey, cancellationToken);
 		}
 	}
 }

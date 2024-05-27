@@ -111,6 +111,9 @@ namespace DeltaQ.RTB
 		// Local path at which the remote file state cache is stored, persisting it across runs.
 		public string RemoteFileStateCachePath = "/var/DeltaQ.RTB/FileStateCache";
 
+		// For debugging, a separate file that contains detailed logging of Remote File State Cache operations.
+		public string? RemoteFileStateCacheDebugLogPath = null;
+
 		// Delay after a first file state update before the current file is pinched off and uploaded,
 		// to consolidate multiple updates.
 		public TimeSpan BatchUploadConsolidationDelay = TimeSpan.FromSeconds(30);
