@@ -26,9 +26,9 @@ namespace DeltaQ.RTB.Agent
 
 			string speed;
 
-			if (Progress.BytesPerSecond > 80000000)
+			if (Progress.BytesPerSecond > 800000)
 				speed = (Progress.BytesPerSecond / 1048576.0).ToString("#,##0.0") + " mb/s";
-			else if (Progress.BytesPerSecond > 102400)
+			else if (Progress.BytesPerSecond > 1024)
 				speed = (Progress.BytesPerSecond / 1024.0).ToString("#,##0.0") + " kb/s";
 			else
 				speed = Progress.BytesPerSecond.ToString("#,##0") + "    b/s";
