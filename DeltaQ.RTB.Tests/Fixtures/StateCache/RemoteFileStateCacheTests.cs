@@ -26,6 +26,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 	{
 		class DummyStorage : IRemoteFileStateCacheStorage
 		{
+#pragma warning disable 67
+			public event EventHandler<DiagnosticMessage>? DiagnosticOutput;
+#pragma warning restore 67
+
 			public Dictionary<int, MemoryStream> BatchData = new Dictionary<int, MemoryStream>();
 			public Dictionary<int, MemoryStream> NewBatchData = new Dictionary<int, MemoryStream>();
 

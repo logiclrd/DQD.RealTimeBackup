@@ -2,9 +2,11 @@ using System;
 using System.IO;
 using System.Threading;
 
+using DeltaQ.RTB.Utility;
+
 namespace DeltaQ.RTB.Storage
 {
-	public interface IRemoteStorage
+	public interface IRemoteStorage : IDiagnosticOutput
 	{
 		public void Authenticate();
 

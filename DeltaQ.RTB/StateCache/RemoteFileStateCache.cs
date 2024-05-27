@@ -11,7 +11,7 @@ using ITimer = DeltaQ.RTB.Utility.ITimer;
 
 namespace DeltaQ.RTB.StateCache
 {
-	public class RemoteFileStateCache : IRemoteFileStateCache
+	public class RemoteFileStateCache : DiagnosticOutputBase, IRemoteFileStateCache
 	{
 		// Objectives:
 		// 1. Maintain a look-up based on file full paths that report back the file size and MD5 checksum of each file stored on the server
@@ -289,8 +289,7 @@ namespace DeltaQ.RTB.StateCache
 				{
 					DebugLog("opening batch writer for batch {0}", _currentBatchNumber);
 
-					if (_parameters.Verbose)
-						Console.WriteLine("[RFSC] Opening batch writer for batch number {0}", _currentBatchNumber);
+					VerboseDiagnosticOutput("[RFSC] Opening batch writer for batch number {0}", _currentBatchNumber);
 
 					_currentBatchWriter = _cacheStorage.OpenBatchFileWriter(_currentBatchNumber);
 					_currentBatchWriter.AutoFlush = true;

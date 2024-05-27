@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
+using DeltaQ.RTB.Utility;
+
 namespace DeltaQ.RTB.StateCache
 {
-	public class RemoteFileStateCacheStorage : IRemoteFileStateCacheStorage
+	public class RemoteFileStateCacheStorage : DiagnosticOutputBase, IRemoteFileStateCacheStorage
 	{
 		OperatingParameters _parameters;
 
@@ -28,8 +30,7 @@ namespace DeltaQ.RTB.StateCache
 				_parameters.RemoteFileStateCachePath,
 				batchNumber.ToString());
 
-			if (_parameters.Verbose)
-				Console.WriteLine("[RFSCS] OpenBatchFileWriter, path is {0}", path);
+			VerboseDiagnosticOutput("[RFSCS] OpenBatchFileWriter, path is {0}", path);
 
 			return new StreamWriter(path);
 		}

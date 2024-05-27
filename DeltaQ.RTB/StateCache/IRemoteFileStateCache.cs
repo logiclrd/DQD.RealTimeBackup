@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 
+using DeltaQ.RTB.Utility;
+
 namespace DeltaQ.RTB.StateCache
 {
-	public interface IRemoteFileStateCache
+	public interface IRemoteFileStateCache : IDiagnosticOutput
 	{
 		bool ContainsPath(string path);
 		IEnumerable<string> EnumeratePaths();

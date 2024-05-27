@@ -30,7 +30,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 				Assert.Inconclusive();
 
 			// Arrange
-			using (var fan = new FileAccessNotify())
+			var parameters = new OperatingParameters();
+
+			using (var fan = new FileAccessNotify(parameters))
 			{
 				bool receivedEvent = false;
 
@@ -95,7 +97,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 				Assert.Inconclusive();
 
 			// Arrange
-			using (var fan = new FileAccessNotify())
+			var parameters = new OperatingParameters();
+
+			using (var fan = new FileAccessNotify(parameters))
 			{
 				bool receivedEvent = false;
 

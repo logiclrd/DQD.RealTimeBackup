@@ -15,6 +15,9 @@ namespace DeltaQ.RTB
 		// this is used to achieve initial backup.
 		public bool EnableFileAccessNotify = true;
 
+		// For debugging, a separate file that contains detailed logging of File Access Notify operations.
+		public string? FileAccessNotifyDebugLogPath = null;
+
 		public List<string> ExcludePaths =
 			new List<string>()
 			{

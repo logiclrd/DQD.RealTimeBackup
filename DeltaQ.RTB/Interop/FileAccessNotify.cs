@@ -1,10 +1,8 @@
-﻿//#define EXTRADEBUG
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 
 namespace DeltaQ.RTB.Interop
@@ -13,8 +11,10 @@ namespace DeltaQ.RTB.Interop
 	{
 		int _fd;
 
-		public FileAccessNotify()
+		public FileAccessNotify(OperatingParameters parameters)
 		{
+			s_fileAccessNotifyDebugLogPath = parameters.FileAccessNotifyDebugLogPath;
+
 			_fd = NativeMethods.fanotify_init(
 				FileAccessNotifyFlags.Class.Notification |
 				FileAccessNotifyFlags.Report.UniqueFileID |
@@ -33,6 +33,32 @@ namespace DeltaQ.RTB.Interop
 				NativeMethods.close(_fd);
 				_fd = 0;
 			}
+		}
+
+		static string? s_fileAccessNotifyDebugLogPath;
+		static object s_debugLogSync = new object();
+
+		static bool DebugLogEnabled => (s_fileAccessNotifyDebugLogPath != null);
+
+		static void DebugLog(string line)
+		{
+			if (DebugLogEnabled)
+			{
+				lock (s_debugLogSync)
+					using (var writer = new StreamWriter(s_fileAccessNotifyDebugLogPath!, append: true))
+						writer.WriteLine(line);
+			}
+		}
+
+		static void DebugLog(object? value = null)
+		{
+			if (DebugLogEnabled)
+				DebugLog(value?.ToString() ?? "");
+		}
+
+		static void DebugLog(string format, params object?[] args)
+		{
+			DebugLog(string.Format(format, args));
 		}
 
 		public void MarkPath(string path)
@@ -80,10 +106,8 @@ namespace DeltaQ.RTB.Interop
 		{
 			while (eventStream.Position + 4 <= eventStream.Length)
 			{
-#if EXTRADEBUG
-				Console.WriteLine();
-				Console.WriteLine("  Event stream: {0} / {1}", eventStream.Position, eventStream.Length);
-#endif
+				DebugLog();
+				DebugLog("  Event stream: {0} / {1}", eventStream.Position, eventStream.Length);
 
 				// fanotify_event_info_header
 				var infoStream = CreateSubStream(eventStream);
@@ -94,10 +118,9 @@ namespace DeltaQ.RTB.Interop
 				var padding = infoReader.ReadByte();
 				var infoStructureLength = infoReader.ReadUInt16();
 
-#if EXTRADEBUG
-				Console.WriteLine("  Info structure length: {0}", infoStructureLength);
-				Console.WriteLine("  => info structure of type: {0}", infoType);
-#endif
+				DebugLog("  Info structure length: {0}", infoStructureLength);
+				DebugLog("  => info structure of type: {0}", infoType);
+
 				// Sanity check
 				if ((infoStructureLength <= 0) || (infoStructureLength > infoStream.Length))
 					break;
@@ -118,9 +141,7 @@ namespace DeltaQ.RTB.Interop
 					case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From:
 					case FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To:
 					{
-#if EXTRADEBUG
-						Console.WriteLine("######## infoType: {0}", infoType);
-#endif
+						DebugLog("######## infoType: {0}", infoType);
 
 						structure.FileSystemID = infoReader.ReadInt64();
 
@@ -151,9 +172,7 @@ namespace DeltaQ.RTB.Interop
 						{
 							structure.FileName = ReadStringAtUnmanagedMemoryStreamCurrentPosition(infoStream);
 
-#if EXTRADEBUG
-							Console.WriteLine("  ## {0} Got filename: {1}", infoType, structure.FileName);
-#endif
+							DebugLog("  ## {0} Got filename: {1}", infoType, structure.FileName);
 						}
 
 						break;
@@ -196,9 +215,7 @@ namespace DeltaQ.RTB.Interop
 
 				result = NativeMethods.poll(pollFDs, 1, NativeMethods.INFTIM);
 
-#if EXTRADEBUG
-				Console.WriteLine("got a poll result, cancellation {0}", cancellationToken.IsCancellationRequested);
-#endif
+				DebugLog("got a poll result, cancellation {0}", cancellationToken.IsCancellationRequested);
 
 				// For some reason, ReturnedEvents doesn't seem to be being set as expected.
 				// So instead, we use the heuristic that the only reason cancelFD would be
@@ -214,9 +231,7 @@ namespace DeltaQ.RTB.Interop
 				if (readSize < 0)
 					throw new Exception("Read error");
 
-#if EXTRADEBUG
-				Console.WriteLine("Read {0} bytes", readSize);
-#endif
+				DebugLog("Read {0} bytes", readSize);
 
 				unsafe
 				{
@@ -237,10 +252,8 @@ namespace DeltaQ.RTB.Interop
 
 						int eventLength = eventReader.ReadInt32();
 
-#if EXTRADEBUG
-						Console.WriteLine("-----------");
-						Console.WriteLine("event length: {0}", eventLength);
-#endif
+						DebugLog("-----------");
+						DebugLog("event length: {0}", eventLength);
 
 						if ((eventLength < NativeMethods.EventHeaderLength) || (ptr + eventLength > endPtr))
 							break;
@@ -249,15 +262,18 @@ namespace DeltaQ.RTB.Interop
 
 						eventStream.SetLength(eventLength);
 
-#if EXTRADEBUG
-						eventStream.Position = 0;
-						while (eventStream.Position < eventStream.Length)
+						if (DebugLogEnabled)
 						{
-							Console.Write("{0:X2} ", eventStream.ReadByte());
+							var lineBuilder = new StringBuilder();
+
+							eventStream.Position = 0;
+							while (eventStream.Position < eventStream.Length)
+								lineBuilder.Append(eventStream.ReadByte().ToString("X2")).Append(' ');
+							eventStream.Position = 4; // We have already read eventLength
+
+							DebugLog(lineBuilder);
+							DebugLog();
 						}
-						Console.WriteLine();
-						eventStream.Position = 4; // We have already read eventLength
-#endif
 
 						var metadata = new FileAccessNotifyEventMetadata();
 
@@ -268,28 +284,22 @@ namespace DeltaQ.RTB.Interop
 						metadata.FileDescriptor = eventReader.ReadInt32();
 						metadata.ProcessID = eventReader.ReadInt32();
 
-#if EXTRADEBUG
-						Console.WriteLine("  Version: {0}", metadata.Version);
-						Console.WriteLine("  Metadata length: {0}", metadata.MetadataLength);
-						Console.WriteLine("  Mask: {0}", metadata.Mask);
-						Console.WriteLine("  FD: {0}", metadata.FileDescriptor);
-						Console.WriteLine("  PID: {0}", metadata.ProcessID);
-#endif
+						DebugLog("  Version: {0}", metadata.Version);
+						DebugLog("  Metadata length: {0}", metadata.MetadataLength);
+						DebugLog("  Mask: {0}", metadata.Mask);
+						DebugLog("  FD: {0}", metadata.FileDescriptor);
+						DebugLog("  PID: {0}", metadata.ProcessID);
 
 						var @event = new FileAccessNotifyEvent();
 
 						@event.Metadata = metadata;
 						@event.InformationStructures.AddRange(ParseEventInfoStructures(eventStream));
 
-#if EXTRADEBUG
-						Console.WriteLine("Raising event");
-#endif
+						DebugLog("Raising event");
 
 						eventCallback?.Invoke(@event);
 
-#if EXTRADEBUG
-						Console.WriteLine("Event returned");
-#endif
+						DebugLog("Event returned");
 					}
 				}
 			}

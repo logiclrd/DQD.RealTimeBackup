@@ -26,7 +26,7 @@ namespace DeltaQ.RTB.FileActivityTrace
 				parameters,
 				surfaceArea,
 				mountTable,
-				() => new FileAccessNotify(),
+				() => new FileAccessNotify(parameters),
 				openByHandleAt);
 
 			Console.CancelKeyPress +=

@@ -28,14 +28,14 @@ namespace DeltaQ.RTB
 	{
 		static OperatingParameters BuildOperatingParameters(CommandLineArguments args)
 		{
+			var serializer = new XmlSerializer(typeof(OperatingParameters));
+
 			OperatingParameters parameters;
 
 			if (!File.Exists(args.ConfigurationPath))
 				parameters = new OperatingParameters();
 			else
 			{
-				var serializer = new XmlSerializer(typeof(OperatingParameters));
-
 				try
 				{
 					using (var stream = File.OpenRead(args.ConfigurationPath))
@@ -54,8 +54,23 @@ namespace DeltaQ.RTB
 			if (args.DisableFAN || args.InitialBackupThenExit)
 				parameters.EnableFileAccessNotify = false;
 
+			if (args.FileAccessNotifyDebugLogPath != null)
+				parameters.FileAccessNotifyDebugLogPath = args.FileAccessNotifyDebugLogPath;
 			if (args.RemoteFileStateCacheDebugLogPath != null)
 				parameters.RemoteFileStateCacheDebugLogPath = args.RemoteFileStateCacheDebugLogPath;
+
+			if (args.WriteConfig != null)
+			{
+				try
+				{
+					using (var stream = File.OpenWrite(args.ConfigurationPath))
+						serializer.Serialize(stream, parameters);
+				}
+				catch (Exception e)
+				{
+					throw new Exception("Unable to write configuration file: " + args.ConfigurationPath, e);
+				}
+			}
 
 			return parameters;
 		}
@@ -204,6 +219,9 @@ namespace DeltaQ.RTB
 
 				var parameters = BuildOperatingParameters(args);
 
+				if (args.WriteConfig != null)
+					return 3;
+
 				if (parameters.Verbose)
 				{
 					Output("Command-line: {0}", Environment.CommandLine);
@@ -256,6 +274,9 @@ namespace DeltaQ.RTB
 
 					var storage = container.Resolve<IRemoteStorage>();
 					var backupAgent = container.Resolve<IBackupAgent>();
+					var remoteStorage = container.Resolve<IRemoteStorage>();
+					var remoteFileStateCache = container.Resolve<IRemoteFileStateCache>();
+					var remoteFileStateCacheStorage = container.Resolve<IRemoteFileStateCacheStorage>();
 					var periodicRescanScheduler = container.Resolve<IPeriodicRescanScheduler>();
 					var periodicRescanOrchestrator = container.Resolve<IPeriodicRescanOrchestrator>();
 
@@ -277,6 +298,9 @@ namespace DeltaQ.RTB
 						};
 
 					backupAgent.DiagnosticOutput += DiagnosticOutputHandler;
+					remoteStorage.DiagnosticOutput += DiagnosticOutputHandler;
+					remoteFileStateCache.DiagnosticOutput += DiagnosticOutputHandler;
+					remoteFileStateCacheStorage.DiagnosticOutput += DiagnosticOutputHandler;
 					periodicRescanOrchestrator.DiagnosticOutput += DiagnosticOutputHandler;
 
 					if (!parameters.Quiet)

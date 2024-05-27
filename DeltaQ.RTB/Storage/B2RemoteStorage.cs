@@ -6,15 +6,15 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using DeltaQ.RTB.Utility;
+
 using Bytewizer.Backblaze;
 using Bytewizer.Backblaze.Client;
 using Bytewizer.Backblaze.Models;
 
-using DeltaQ.RTB.Utility;
-
 namespace DeltaQ.RTB.Storage
 {
-	public class B2RemoteStorage : IRemoteStorage
+	public class B2RemoteStorage : DiagnosticOutputBase, IRemoteStorage
 	{
 		// B2 does not support renaming or moving files. Therefore, in order to make this possible with our
 		// data model, we upload the actual file content to a unique path, which in this implementation is
@@ -47,18 +47,6 @@ namespace DeltaQ.RTB.Storage
 			_b2Client = b2Client;
 		}
 
-		void VerboseWriteLine(object line)
-		{
-			if (_parameters.Verbose)
-				Console.WriteLine(line);
-		}
-
-		void VerboseWriteLine(string format, params object?[] args)
-		{
-			if (_parameters.Verbose)
-				Console.WriteLine(format, args);
-		}
-
 		object _authenticationSync = new object();
 		long _authenticationCount;
 
@@ -86,7 +74,7 @@ namespace DeltaQ.RTB.Storage
 				 && (result.HttpResponse.ReasonPhrase != null)
 				 && result.HttpResponse.ReasonPhrase.Contains("no tomes available"))
 				{
-					VerboseWriteLine("[B@] No tomes available, waiting a few seconds and retrying");
+					VerboseDiagnosticOutput("[B2] No tomes available, waiting a few seconds and retrying");
 					await Task.Delay(TimeSpan.FromSeconds(2));
 					continue;
 				}
@@ -324,7 +312,7 @@ namespace DeltaQ.RTB.Storage
 
 		public void UploadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
-			VerboseWriteLine("[B2] Deleting existing file, if any: {0}", serverPath);
+			VerboseDiagnosticOutput("[B2] Deleting existing file, if any: {0}", serverPath);
 
 			try
 			{
@@ -332,7 +320,7 @@ namespace DeltaQ.RTB.Storage
 			}
 			catch { }
 
-			VerboseWriteLine("[B2] Uploading file, {0} bytes, directly to path: {1}", contentStream.Length, serverPath);
+			VerboseDiagnosticOutput("[B2] Uploading file, {0} bytes, directly to path: {1}", contentStream.Length, serverPath);
 
 			UploadFileImplementation(
 				serverPath,
@@ -340,12 +328,12 @@ namespace DeltaQ.RTB.Storage
 				progressCallback: null,
 				cancellationToken);
 
-			VerboseWriteLine("[B2] Upload complete");
+			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
 		string GetFileIdByName(string serverPath)
 		{
-			VerboseWriteLine("[B2] Resolving file id for name: {0}", serverPath);
+			VerboseDiagnosticOutput("[B2] Resolving file id for name: {0}", serverPath);
 
 			var request = new ListFileVersionRequest(_parameters.RemoteStorageBucketID);
 
@@ -355,13 +343,13 @@ namespace DeltaQ.RTB.Storage
 			var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListVersionsAsync(request, cacheTTL: TimeSpan.FromSeconds(10))));
 
 			if (!response.IsSuccessStatusCode)
-				VerboseWriteLine("[B2] => response status: {0}", response.StatusCode);
+				VerboseDiagnosticOutput("[B2] => response status: {0}", response.StatusCode);
 
 			response.EnsureSuccessStatusCode();
 
 			var fileId = response.Response.Files.Single(file => file.FileName == serverPath).FileId;
 
-			VerboseWriteLine("[B2] => file id: {0}", fileId);
+			VerboseDiagnosticOutput("[B2] => file id: {0}", fileId);
 
 			return fileId;
 		}
@@ -375,12 +363,12 @@ namespace DeltaQ.RTB.Storage
 
 		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
 		{
-			VerboseWriteLine("[B2] Checking for existing file: {0}", serverPath);
+			VerboseDiagnosticOutput("[B2] Checking for existing file: {0}", serverPath);
 
 			if (DownloadFileStringNoErrorIfNonexistent(serverPath, cancellationToken) is string contentKey)
 			{
-				VerboseWriteLine("[B2] => Existing content key: {0}", contentKey);
-				VerboseWriteLine("[B2] => Deleting...");
+				VerboseDiagnosticOutput("[B2] => Existing content key: {0}", contentKey);
+				VerboseDiagnosticOutput("[B2] => Deleting...");
 
 				DeleteFileDirect(serverPath, cancellationToken);
 				DeleteFileDirect(contentKey, cancellationToken);
@@ -395,9 +383,9 @@ namespace DeltaQ.RTB.Storage
 
 			contentKey = new string(contentKeyChars);
 
-			VerboseWriteLine("[B2] Uploading file to path: {0}", serverPath);
-			VerboseWriteLine("[B2] => New content key: {0}", contentKey);
-			VerboseWriteLine("[B2] => Uploading {0:#,##0} bytes to content path", contentStream.Length);
+			VerboseDiagnosticOutput("[B2] Uploading file to path: {0}", serverPath);
+			VerboseDiagnosticOutput("[B2] => New content key: {0}", contentKey);
+			VerboseDiagnosticOutput("[B2] => Uploading {0:#,##0} bytes to content path", contentStream.Length);
 
 			UploadFileImplementation(
 				contentKey,
@@ -405,7 +393,7 @@ namespace DeltaQ.RTB.Storage
 				progressCallback,
 				cancellationToken);
 
-			VerboseWriteLine("[B2] => Uploading reference to content key to subject path");
+			VerboseDiagnosticOutput("[B2] => Uploading reference to content key to subject path");
 
 			UploadFileImplementation(
 				serverPath,
@@ -413,7 +401,7 @@ namespace DeltaQ.RTB.Storage
 				progressCallback: null,
 				cancellationToken);
 
-			VerboseWriteLine("[B2] Upload complete");
+			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
 		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken)

@@ -42,8 +42,14 @@ namespace DeltaQ.RTB
 		[Argument(Switch = "/LOGFILEMAXLINES", Description = "Maximum number of lines to write to the log file. When the file reaches this many lines, it is rotated to '.old' and a new file is started. The number of lines retained is always between this number and twice this number.")]
 		public int LogFileMaxLines = 10000;
 
+		[Argument(Switch = "/FANDEBUG", Description = "For debugging, a separate file that contains detailed logging of File Access Notify operations.")]
+		public string? FileAccessNotifyDebugLogPath = null;
+
 		[Argument(Switch = "/RFSCDEBUG", Description = "For debugging, a separate file that contains detailed logging of Remote File State Cache operations.")]
 		public string? RemoteFileStateCacheDebugLogPath = null;
+
+		[Argument(Switch = "/WRITECONFIG", Description = "Writes the Operating Parameters that were built up during initialization to the specified path. Can be used to create a baseline for a persistent configuration file.")]
+		public string? WriteConfig = null;
 	}
 #pragma warning restore 649
 }
