@@ -25,5 +25,19 @@
 			"program": "${workspaceFolder}/DeltaQ.RTB.Restore/bin/Debug/net8.0/DeltaQ.RTB.Restore.dll",
 			"args": [ "/LISTALLFILES" ],
 		},
+		{
+			"type": "coreclr",
+			"request": "launch",
+			"name": "Restore: Restore File",
+			"program": "${workspaceFolder}/DeltaQ.RTB.Restore/bin/Debug/net8.0/DeltaQ.RTB.Restore.dll",
+			"args": [ "/RESTOREFILE", "/DrBuffy/8-Cameo/Source/Cameo-Retimed.mkv" ],
+		},
+		{
+			"type": "coreclr",
+			"request": "launch",
+			"name": "Restore: Restore Directory",
+			"program": "${workspaceFolder}/DeltaQ.RTB.Restore/bin/Debug/net8.0/DeltaQ.RTB.Restore.dll",
+			"args": [ "/RESTOREDIRECTORY", "/DrBuffy/8-Cameo/Source" ],
+		},
 	]
 }

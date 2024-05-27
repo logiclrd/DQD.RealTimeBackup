@@ -404,9 +404,16 @@ namespace DeltaQ.RTB.Storage
 			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
-		public void DownloadFile(string serverPath, Stream contentStream)
+		public void DownloadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
 			Wait(_b2Client.DownloadAsync(FindAndCacheBucketName(), serverPath, contentStream));
+		}
+
+		public void DownloadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		{
+			var contentKey = DownloadFileString(serverPath, cancellationToken);
+
+			Wait(_b2Client.DownloadAsync(FindAndCacheBucketName(), contentKey, contentStream));
 		}
 
 		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken)

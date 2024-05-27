@@ -12,9 +12,11 @@ namespace DeltaQ.RTB.Restore
 		public TextOutputFileList(string listName, string? path = null, bool isRecursive = false)
 		{
 			int fileSizeWidth = 17; // Allows files up to 9.9 TB in size.
-			int dateWidth = 22; // yyyy-MM-dd hh:mm:ss tt
+			int dateWidth = DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss tt").Length;
 
-			_fileFieldsStartColumn = Console.WindowWidth - 1 - dateWidth - 2 - fileSizeWidth;
+			int lineWidth = Console.IsOutputRedirected ? 150 : Console.WindowWidth;
+
+			_fileFieldsStartColumn = lineWidth - 1 - dateWidth - 2 - fileSizeWidth;
 
 			_fileFieldsIndent = new string(' ', Math.Max(2, _fileFieldsStartColumn));
 
@@ -31,11 +33,14 @@ namespace DeltaQ.RTB.Restore
 		{
 			Console.Write(fileInfo.Path);
 
-			if (Console.CursorLeft + 2 > _fileFieldsStartColumn)
+			if (fileInfo.Path.Length + 2 > _fileFieldsStartColumn)
 			{
-				Console.WriteLine();
+				if (!Console.IsOutputRedirected)
+				{
+					Console.WriteLine();
 
-				Console.Write(_fileFieldsIndent);
+					Console.Write(_fileFieldsIndent);
+				}
 			}
 			else
 			{
@@ -43,9 +48,9 @@ namespace DeltaQ.RTB.Restore
 					Console.Write(' ');
 			}
 
-			Console.Write(fileInfo.FileSize.ToString("#,###,###,###,##0"));
+			Console.Write(fileInfo.FileSize.ToString("#,###,###,###,##0").PadLeft(17));
 			Console.Write("  ");
-			Console.WriteLine(fileInfo.LastModifiedUTC.ToString("yyyy-MM-dd hH:mm:ss TT"));
+			Console.WriteLine(fileInfo.LastModifiedUTC.ToString("yyyy-MM-dd HH:mm:ss tt"));
 		}
 
 		public override void Dispose() { }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
@@ -54,7 +55,7 @@ namespace DeltaQ.RTB.StateCache
 
 			var buffer = new MemoryStream();
 
-			_remoteStorage.DownloadFile(batchFileName, buffer);
+			_remoteStorage.DownloadFileDirect(batchFileName, buffer, CancellationToken.None);
 
 			buffer.Position = 0;
 

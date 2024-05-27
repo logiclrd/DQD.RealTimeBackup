@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Xml.Serialization;
 
+using CancellationToken = System.Threading.CancellationToken;
+
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
@@ -35,6 +37,8 @@ namespace DeltaQ.RTB.Restore
 				};
 
 			builder.AddBackblazeAgent(backblazeAgentOptions);
+
+			builder.RegisterInstance(backblazeAgentOptions);
 
 			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
@@ -93,19 +97,28 @@ namespace DeltaQ.RTB.Restore
 
 					if (args.CatFile != null)
 					{
-						string filePath = args.CatFile;
+						var backblazeClientOptions = container.Resolve<ClientOptions>();
 
-						string toFilePath = Path.Combine(
-							args.RestoreTo == null ? "." : args.RestoreTo,
-							filePath.TrimStart('/'));
+						long savedCutoffSize = backblazeClientOptions.DownloadCutoffSize;
 
-						string toDirectory = Path.GetDirectoryName(toFilePath)!;
+						try
+						{
+							// For catting to stdout, we must always do a single linear download.
+							backblazeClientOptions.DownloadCutoffSize = long.MaxValue;
 
-						if (toDirectory != ".")
-							Directory.CreateDirectory(toDirectory);
+							string filePath = args.CatFile;
 
-						using (var outputStream = Console.OpenStandardOutput(bufferSize: 1048576))
-							storage.DownloadFile(filePath, outputStream);
+							string contentPointerFilePath = Path.Combine("/content", filePath.TrimStart('/'));
+
+							using (var outputStream = Console.OpenStandardOutput(bufferSize: 1048576))
+							{
+								storage.DownloadFile(contentPointerFilePath, outputStream, CancellationToken.None);
+							}
+						}
+						finally
+						{
+							backblazeClientOptions.DownloadCutoffSize = savedCutoffSize;
+						}
 					}
 
 					if (output == null)
@@ -125,10 +138,17 @@ namespace DeltaQ.RTB.Restore
 						{
 							var fileSizeMap = fileSizeMapBuilder.Value;
 
-							using (var list = output.BeginList("AllFiles"))
+							using (var list = output.BeginList("All Files"))
 							{
-								foreach (var file in storage.EnumerateFiles("/", true))
+								foreach (var file in storage.EnumerateFiles("/content/", true))
 								{
+									// The enumeration removes the supplied prefix from the returned paths, making them
+									// relative. But, since we supplied the '/' after 'content', this means that the
+									// returned paths are not rooted. Logically, though, they are, so we need to restore
+									// this property.
+
+									file.Path = "/" + file.Path;
+
 									fileSizeMap.TryGetValue(file.Path, out file.FileSize);
 									list.EmitFile(file);
 								}
@@ -141,11 +161,25 @@ namespace DeltaQ.RTB.Restore
 
 							foreach (var directoryPath in args.ListDirectory)
 							{
+								string directoryPathWithSeparators = directoryPath;
+
+								if (!directoryPathWithSeparators.StartsWith("/"))
+									directoryPathWithSeparators = '/' + directoryPathWithSeparators;
+								if (!directoryPathWithSeparators.EndsWith("/"))
+									directoryPathWithSeparators = directoryPathWithSeparators + '/';
+
+								string contentPointerFilesPrefix = "/content" + directoryPathWithSeparators;
+
 								using (var list = output.BeginList("Directory", directoryPath, args.Recursive))
 								{
-									foreach (var file in storage.EnumerateFiles(directoryPath, args.Recursive))
+									foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
 									{
-										fileSizeMap.TryGetValue(file.Path, out file.FileSize);
+										// The enumeration removes the supplied prefix from the returned paths, making them
+										// relative. We need to determine the full path in order to inject file sizes.
+
+										string fullPath = directoryPathWithSeparators + file.Path;
+
+										fileSizeMap.TryGetValue(fullPath, out file.FileSize);
 										list.EmitFile(file);
 									}
 								}
@@ -163,12 +197,14 @@ namespace DeltaQ.RTB.Restore
 							if (toDirectory != ".")
 								Directory.CreateDirectory(toDirectory);
 
+							string contentPointerFilePath = Path.Combine("/content", filePath.TrimStart('/'));
+
 							using (var list = output.BeginList("Download", Path.GetDirectoryName(filePath), args.Recursive))
 							{
-								using (var stream = File.OpenWrite(toFilePath))
-									storage.DownloadFile(filePath, stream);
+								using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
+									storage.DownloadFile(contentPointerFilePath, stream, CancellationToken.None);
 
-								list.EmitFile(filePath);
+								list.EmitFile(toFilePath);
 							}
 						}
 
@@ -183,17 +219,19 @@ namespace DeltaQ.RTB.Restore
 							if (toDirectory != ".")
 								Directory.CreateDirectory(toDirectory);
 
+							string contentPointerFilesPrefix = Path.Combine("/content", restorePrefix.TrimStart('/'));
+
 							using (var list = output.BeginList("Download", directoryPath, args.Recursive))
 							{
-								foreach (var file in storage.EnumerateFiles(directoryPath, args.Recursive))
+								foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
 								{
-									string filePath = Path.Combine(directoryPath, file.Path);
+									string filePath = contentPointerFilesPrefix + file.Path;
 									string toFilePath = Path.Combine(toDirectory, file.Path);
 
-									using (var stream = File.OpenWrite(toFilePath))
-										storage.DownloadFile(filePath, stream);
+									using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
+										storage.DownloadFile(filePath, stream, CancellationToken.None);
 
-									list.EmitFile(file);
+									list.EmitFile(toFilePath);
 								}
 							}
 						}

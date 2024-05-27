@@ -12,7 +12,7 @@ namespace DeltaQ.RTB.Restore
 		{
 			_writer = writer;
 
-			_writer.WriteStartElement(listName);
+			_writer.WriteStartElement(listName.Replace(" ", ""));
 
 			if (path != null)
 				_writer.WriteAttributeString("Path", path);
