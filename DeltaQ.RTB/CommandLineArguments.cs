@@ -22,7 +22,7 @@ namespace DeltaQ.RTB
 		[Switch(Description = "Performs an initial backup of everything found in the surface area, and then exits. Any cached file state is erased and recreated from scratch. This switch implies /DISABLEFAN.")]
 		public bool InitialBackupThenExit;
 
-		const string DefaultConfigurationPath = "/etc/DeltaQ.RTB.xml";
+		public const string DefaultConfigurationPath = "/etc/DeltaQ.RTB.xml";
 
 		[Argument(Switch = "/CONFIG", Description = "Path to the configuration file. The default is " + DefaultConfigurationPath)]
 		public string ConfigurationPath = DefaultConfigurationPath;

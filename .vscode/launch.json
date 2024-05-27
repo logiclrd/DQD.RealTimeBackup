@@ -17,6 +17,13 @@
 			"request": "launch",
 			"name": "Start File Activity Trace",
 			"projectPath": "${workspaceFolder}/DeltaQ.RTB.FileActivityTrace/DeltaQ.RTB.FileActivityTrace.csproj",
-		}
+		},
+		{
+			"type": "coreclr",
+			"request": "launch",
+			"name": "Restore: List All Files",
+			"program": "${workspaceFolder}/DeltaQ.RTB.Restore/bin/Debug/net8.0/DeltaQ.RTB.Restore.dll",
+			"args": [ "/LISTALLFILES" ],
+		},
 	]
 }

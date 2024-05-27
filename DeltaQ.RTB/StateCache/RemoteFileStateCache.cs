@@ -30,6 +30,7 @@ namespace DeltaQ.RTB.StateCache
 
 		object _sync = new object();
 		Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
+		bool _cacheLoaded = false;
 		List<FileState> _currentBatch = new List<FileState>();
 		int _currentBatchNumber;
 		StreamWriter? _currentBatchWriter;
@@ -88,6 +89,8 @@ namespace DeltaQ.RTB.StateCache
 
 		public void Start()
 		{
+			EnsureCacheIsLoaded();
+
 			DebugLog("starting");
 
 			_cacheActionLog.EnsureDirectoryExists();
@@ -159,26 +162,44 @@ namespace DeltaQ.RTB.StateCache
 			_cacheStorage = cacheStorage;
 			_cacheActionLog = cacheActionLog;
 			_remoteStorage = remoteStorage;
-
-			LoadCache();
 		}
 
 		public bool ContainsPath(string path)
 		{
 			lock (_sync)
+			{
+				EnsureCacheIsLoaded();
+
 				return _cache.ContainsKey(path);
+			}
 		}
 
 		public IEnumerable<string> EnumeratePaths()
 		{
 			lock (_sync)
+			{
+				EnsureCacheIsLoaded();
+
 				return _cache.Keys.ToList();
+			}
+		}
+
+		public IEnumerable<FileState> EnumerateFileStates()
+		{
+			lock (_sync)
+			{
+				EnsureCacheIsLoaded();
+
+				return _cache.Values.ToList();
+			}
 		}
 
 		public FileState? GetFileState(string path)
 		{
 			lock (_sync)
 			{
+				EnsureCacheIsLoaded();
+
 				_cache.TryGetValue(path, out var state);
 
 				return state;
@@ -189,6 +210,8 @@ namespace DeltaQ.RTB.StateCache
 		{
 			lock (_sync)
 			{
+				EnsureCacheIsLoaded();
+
 				DebugLog("updating file state for: {0}", path);
 
 				_cache[path] = newFileState;
@@ -203,6 +226,8 @@ namespace DeltaQ.RTB.StateCache
 		{
 			lock (_sync)
 			{
+				EnsureCacheIsLoaded();
+
 				DebugLog("removing file state for: {0}", path);
 
 				if (_cache.TryGetValue(path, out var fileState))
@@ -224,7 +249,13 @@ namespace DeltaQ.RTB.StateCache
 			}
 		}
 
-		void LoadCache()
+		void EnsureCacheIsLoaded()
+		{
+			if (!_cacheLoaded)
+				LoadCache();
+		}
+
+		public void LoadCache()
 		{
 			DebugLog("loading cache");
 
@@ -269,6 +300,8 @@ namespace DeltaQ.RTB.StateCache
 				_currentBatchNumber = 1;
 
 			DebugLog("current batch number is: {0}", _currentBatchNumber);
+
+			_cacheLoaded = true;
 		}
 
 		internal void AppendNewFileStateToCurrentBatch(FileState newFileState)

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Xml.Serialization;
 
 using Autofac;
+
 using DeltaQ.CommandLineParser;
 
 using DeltaQ.RTB.ActivityMonitor;
@@ -279,6 +280,8 @@ namespace DeltaQ.RTB
 					var remoteFileStateCacheStorage = container.Resolve<IRemoteFileStateCacheStorage>();
 					var periodicRescanScheduler = container.Resolve<IPeriodicRescanScheduler>();
 					var periodicRescanOrchestrator = container.Resolve<IPeriodicRescanOrchestrator>();
+
+					remoteFileStateCache.LoadCache();
 
 					object scrollWindowSync = new object();
 

@@ -404,6 +404,11 @@ namespace DeltaQ.RTB.Storage
 			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
+		public void DownloadFile(string serverPath, Stream contentStream)
+		{
+			Wait(_b2Client.DownloadAsync(FindAndCacheBucketName(), serverPath, contentStream));
+		}
+
 		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken)
 		{
 			var contentKey = DownloadFileBytes(_parameters.RemoteStorageBucketID, serverPathFrom, cancellationToken);
@@ -423,6 +428,47 @@ namespace DeltaQ.RTB.Storage
 
 			DeleteFileDirect(serverPath, cancellationToken);
 			DeleteFileDirect(contentKey, cancellationToken);
+		}
+
+		public IEnumerable<RemoteFileInfo> EnumerateFiles(string pathPrefix, bool recursive)
+		{
+			if (!pathPrefix.EndsWith('/'))
+				pathPrefix += '/';
+
+			var request = new ListFileNamesRequest(_parameters.RemoteStorageBucketID);
+
+			request.Prefix = pathPrefix;
+			request.MaxFileCount = 1000;
+
+			while (true)
+			{
+				var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListNamesAsync(request, TimeSpan.Zero))); 
+
+				foreach (var fileItem in response.Response.Files)
+				{
+					string fileName = fileItem.FileName;
+
+					if (fileName.StartsWith(pathPrefix))
+						fileName = fileName.Substring(pathPrefix.Length);
+					else if (pathPrefix.Length > 0)
+						continue;
+
+					if ((fileName.IndexOf('/') >= 0) && !recursive)
+						continue;
+
+					var fileInfo = new RemoteFileInfo(
+						fileName,
+						fileItem.ContentLength,
+						fileItem.UploadTimestamp);
+
+					yield return fileInfo;
+				}
+
+				if (response.Response.NextFileName == null)
+					break;
+
+				request.StartFileName = response.Response.NextFileName;
+			}
 		}
 	}
 }
