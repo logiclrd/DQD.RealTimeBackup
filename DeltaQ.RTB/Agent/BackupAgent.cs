@@ -877,6 +877,10 @@ namespace DeltaQ.RTB.Agent
 								VerboseDiagnosticOutput("[BQ] Woken up");
 							}
 						}
+
+						// Unthrottle.
+						if (_backupQueue.Count == _parameters.QueueLowWaterMark - 1)
+							Monitor.PulseAll(_backupQueueSync);
 					}
 
 					if (backupAction != null)
@@ -1100,6 +1104,7 @@ namespace DeltaQ.RTB.Agent
 			{
 				while (!cancellationToken.IsCancellationRequested)
 				{
+					int uploadQueueSize;
 					FileReference fileToUpload;
 
 					lock (_uploadQueueSync)
@@ -1114,6 +1119,15 @@ namespace DeltaQ.RTB.Agent
 
 						fileToUpload = _uploadQueue[_uploadQueue.Count - 1];
 						_uploadQueue.RemoveAt(_uploadQueue.Count - 1);
+
+						uploadQueueSize = _uploadQueue.Count;
+					}
+
+					if (_pauseQueuingUploads && (uploadQueueSize < _parameters.QueueLowWaterMark))
+					{
+						// Unthrottle.
+						lock (_backupQueueSync)
+							Monitor.PulseAll(_backupQueueSync);
 					}
 
 					using (fileToUpload)
