@@ -61,5 +61,27 @@ namespace DeltaQ.RTB.StateCache
 
 			File.WriteAllText(action.ActionFileName, action.Serialize());
 		}
+
+		public CacheAction RehydrateAction(long key)
+		{
+			string path = GetQueueActionFileName(key);
+
+			string serialized = File.ReadAllText(path);
+
+			var action = CacheAction.Deserialize(serialized);
+
+			action.ActionFileName = path;
+
+			return action;
+		}
+
+		public void ReleaseAction(CacheAction action)
+		{
+			if (action.ActionFileName != null)
+			{
+				File.Delete(action.ActionFileName);
+				action.ActionFileName = null;
+			}
+		}
 	}
 }

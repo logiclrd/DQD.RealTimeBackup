@@ -1241,6 +1241,8 @@ namespace DeltaQ.RTB.Agent
 			WakePollOpenFilesThread();
 			NonQuietDiagnosticOutput("=> Long poller");
 			WakeLongPollingThread();
+			NonQuietDiagnosticOutput("=> Uploader");
+			InterruptUploadThreads();
 			NonQuietDiagnosticOutput("=> Backup queue processor");
 			WakeProcessBackupQueueThread();
 
@@ -1251,9 +1253,6 @@ namespace DeltaQ.RTB.Agent
 			}
 
 			// We don't need to sync to the open file handles polling thread exiting because it doesn't take actions.
-
-			NonQuietDiagnosticOutput("=> Uploader");
-			InterruptUploadThreads();
 
 			WaitForUploadThreadsToExit();
 

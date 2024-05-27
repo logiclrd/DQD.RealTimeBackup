@@ -107,13 +107,9 @@ namespace DeltaQ.RTB.StateCache
 
 				foreach (var key in outstandingActionKeys)
 				{
-					string path = _cacheActionLog.GetQueueActionFileName(key);
-
 					try
 					{
-						string serialized = File.ReadAllText(path);
-
-						var action = CacheAction.Deserialize(serialized);
+						var action = _cacheActionLog.RehydrateAction(key);
 
 						DebugLog("enqueuing action");
 
@@ -552,9 +548,14 @@ namespace DeltaQ.RTB.StateCache
 					oldestBatchNumber,
 					mergeIntoBatchNumber);
 
-				DebugLog("calling UploadBatch on {0}", mergeIntoBatch);
+				DebugLog("queuing deletion of old version of {0}", mergeIntoBatchNumber);
+
+				QueueAction(CacheAction.DeleteFile("/state/" + mergeIntoBatchNumber));
+
+				DebugLog("calling UploadBatch on {0}", mergeIntoBatchNumber);
 
 				UploadBatch(mergeIntoBatchNumber);
+
 				// Return the batch number that no longer exists so that the caller can remove it from remote storage.
 				return oldestBatchNumber;
 			}
@@ -660,6 +661,8 @@ namespace DeltaQ.RTB.StateCache
 				DebugLog("[PCA] complete");
 
 				action.IsComplete = true;
+
+				_cacheActionLog.ReleaseAction(action);
 			}
 			catch (Exception e)
 			{
