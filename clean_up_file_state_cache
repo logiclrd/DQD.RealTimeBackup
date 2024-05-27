@@ -1,12 +1,19 @@
 #!/bin/bash
 
-CACHEPATH=/var/DeltaQ.RTB/FileStateCache
-
-if [ -d $CACHEPATH ]
+if [ "$1" != "reallydoit" ]
 then
-  echo -d says go
-  du --total $CACHEPATH
-  rm -r $CACHEPATH
+  echo $0: doing nothing because the magic sauce wasn\'t provided ('reallydoit')
 else
-  echo Nothing to clean up.
+  echo $0: deleting the file state cache -- will need to restart initial backup!
+
+  CACHEPATH=/var/DeltaQ.RTB/FileStateCache
+
+  if [ -d $CACHEPATH ]
+  then
+    echo -d says go
+    du --total $CACHEPATH
+    rm -r $CACHEPATH
+  else
+    echo Nothing to clean up.
+  fi
 fi

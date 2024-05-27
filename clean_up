@@ -3,8 +3,8 @@
 SCRIPTDIR=`dirname $0`
 
 echo File state cache:
-$SCRIPTDIR/clean_up_file_state_cache
+$SCRIPTDIR/clean_up_file_state_cache $%
 
 echo
 echo ZFS snapshots:
-$SCRIPTDIR/clean_up_snapshots
+$SCRIPTDIR/clean_up_snapshots $%
