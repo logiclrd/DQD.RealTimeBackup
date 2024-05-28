@@ -206,7 +206,15 @@ namespace DeltaQ.RTB
 
 			try
 			{
-				args = new CommandLine().Parse<CommandLineArguments>();
+				var commandLine = new CommandLine();
+
+				args = commandLine.Parse<CommandLineArguments>();
+
+				if (args.ShowUsage)
+				{
+					commandLine.ShowUsage<CommandLineArguments>(Console.Error, "dotnet DeltaQ.RTB.dll", detailed: true);
+					return 10;
+				}
 
 				InitializeOutput(args.LogFilePath, args.LogFileMaxLines);
 

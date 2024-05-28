@@ -51,7 +51,15 @@ namespace DeltaQ.RTB.Restore
 
 		static int Main()
 		{
-			var args = new CommandLine().Parse<CommandLineArguments>();
+			var commandLine = new CommandLine();
+
+			var args = commandLine.Parse<CommandLineArguments>();
+
+			if (args.ShowUsage)
+			{
+				commandLine.ShowUsage<CommandLineArguments>();
+				return 10;
+			}
 
 			IOutput? output;
 

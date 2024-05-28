@@ -9,28 +9,31 @@ namespace DeltaQ.RTB.Restore
 		[Argument(Switch = "/CONFIG")]
 		public string ConfigurationPath = DeltaQ.RTB.CommandLineArguments.DefaultConfigurationPath;
 
-		[Switch]
+		[Switch("/LISTALLFILES")]
 		public bool ListAllFiles;
 
-		[Switch]
+		[Switch("/RECURSIVE")]
 		public bool Recursive;
 
-		[Argument]
+		[Argument("/LISTDIRECTORY")]
 		public List<string> ListDirectory = new List<string>();
 
-		[Argument]
+		[Argument("/RESTOREFILE")]
 		public List<string> RestoreFile = new List<string>();
 
-		[Argument]
+		[Argument("/RESTOREDIRECTORY")]
 		public List<string> RestoreDirectory = new List<string>();
 
-		[Argument]
+		[Argument("/RESTORETO")]
 		public string? RestoreTo = null;
 
-		[Argument]
+		[Argument("/CATFILE")]
 		public string? CatFile = null;
 
 		[Switch(Description = "Output in XML, making it machine-readable. The output is streamed as it arrives, so an XML parser that returns nodes as it gets them can read the output in realtime.")]
 		public bool XML = false;
+
+		[Switch("/?")]
+		public bool ShowUsage;
 	}
 }
