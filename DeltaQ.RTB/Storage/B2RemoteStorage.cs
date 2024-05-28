@@ -507,5 +507,12 @@ namespace DeltaQ.RTB.Storage
 				request.StartFileId = response.Response.NextFileId;
 			}
 		}
+
+		public void CancelUnfinishedFile(string serverPath, CancellationToken cancellationToken)
+		{
+			string fileId = GetFileIdByName(serverPath);
+
+			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.CancelLargeFileAsync(fileId)));
+		}
 	}
 }

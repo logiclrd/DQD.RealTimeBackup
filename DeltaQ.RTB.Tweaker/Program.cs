@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Xml.Serialization;
 
+using CancellationToken = System.Threading.CancellationToken;
+
 using Autofac;
 
 using Bytewizer.Backblaze.Client;
@@ -115,9 +117,9 @@ namespace DeltaQ.RTB.Tweaker
 						Console.WriteLine("    Leaving file alone because it was last modified recently ({0:#0.0} hours ago)", age.TotalHours);
 					else
 					{
-						Console.WriteLine("    Deleting");
+						Console.WriteLine("    Cancelling large file");
 
-						remoteStorage.DeleteFileDirect(unfinishedFile.Path);
+						remoteStorage.CancelUnfinishedFile(unfinishedFile.Path, CancellationToken.None);
 					}
 				}
 			}

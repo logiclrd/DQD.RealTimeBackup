@@ -18,6 +18,7 @@ namespace DeltaQ.RTB.Storage
 		void DownloadFile(string serverPath, Stream content, CancellationToken cancellationToken);
 		void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken);
 		void DeleteFile(string serverPath, CancellationToken cancellationToken);
+		void CancelUnfinishedFile(string serverPath, CancellationToken cancellationToken);
 
 		IEnumerable<RemoteFileInfo> EnumerateFiles(string pathPrefix, bool recursive);
 		IEnumerable<RemoteFileInfo> EnumerateUnfinishedFiles();
