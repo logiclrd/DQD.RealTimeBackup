@@ -16,7 +16,7 @@ namespace DeltaQ.RTB.FileSystem
 
 		public void Dispose()
 		{
-			_tracker?.Release();
+			_tracker?.Release(this);
 			_tracker = null;
 		}
 

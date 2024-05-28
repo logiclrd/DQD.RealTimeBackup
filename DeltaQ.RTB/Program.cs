@@ -216,6 +216,9 @@ namespace DeltaQ.RTB
 					return 10;
 				}
 
+				if (args.ZFSDebugLogPath != null)
+					ZFSDebugLog.Enable(args.ZFSDebugLogPath);
+
 				InitializeOutput(args.LogFilePath, args.LogFileMaxLines);
 
 				if (args.InitialBackupThenMonitor && args.DisableFAN)

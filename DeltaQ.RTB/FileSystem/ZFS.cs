@@ -83,6 +83,8 @@ namespace DeltaQ.RTB.FileSystem
 
 		protected internal void ExecuteZFSCommand(string command)
 		{
+			ZFSDebugLog.WriteLine("Running: zfs {0}", command);
+
 			var psi = new ProcessStartInfo();
 
 			psi.FileName = _parameters.ZFSBinaryPath;
@@ -96,6 +98,8 @@ namespace DeltaQ.RTB.FileSystem
 
 		protected internal IEnumerable<string> ExecuteZFSCommandOutput(string command)
 		{
+			ZFSDebugLog.WriteLine("Running and capturing output: zfs {0}", command);
+
 			var psi = new ProcessStartInfo();
 
 			psi.FileName = _parameters.ZFSBinaryPath;
@@ -119,7 +123,15 @@ namespace DeltaQ.RTB.FileSystem
 		void AddSnapshot(IZFSSnapshot snapshot)
 		{
 			lock (_currentSnapshotsSync)
+			{
 				_currentSnapshots.Add(snapshot);
+
+				if (_rootInstance == null)
+				{
+					ZFSDebugLog.WriteLine("Tracking new snapshot, now tracking {0} snapshot{1}", _currentSnapshots.Count, _currentSnapshots.Count == 1 ? "" : "s");
+					ZFSDebugLog.WriteLine("=> {0}", snapshot.SnapshotName);
+				}
+			}
 
 			(_rootInstance as ZFS)?.AddSnapshot(snapshot);
 		}
@@ -127,7 +139,15 @@ namespace DeltaQ.RTB.FileSystem
 		void RemoveSnapshot(IZFSSnapshot snapshot)
 		{
 			lock (_currentSnapshotsSync)
+			{
 				_currentSnapshots.Remove(snapshot);
+
+				if (_rootInstance == null)
+				{
+					ZFSDebugLog.WriteLine("No longer tracking snapshot, now tracking {0} snapshot{1}", _currentSnapshots.Count, _currentSnapshots.Count == 1 ? "" : "s");
+					ZFSDebugLog.WriteLine("=> {0}", snapshot.SnapshotName);
+				}
+			}
 
 			(_rootInstance as ZFS)?.RemoveSnapshot(snapshot);
 		}
@@ -136,6 +156,8 @@ namespace DeltaQ.RTB.FileSystem
 		{
 			if (_deviceName == Dummy)
 				throw new InvalidOperationException("This ZFS instance is not attached to a specific device name.");
+
+			ZFSDebugLog.WriteLine("Creating new snapshot of device {0}", _deviceName);
 
 			var snapshot = new ZFSSnapshot(_parameters, _deviceName, snapshotName, _rootInstance);
 
@@ -157,11 +179,13 @@ namespace DeltaQ.RTB.FileSystem
 
 		public IEnumerable<ZFSVolume> EnumerateVolumes()
 		{
+			ZFSDebugLog.WriteLine("Enumerating volumes");
+
 			foreach (string line in ExecuteZFSCommandOutput("list -Hp"))
 			{
 				string[] parts = line.Split('\t');
 
-				yield return
+				var volume =
 					new ZFSVolume()
 					{
 						DeviceName = parts[0],
@@ -170,6 +194,10 @@ namespace DeltaQ.RTB.FileSystem
 						ReferencedBytes = long.Parse(parts[3]),
 						MountPoint = parts[4],
 					};
+
+				ZFSDebugLog.WriteLine("- {0} at {1}", volume.DeviceName, volume.MountPoint);
+
+				yield return volume;
 			}
 		}
 	}

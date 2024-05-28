@@ -48,6 +48,9 @@ namespace DeltaQ.RTB
 		[Argument("/RFSCDEBUG", Description = "For debugging, a separate file that contains detailed logging of Remote File State Cache operations.")]
 		public string? RemoteFileStateCacheDebugLogPath = null;
 
+		[Argument("/ZFSDEBUG", Description = "For debugging, a separate file that contains information relating to ZFS snapshots and their lifetime.")]
+		public string? ZFSDebugLogPath = null;
+
 		[Argument("/WRITECONFIG", Description = "Writes the Operating Parameters that were built up during initialization to the specified path. Can be used to create a baseline for a persistent configuration file.")]
 		public string? WriteConfig = null;
 
