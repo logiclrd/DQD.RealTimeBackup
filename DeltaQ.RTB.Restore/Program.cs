@@ -57,7 +57,7 @@ namespace DeltaQ.RTB.Restore
 
 			if (args.ShowUsage)
 			{
-				commandLine.ShowUsage<CommandLineArguments>();
+				commandLine.ShowUsage<CommandLineArguments>(Console.Error, "dotnet DeltaQ.RTB.Restore.dll");
 				return 10;
 			}
 

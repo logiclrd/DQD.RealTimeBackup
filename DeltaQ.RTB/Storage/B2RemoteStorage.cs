@@ -477,5 +477,35 @@ namespace DeltaQ.RTB.Storage
 				request.StartFileName = response.Response.NextFileName;
 			}
 		}
+
+		public IEnumerable<RemoteFileInfo> EnumerateUnfinishedFiles()
+		{
+			var request = new ListUnfinishedLargeFilesRequest(_parameters.RemoteStorageBucketID);
+
+			while (true)
+			{
+				var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListUnfinishedAsync(request, Timeout.InfiniteTimeSpan)));
+
+				response.EnsureSuccessStatusCode();
+
+				if (response.Response.Files.Count == 0)
+					break;
+
+				foreach (var fileItem in response.Response.Files)
+				{
+					var fileInfo = new RemoteFileInfo(
+						fileItem.FileName,
+						fileItem.ContentLength,
+						fileItem.UploadTimestamp);
+
+					yield return fileInfo;
+				}
+
+				if (response.Response.NextFileId == null)
+					break;
+
+				request.StartFileId = response.Response.NextFileId;
+			}
+		}
 	}
 }

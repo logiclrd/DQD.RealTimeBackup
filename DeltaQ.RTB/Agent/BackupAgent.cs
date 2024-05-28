@@ -910,7 +910,23 @@ namespace DeltaQ.RTB.Agent
 
 					FileReference fileReference;
 
-					var stream = File.OpenRead(uploadAction.Source.SnapshottedPath);
+					Stream stream;
+
+					try
+					{
+						stream = File.OpenRead(uploadAction.Source.SnapshottedPath);
+					}
+					catch (Exception e)
+					{
+						NonQuietDiagnosticOutput("Error opening file: {0}", uploadAction.Source.SnapshottedPath);
+						NonQuietDiagnosticOutput("=> {0}: {1}", e.GetType().Name, e.Message);
+						NonQuietDiagnosticOutput("This is a snapshot of: {0}", uploadAction.Source.Path);
+						NonQuietDiagnosticOutput("This should not have happened. Aborting this file upload and returning the file to the intake queue.");
+
+						BeginQueuePathForOpenFilesCheck(uploadAction.Source.Path);
+
+						break;
+					}
 
 					var backedUpFileState = _remoteFileStateCache.GetFileState(uploadAction.Source.Path);
 					var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);

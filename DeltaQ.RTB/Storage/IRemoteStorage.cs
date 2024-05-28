@@ -9,17 +9,18 @@ namespace DeltaQ.RTB.Storage
 {
 	public interface IRemoteStorage : IDiagnosticOutput
 	{
-		public void Authenticate();
+		void Authenticate();
 
-		public void UploadFileDirect(string serverPath, Stream content, CancellationToken cancellationToken);
-		public void DownloadFileDirect(string serverPath, Stream content, CancellationToken cancellationToken);
-		public void DeleteFileDirect(string serverPath, CancellationToken cancellationToken);
-		public void UploadFile(string serverPath, Stream content, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken);
-		public void DownloadFile(string serverPath, Stream content, CancellationToken cancellationToken);
-		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken);
-		public void DeleteFile(string serverPath, CancellationToken cancellationToken);
+		void UploadFileDirect(string serverPath, Stream content, CancellationToken cancellationToken);
+		void DownloadFileDirect(string serverPath, Stream content, CancellationToken cancellationToken);
+		void DeleteFileDirect(string serverPath, CancellationToken cancellationToken);
+		void UploadFile(string serverPath, Stream content, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken);
+		void DownloadFile(string serverPath, Stream content, CancellationToken cancellationToken);
+		void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken);
+		void DeleteFile(string serverPath, CancellationToken cancellationToken);
 
-		public IEnumerable<RemoteFileInfo> EnumerateFiles(string pathPrefix, bool recursive);
+		IEnumerable<RemoteFileInfo> EnumerateFiles(string pathPrefix, bool recursive);
+		IEnumerable<RemoteFileInfo> EnumerateUnfinishedFiles();
 	}
 }
 

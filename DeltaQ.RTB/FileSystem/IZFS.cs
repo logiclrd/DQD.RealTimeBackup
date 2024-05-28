@@ -5,7 +5,7 @@ namespace DeltaQ.RTB.FileSystem
 {
 	public interface IZFS
 	{
-		public IZFS? RootInstance { get; }
+		IZFS? RootInstance { get; }
 
 		IZFSSnapshot CreateSnapshot(string snapshotName);
 		ZFSVolume FindVolume(string deviceName);
