@@ -751,7 +751,7 @@ namespace DeltaQ.RTB.Agent
 		}
 
 		object _backupQueueSync = new object();
-		List<BackupAction> _backupQueue = new List<BackupAction>();
+		LinkedList<BackupAction> _backupQueue = new LinkedList<BackupAction>();
 		CancellationTokenSource? _backupQueueCancellationTokenSource;
 		ManualResetEvent? _backupQueueExited;
 
@@ -761,7 +761,7 @@ namespace DeltaQ.RTB.Agent
 			{
 				VerboseDiagnosticOutput("[BQ] Queuing {0}", action.GetType().Name);
 
-				_backupQueue.Add(action);
+				_backupQueue.AddLast(action);
 				Monitor.PulseAll(_backupQueueSync);
 			}
 		}
@@ -772,7 +772,9 @@ namespace DeltaQ.RTB.Agent
 			{
 				VerboseDiagnosticOutput("[BQ] Queuing {0} actions", actions.Count());
 
-				_backupQueue.AddRange(actions);
+				foreach (var action in actions)
+					_backupQueue.AddLast(action);
+
 				Monitor.PulseAll(_backupQueueSync);
 			}
 		}
@@ -843,19 +845,23 @@ namespace DeltaQ.RTB.Agent
 
 						if (_pauseQueuingUploads == false)
 						{
-							backupAction = _backupQueue[_backupQueue.Count - 1];
-							_backupQueue.RemoveAt(_backupQueue.Count - 1);
+							backupAction = _backupQueue.First.Value;
+							_backupQueue.RemoveFirst();
 						}
 						else
 						{
-							for (int i = _backupQueue.Count - 1; i >= 0; i--)
+							var listNode = _backupQueue.First;
+
+							while (listNode != null)
 							{
-								if (!(_backupQueue[i] is UploadAction))
+								if (!(listNode.Value is UploadAction))
 								{
-									backupAction = _backupQueue[i];
-									_backupQueue.RemoveAt(i);
+									backupAction = listNode.Value;
+									_backupQueue.Remove(listNode);
 									break;
 								}
+
+								listNode = listNode.Next;
 							}
 
 							if (backupAction == null)
@@ -1034,6 +1040,21 @@ namespace DeltaQ.RTB.Agent
 						}
 
 						_remoteFileStateCache.RemoveFileState(deleteAction.Path);
+					}
+
+					break;
+
+				default:
+					NonQuietDiagnosticOutput("[BQ] INTERNAL ERROR: Have an action we don't know what to do with. None of the type filters matched it.");
+					if (action == null)
+						NonQuietDiagnosticOutput("[BQ] Somehow, this action is null (snuck past the nullability checks?)");
+					else
+						NonQuietDiagnosticOutput("[BQ] Action type is: {0}", action.GetType().FullName);
+
+					if (action is IDisposable disposableAction)
+					{
+						NonQuietDiagnosticOutput("[BQ] => Action is disposable, so disposing it...");
+						disposableAction.Dispose();
 					}
 
 					break;
