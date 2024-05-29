@@ -129,14 +129,59 @@ namespace DeltaQ.RTB.Storage
 			return _bucketName;
 		}
 
+		static char[] B2ProblematicFileNameCharacters = { ',', '[', ']' };
+
 		// This method is intended for small resources.
 		string DownloadFileString(string serverPath, CancellationToken cancellationToken)
 		{
+			// BUGS IN BACKBLAZE B2 API: Not all supported filenames work with the b2_download_file_by_name
+			// endpoint.
+			//
+			// - Filenames that contain commas confuse the URL decoder, producing an error:
+			//
+			//   "Bad character in percent-encoded string: 44 (0x2C)",
+			//
+			// - Filenames that contain square brackets apparently trip up an overzealous security filter:
+			//
+			//   "the server cannot or will not process the request due to something that is perceived to
+			//   be a client error eg malformed request syntax invalid request message framing or deceptive
+			//   request routing)"
+			//
+			// A workaround has been identified: These files work just file with the b2_list_file_versions
+			// endpoint, which is what underlies GetFileIdByName, and downloading the files by ID bypasses
+			// any nonsense about the filenames. However, this is less efficient because two requests are
+			// needed. As such, we want to use DownloadFileByNameRequest where we can.
+			//
+			// These characters are known to trigger problems presently:
+			// - ,
+			// - [
+			// - ]
+			//
+			// Any filenames containing these will require the work-around. If the filename does not have
+			// any offending characters in it, then a straightforward by-name download can be done.
+
 			var buffer = new MemoryStream();
 
-			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+			Func<Task<IApiResults<DownloadFileResponse>>> functor;
 
-			var result = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.DownloadAsync(request, buffer, default, cancellationToken)));
+			if (serverPath.IndexOfAny(B2ProblematicFileNameCharacters) < 0)
+			{
+				// Fast path: b2_download_file_by_name
+				var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+
+				functor = () => _b2Client.DownloadAsync(request, buffer, default, cancellationToken);
+			}
+			else
+			{
+				// Workaround: b2_list_file_versions -> b2_download_file_by_id
+				var fileID = GetFileIdByName(serverPath);
+
+				var request = new DownloadFileByIdRequest(fileID);
+
+				functor = () => _b2Client.DownloadByIdAsync(request, buffer, default, cancellationToken);
+			}
+
+			var result = Wait(AutomaticallyReauthenticateAsync(functor));
 
 			if (!result.IsSuccessStatusCode)
 				throw new Exception("The operation did not complete successfully.");
@@ -146,13 +191,32 @@ namespace DeltaQ.RTB.Storage
 
 		string? DownloadFileStringNoErrorIfNonexistent(string serverPath, CancellationToken cancellationToken)
 		{
+			// BUGS IN BACKBLAZE B2 API: See discussion at top of DownloadFileString.
+
 			var buffer = new MemoryStream();
 
-			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+			Func<Task<IApiResults<DownloadFileResponse>>> functor;
+
+			if (serverPath.IndexOfAny(B2ProblematicFileNameCharacters) < 0)
+			{
+				// Fast path: b2_download_file_by_name
+				var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+
+				functor = () => _b2Client.DownloadAsync(request, buffer, default, cancellationToken);
+			}
+			else
+			{
+				// Workaround: b2_list_file_versions -> b2_download_file_by_id
+				var fileID = GetFileIdByName(serverPath);
+
+				var request = new DownloadFileByIdRequest(fileID);
+
+				functor = () => _b2Client.DownloadByIdAsync(request, buffer, default, cancellationToken);
+			}
 
 			try
 			{
-				var result = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.DownloadAsync(request, buffer, default, cancellationToken)));
+				var result = Wait(AutomaticallyReauthenticateAsync(functor));
 
 				if (!result.IsSuccessStatusCode)
 				{
@@ -177,11 +241,30 @@ namespace DeltaQ.RTB.Storage
 		// This method is intended for small resources.
 		byte[] DownloadFileBytes(string bucketId, string serverPath, CancellationToken cancellationToken)
 		{
+			// BUGS IN BACKBLAZE B2 API: See discussion at top of DownloadFileString.
+
 			var buffer = new MemoryStream();
 
-			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+			Func<Task<IApiResults<DownloadFileResponse>>> functor;
 
-			var result = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.DownloadAsync(request, buffer, default, cancellationToken)));
+			if (serverPath.IndexOfAny(B2ProblematicFileNameCharacters) < 0)
+			{
+				// Fast path: b2_download_file_by_name
+				var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+
+				functor = () => _b2Client.DownloadAsync(request, buffer, default, cancellationToken);
+			}
+			else
+			{
+				// Workaround: b2_list_file_versions -> b2_download_file_by_id
+				var fileID = GetFileIdByName(serverPath);
+
+				var request = new DownloadFileByIdRequest(fileID);
+
+				functor = () => _b2Client.DownloadByIdAsync(request, buffer, default, cancellationToken);
+			}
+
+			var result = Wait(AutomaticallyReauthenticateAsync(functor));
 
 			if (!result.IsSuccessStatusCode)
 				throw new Exception("The operation did not complete successfully.");
@@ -331,7 +414,7 @@ namespace DeltaQ.RTB.Storage
 			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
-		string GetFileIdByName(string serverPath)
+		string? GetFileIdByName(string serverPath, bool throwIfNotFound = true)
 		{
 			VerboseDiagnosticOutput("[B2] Resolving file id for name: {0}", serverPath);
 
@@ -352,7 +435,11 @@ namespace DeltaQ.RTB.Storage
 			if (file == null)
 			{
 				VerboseDiagnosticOutput("[B2] => file was not found");
-				throw new FileNotFoundException();
+
+				if (throwIfNotFound)
+					throw new FileNotFoundException();
+				else
+					return null;
 			}
 
 			var fileId = file.FileId;
@@ -364,9 +451,8 @@ namespace DeltaQ.RTB.Storage
 
 		public void DeleteFileDirect(string serverPath, CancellationToken cancellationToken)
 		{
-			string fileId = GetFileIdByName(serverPath);
-
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileId, serverPath)));
+			if (GetFileIdByName(serverPath, throwIfNotFound: false) is string fileId)
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileId, serverPath)));
 		}
 
 		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
@@ -414,7 +500,28 @@ namespace DeltaQ.RTB.Storage
 
 		public void DownloadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
-			Wait(_b2Client.DownloadAsync(FindAndCacheBucketName(), serverPath, contentStream));
+			// BUGS IN BACKBLAZE B2 API: See discussion at top of DownloadFileString.
+
+			Task<IApiResults<DownloadFileResponse>> task;
+
+			if (serverPath.IndexOfAny(B2ProblematicFileNameCharacters) < 0)
+			{
+				// Fast path: b2_download_file_by_name
+				var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
+
+				task = _b2Client.DownloadAsync(request, contentStream, default, cancellationToken);
+			}
+			else
+			{
+				// Workaround: b2_list_file_versions -> b2_download_file_by_id
+				var fileID = GetFileIdByName(serverPath);
+
+				var request = new DownloadFileByIdRequest(fileID);
+
+				task = _b2Client.DownloadByIdAsync(request, contentStream, default, cancellationToken);
+			}
+
+			Wait(task);
 		}
 
 		public void DownloadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
@@ -518,9 +625,8 @@ namespace DeltaQ.RTB.Storage
 
 		public void CancelUnfinishedFile(string serverPath, CancellationToken cancellationToken)
 		{
-			string fileId = GetFileIdByName(serverPath);
-
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.CancelLargeFileAsync(fileId)));
+			if (GetFileIdByName(serverPath, throwIfNotFound: false) is string fileId)
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.CancelLargeFileAsync(fileId)));
 		}
 	}
 }
