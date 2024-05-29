@@ -938,7 +938,10 @@ namespace DeltaQ.RTB.Agent
 					var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);
 
 					if ((backedUpFileState != null) && (currentLocalFileChecksum == backedUpFileState.Checksum))
-						VerboseDiagnosticOutput("[BQ] Remote File State Cache says this exact file is already uploaded, skipping");
+					{
+						VerboseDiagnosticOutput("[BQ] Remote File State Cache says this exact file is already uploaded, releasing & skipping");
+						uploadAction.Source.Dispose();
+					}
 					else
 					{
 						var currentLastModifiedUTC = File.GetLastWriteTimeUtc(uploadAction.Source.Path);
