@@ -730,6 +730,13 @@ namespace DeltaQ.RTB.Agent
 				var newZFSSnapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
 				var removeFromQueue = new List<LongPollingItem>();
 
+				VerboseDiagnosticOutput("[LP] Collecting open file handles");
+
+				var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
+					.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
+					.Select(handle => handle.FileName)
+					.ToHashSet();
+
 				VerboseDiagnosticOutput("[LP] Processing {0} items", queueCopy.Count);
 
 				foreach (var item in queueCopy)
@@ -761,7 +768,7 @@ namespace DeltaQ.RTB.Agent
 					bool promoteFile = false;
 
 					if ((item.DeadlineUTC < now)
-						|| !_openFileHandles.Enumerate(newSnapshotReference.Path).Any(handle => handle.FileAccess.HasFlag(FileAccess.Write)))
+						|| !openWriteFileHandleSet.Contains(newSnapshotReference.Path))
 					{
 						VerboseDiagnosticOutput("[LP]   File no longer has any writers, promoting");
 
