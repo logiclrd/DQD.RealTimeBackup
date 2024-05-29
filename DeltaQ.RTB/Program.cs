@@ -403,6 +403,8 @@ namespace DeltaQ.RTB
 
 						if (args.InitialBackupThenExit)
 							stopEvent.Set();
+						else if (cancellationTokenSource.IsCancellationRequested)
+							Output("Not continuing with startup");
 						else
 						{
 							if (!parameters.Quiet)
@@ -415,49 +417,52 @@ namespace DeltaQ.RTB
 						}
 					}
 
-					if (!parameters.Quiet)
-						Output("Starting periodic rescan scheduler");
-					periodicRescanScheduler.Start(cancellationTokenSource.Token);
-
-					if (!parameters.Quiet)
+					if (!cancellationTokenSource.IsCancellationRequested)
 					{
-						// Clear the screen.
-						Console.Write("\x1B[;r\x1B[2J");
-						Output("Waiting for stop signal");
-					}
+						if (!parameters.Quiet)
+							Output("Starting periodic rescan scheduler");
+						periodicRescanScheduler.Start(cancellationTokenSource.Token);
 
-					using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 1 - backupAgent.UploadThreadCount))
-					{
-						while (true)
+						if (!parameters.Quiet)
 						{
-							bool signalled = stopEvent.WaitOne(TimeSpan.FromSeconds(0.5));
+							// Clear the screen.
+							Console.Write("\x1B[;r\x1B[2J");
+							Output("Waiting for stop signal");
+						}
 
-							if (signalled)
-								break;
-
-							lock (scrollWindowSync)
+						using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 1 - backupAgent.UploadThreadCount))
+						{
+							while (!cancellationTokenSource.IsCancellationRequested)
 							{
-								using (scrollWindow.Suspend())
+								bool signalled = stopEvent.WaitOne(TimeSpan.FromSeconds(0.5));
+
+								if (signalled)
+									break;
+
+								lock (scrollWindowSync)
 								{
-									Console.CursorLeft = 0;
-									Console.CursorTop = Console.WindowHeight - backupAgent.UploadThreadCount;
-
-									var uploadThreads = backupAgent.GetUploadThreads();
-
-									for (int i=0; i < uploadThreads.Length; i++)
+									using (scrollWindow.Suspend())
 									{
-										if (i > 0)
-											Console.WriteLine();
+										Console.CursorLeft = 0;
+										Console.CursorTop = Console.WindowHeight - backupAgent.UploadThreadCount;
 
-										string statusLine = uploadThreads[i]?.Format(Console.WindowWidth - 1) ?? "";
+										var uploadThreads = backupAgent.GetUploadThreads();
 
-										Console.Write(statusLine);
+										for (int i=0; i < uploadThreads.Length; i++)
+										{
+											if (i > 0)
+												Console.WriteLine();
 
-										for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
-											Console.Write(' ');
+											string statusLine = uploadThreads[i]?.Format(Console.WindowWidth - 1) ?? "";
+
+											Console.Write(statusLine);
+
+											for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
+												Console.Write(' ');
+										}
+
+										scrollWindow.LastRow = Console.WindowHeight - backupAgent.UploadThreadCount - 1;
 									}
-
-									scrollWindow.LastRow = Console.WindowHeight - backupAgent.UploadThreadCount - 1;
 								}
 							}
 						}
