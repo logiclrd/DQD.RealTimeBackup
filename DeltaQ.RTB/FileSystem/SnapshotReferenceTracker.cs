@@ -42,7 +42,7 @@ namespace DeltaQ.RTB.FileSystem
 
 			if (ReferenceCount == 0)
 			{
-				ZFSDebugLog.WriteLine("[{0}] => Disposing of the snapshot");
+				ZFSDebugLog.WriteLine("[{0}] => Disposing of the snapshot", _id);
 				Snapshot.Dispose();
 			}
 		}

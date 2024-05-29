@@ -165,19 +165,32 @@ namespace DeltaQ.RTB.Agent
 		bool _paused;
 		HashSet<string> _pathsWithActivityWhilePaused = new HashSet<string>();
 
-		public BackupAgentQueueSizes GetQueueSizes()
+		void GetQueueSizes_PendingIntake(BackupAgentQueueSizes queueSizes)
 		{
-			var queueSizes = new BackupAgentQueueSizes();
-
 			lock (_snapshotSharingDelaySync)
 				queueSizes.NumberOfFilesPendingIntake = _snapshotSharingBatch.Count;
+		}
+
+		void GetQueueSizes_OpenFiles(BackupAgentQueueSizes queueSizes)
+		{
 			lock (_openFilesSync)
 				queueSizes.NumberOfFilesPollingOpenHandles = _openFiles.Count;
+		}
+
+		void GetQueueSizes_LongPolling(BackupAgentQueueSizes queueSizes)
+		{
 			lock (_longPollingSync)
 				queueSizes.NumberOfFilesPollingContentChanges = _longPollingQueue.Count;
+		}
+
+		void GetQueueSizes_BackupQueue(BackupAgentQueueSizes queueSizes)
+		{
 			lock (_backupQueueSync)
 				queueSizes.NumberOfBackupQueueActions = _backupQueue.Count;
+		}
 
+		void GetQueueSizes_UploadQueue(BackupAgentQueueSizes queueSizes)
+		{
 			lock (_uploadQueueSync)
 			{
 				queueSizes.NumberOfQueuedUploads = _uploadQueue.Count;
@@ -185,6 +198,17 @@ namespace DeltaQ.RTB.Agent
 				if (_uploadThreadStatus != null)
 					queueSizes.UploadThreads = GetUploadThreads();
 			}
+		}
+
+		public BackupAgentQueueSizes GetQueueSizes()
+		{
+			var queueSizes = new BackupAgentQueueSizes();
+
+			GetQueueSizes_PendingIntake(queueSizes);
+			GetQueueSizes_OpenFiles(queueSizes);
+			GetQueueSizes_LongPolling(queueSizes);
+			GetQueueSizes_BackupQueue(queueSizes);
+			GetQueueSizes_UploadQueue(queueSizes);
 
 			return queueSizes;
 		}
@@ -845,7 +869,7 @@ namespace DeltaQ.RTB.Agent
 
 						if (_pauseQueuingUploads == false)
 						{
-							backupAction = _backupQueue.First.Value;
+							backupAction = _backupQueue.First!.Value;
 							_backupQueue.RemoveFirst();
 						}
 						else
