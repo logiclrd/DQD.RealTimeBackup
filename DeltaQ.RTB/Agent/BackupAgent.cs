@@ -661,21 +661,32 @@ namespace DeltaQ.RTB.Agent
 
 		void LongPollingThreadProc()
 		{
+			VerboseDiagnosticOutput("[LP] Thread starting");
+
 			DateTime intervalEndUTC = DateTime.UtcNow;
+
+			List<LongPollingItem> queueCopy = new List<LongPollingItem>();
 
 			while (!_stopping)
 			{
 				List<BackupAction>? actions = null;
 
+				VerboseDiagnosticOutput("[LP] Obtaining sync");
+
+				queueCopy.Clear();
+
 				lock (_longPollingSync)
 				{
 					if (_longPollingQueue.Count == 0)
 					{
+						VerboseDiagnosticOutput("[LP] => Queue is empty, waiting on sync");
 						Monitor.Wait(_longPollingSync);
 						continue;
 					}
 
 					var maximumDeadLineUTC = DateTime.UtcNow + _parameters.LongPollingInterval;
+
+					VerboseDiagnosticOutput("[LP] Have {0} items for long polling, set deadline limit to {1}", _longPollingQueue.Count, maximumDeadLineUTC);
 
 					if (_longPollingQueue.Count == 0)
 						intervalEndUTC = maximumDeadLineUTC;
@@ -683,94 +694,160 @@ namespace DeltaQ.RTB.Agent
 					{
 						intervalEndUTC = _longPollingQueue.Select(entry => entry.DeadlineUTC).Min();
 
+						VerboseDiagnosticOutput("[LP] => latest deadline in queue: {0}", intervalEndUTC);
+
 						if (intervalEndUTC > maximumDeadLineUTC)
+						{
+							VerboseDiagnosticOutput("[LP] => clamping to limit");
 							intervalEndUTC = maximumDeadLineUTC;
+						}
 					}
 
 					var waitDuration = intervalEndUTC - DateTime.UtcNow;
 
 					while ((waitDuration > TimeSpan.Zero) && !_stopping)
 					{
+						VerboseDiagnosticOutput("[LP] Waiting for {0}", waitDuration);
 						Monitor.Wait(_longPollingSync, waitDuration);
 						waitDuration = intervalEndUTC - DateTime.UtcNow;
 					}
 
+					VerboseDiagnosticOutput("[LP] Wait loop finished");
+
 					if (_stopping)
-						break;
-
-					var now = DateTime.UtcNow;
-
-					var newZFSSnapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
-
-					for (int i = _longPollingQueue.Count - 1; i >= 0; i--)
 					{
-						var item = _longPollingQueue[i];
+						VerboseDiagnosticOutput("[LP] STOPPING");
+						break;
+					}
 
-						var zfs = FindZFSVolumeForPath(item.CurrentSnapshotReference.Path);
+					queueCopy.AddRange(_longPollingQueue);
 
-						if (zfs == null)
+					VerboseDiagnosticOutput("[LP] Releasing sync, will process {0} items", queueCopy.Count);
+				}
+
+				var now = DateTime.UtcNow;
+
+				var newZFSSnapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
+				var removeFromQueue = new List<LongPollingItem>();
+
+				VerboseDiagnosticOutput("[LP] Processing {0} items", queueCopy.Count);
+
+				foreach (var item in queueCopy)
+				{
+					VerboseDiagnosticOutput("[LP] - {0}", item.CurrentSnapshotReference.Path);
+
+					var zfs = FindZFSVolumeForPath(item.CurrentSnapshotReference.Path);
+
+					if (zfs == null)
+					{
+						Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
+						removeFromQueue.Add(item);
+						continue;
+					}
+
+					if (!newZFSSnapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
+					{
+						VerboseDiagnosticOutput("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
+
+						var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
+
+						snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+
+						newZFSSnapshots[zfs] = snapshotReferenceTracker;
+					}
+
+					var newSnapshotReference = snapshotReferenceTracker.AddReference(item.CurrentSnapshotReference.Path);
+
+					bool promoteFile = false;
+
+					if ((item.DeadlineUTC < now)
+						|| !_openFileHandles.Enumerate(newSnapshotReference.Path).Any(handle => handle.FileAccess.HasFlag(FileAccess.Write)))
+					{
+						VerboseDiagnosticOutput("[LP]   File no longer has any writers, promoting");
+
+						item.CurrentSnapshotReference.Dispose();
+						item.CurrentSnapshotReference = newSnapshotReference;
+
+						promoteFile = true;
+					}
+					else
+					{
+						if (!File.Exists(newSnapshotReference.SnapshottedPath))
 						{
-							Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
-							_longPollingQueue.RemoveAt(i);
+							VerboseDiagnosticOutput("[LP]   File does not exist in new snapshot, removing from consideration");
+
+							// Looks like the file got deleted.
+							item.CurrentSnapshotReference.Dispose();
+							newSnapshotReference.Dispose();
+							removeFromQueue.Add(item);
 							continue;
 						}
 
-						if (!newZFSSnapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
+						VerboseDiagnosticOutput("[LP]   Comparing file content between old and new snapshots");
+						VerboseDiagnosticOutput("[LP]   * {0}", item.CurrentSnapshotReference.SnapshottedPath);
+						VerboseDiagnosticOutput("[LP]   * {0}", newSnapshotReference.SnapshottedPath);
+
+						bool fileLooksStable = FileUtility.FilesAreEqual(
+							item.CurrentSnapshotReference.SnapshottedPath,
+							newSnapshotReference.SnapshottedPath,
+							_longPollingCancellationTokenSource?.Token ?? CancellationToken.None);
+
+						VerboseDiagnosticOutput("[LP]   Switching to new snapshot, releasing old snapshot");
+
+						item.CurrentSnapshotReference.Dispose();
+						item.CurrentSnapshotReference = newSnapshotReference;
+
+						if (fileLooksStable)
 						{
-							VerboseDiagnosticOutput("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
-
-							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
-
-							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
-
-							newZFSSnapshots[zfs] = snapshotReferenceTracker;
-						}
-
-						var newSnapshotReference = snapshotReferenceTracker.AddReference(item.CurrentSnapshotReference.Path);
-
-						bool promoteFile = false;
-
-						if ((item.DeadlineUTC < now)
-						 || !_openFileHandles.Enumerate(newSnapshotReference.Path).Any(handle => handle.FileAccess.HasFlag(FileAccess.Write)))
-						{
-							item.CurrentSnapshotReference.Dispose();
+							VerboseDiagnosticOutput("[LP]   File looks stable, promoting");
 							promoteFile = true;
 						}
-						else
-						{
-							if (!File.Exists(newSnapshotReference.SnapshottedPath))
-							{
-								// Looks like the file got deleted.
-								_longPollingQueue.RemoveAt(i);
-								continue;
-							}
+					}
 
-							bool fileLooksStable = FileUtility.FilesAreEqual(
-								item.CurrentSnapshotReference.SnapshottedPath,
-								newSnapshotReference.SnapshottedPath,
-								_longPollingCancellationTokenSource?.Token ?? CancellationToken.None);
+					if (promoteFile)
+					{
+						removeFromQueue.Add(item);
 
-							item.CurrentSnapshotReference.Dispose();
-							item.CurrentSnapshotReference = newSnapshotReference;
+						if (actions == null)
+							actions = new List<BackupAction>();
 
-							if (fileLooksStable)
-								promoteFile = true;
-						}
-
-						if (promoteFile)
-						{
-							_longPollingQueue.RemoveAt(i);
-
-							if (actions == null)
-								actions = new List<BackupAction>();
-
-							actions.Add(new UploadAction(newSnapshotReference, newSnapshotReference.Path));
-						}
+						actions.Add(new UploadAction(newSnapshotReference, newSnapshotReference.Path));
 					}
 				}
 
 				if ((actions != null) && !_stopping)
+				{
+					VerboseDiagnosticOutput("[LP] Adding {0} actions to the backup queue", actions.Count);
 					AddActionsToBackupQueue(actions);
+				}
+
+				if (removeFromQueue.Count > 0)
+				{
+					VerboseDiagnosticOutput("[LP] Removing {0} items from the long polling queue", removeFromQueue.Count);
+
+					lock (_longPollingSync)
+					{
+						// If we ever end up with a large number of items in this list, we need to make sure we
+						// use a performant method for removing items. We use the method of compaction, copying
+						// items to be kept directly to their new indices.
+
+						var removeFromQueueSet = removeFromQueue.ToHashSet();
+
+						int keepIndex = 0;
+
+						for (int i = 0; i < _longPollingQueue.Count; i++)
+						{
+							if (!removeFromQueueSet.Contains(_longPollingQueue[i]))
+							{
+								_longPollingQueue[keepIndex] = _longPollingQueue[i];
+								keepIndex++;
+							}
+						}
+
+						if (keepIndex < _longPollingQueue.Count)
+							_longPollingQueue.RemoveRange(keepIndex, _longPollingQueue.Count - keepIndex);
+					}
+				}
 			}
 		}
 
@@ -1166,7 +1243,7 @@ namespace DeltaQ.RTB.Agent
 
 			try
 			{
-				while (!cancellationToken.IsCancellationRequested)
+				while (!cancellationToken.IsCancellationRequested && !_stopping)
 				{
 					int uploadQueueSize;
 					FileReference fileToUpload;
@@ -1346,6 +1423,10 @@ namespace DeltaQ.RTB.Agent
 			{
 				Console.Error.WriteLine("The remote file state cache upload operation was cancelled. This may result in consistency errors.");
 			}
+
+			NonQuietDiagnosticOutput("Terminating uploads");
+
+			_cancelUploadsCancellationTokenSource?.Cancel();
 
 			NonQuietDiagnosticOutput("Cleaning up resources");
 
