@@ -347,7 +347,15 @@ namespace DeltaQ.RTB.Storage
 
 			response.EnsureSuccessStatusCode();
 
-			var fileId = response.Response.Files.Single(file => file.FileName == serverPath).FileId;
+			var file = response.Response.Files.SingleOrDefault(file => file.FileName == serverPath);
+
+			if (file == null)
+			{
+				VerboseDiagnosticOutput("[B2] => file was not found");
+				throw new FileNotFoundException();
+			}
+
+			var fileId = file.FileId;
 
 			VerboseDiagnosticOutput("[B2] => file id: {0}", fileId);
 

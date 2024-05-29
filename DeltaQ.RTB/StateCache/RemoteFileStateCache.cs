@@ -648,13 +648,47 @@ namespace DeltaQ.RTB.StateCache
 				{
 					case CacheActionType.UploadFile:
 						DebugLog("[PCA] performing upload of {0} to {1}", action.SourcePath, action.Path);
-						using (var stream = File.OpenRead(action.SourcePath!))
-							_remoteStorage.UploadFileDirect(action.Path!, stream, CancellationToken.None);
+
+						for (int retry = 0; retry < 5; retry++)
+						{
+							try
+							{
+								using (var stream = File.OpenRead(action.SourcePath!))
+									_remoteStorage.UploadFileDirect(action.Path!, stream, CancellationToken.None);
+								break;
+							}
+							catch (Exception e) when (retry < 4)
+							{
+								DebugLog("[PCA] => upload failed: {0}: {1}", e.GetType().Name, e.Message);
+								Thread.Sleep(TimeSpan.FromSeconds(0.5));
+							}
+						}
+
+						DebugLog("[PCA] upload succeeded, deleting source file: {0}", action.SourcePath);
 						File.Delete(action.SourcePath!);
+
 						break;
 					case CacheActionType.DeleteFile:
 						DebugLog("[PCA] performing deletion of {0}", action.Path);
-						_remoteStorage.DeleteFileDirect(action.Path!, CancellationToken.None);
+
+						for (int retry = 0; retry < 5; retry++)
+						{
+							try
+							{
+								_remoteStorage.DeleteFileDirect(action.Path!, CancellationToken.None);
+							}
+							catch (Exception e) when (retry < 4)
+							{
+								DebugLog("[PCA] => deletion failed: {0}: {1}", e.GetType().Name, e.Message);
+
+								if (e is FileNotFoundException)
+								{
+									DebugLog("[PCA] => because the file already doesn't exist server-side");
+									break;
+								}
+							}
+						}
+
 						break;
 				}
 
