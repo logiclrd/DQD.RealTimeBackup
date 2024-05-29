@@ -86,6 +86,9 @@ namespace DeltaQ.RTB.StateCache
 
 					_owner.DebugLog("[BUSY] count is now {0}", newCount);
 
+					lock (_owner._busySync)
+						Monitor.PulseAll(_owner._busySync);
+
 					_owner = null;
 				}
 			}

@@ -30,11 +30,11 @@ namespace DeltaQ.RTB.Scan
 				Queue<string> directoryQueue = new Queue<string>();
 
 				directoryQueue.Enqueue(mount.MountPoint);
+				enqueued?.Invoke();
 
 				while (directoryQueue.Any())
 				{
 					string path = directoryQueue.Dequeue();
-
 					dequeued?.Invoke();
 
 					FileSystemEnumerable<string> enumerable;
@@ -58,15 +58,15 @@ namespace DeltaQ.RTB.Scan
 								return true;
 							else
 							{
-								// Make sure we don't cross devices.
+								// Make sure we don't follow symlinks or cross devices.
 								string path = entry.ToFullPath();
 
 								var subdirStat = _stat.Stat(path);
 
-								if (subdirStat.ContainerDeviceID == mountPointStat.ContainerDeviceID)
+								if ((subdirStat.ContainerDeviceID == mountPointStat.ContainerDeviceID)
+								 && (File.ResolveLinkTarget(path, returnFinalTarget: false) == null))
 								{
 									directoryQueue.Enqueue(entry.ToFullPath());
-
 									enqueued?.Invoke();
 								}
 
