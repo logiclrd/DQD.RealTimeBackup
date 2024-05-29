@@ -477,6 +477,14 @@ namespace DeltaQ.RTB
 					backupAgent.Stop();
 
 					if (!parameters.Quiet)
+						Output("Removing ZFS snapshots...");
+
+					var zfs = container.Resolve<IZFS>();
+
+					foreach (var snapshot in zfs.CurrentSnapshots)
+						snapshot.Dispose();
+
+					if (!parameters.Quiet)
 						Output("All done! Goodbye :-)");
 				}
 				finally
