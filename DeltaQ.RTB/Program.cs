@@ -62,9 +62,11 @@ namespace DeltaQ.RTB
 
 			if (args.WriteConfig != null)
 			{
+				Console.WriteLine("Creating file: {0}", args.WriteConfig);
+
 				try
 				{
-					using (var stream = File.OpenWrite(args.ConfigurationPath))
+					using (var stream = File.OpenWrite(args.WriteConfig))
 						serializer.Serialize(stream, parameters);
 				}
 				catch (Exception e)

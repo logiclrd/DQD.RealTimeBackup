@@ -115,6 +115,20 @@ namespace DeltaQ.RTB.SurfaceArea
 					continue;
 				}
 			}
+
+			OnDiagnosticOutput("Sorting mounts");
+
+			_mounts.Sort(
+				(x, y) =>
+				{
+					bool xIsHome = x.MountPoint.StartsWith("/home");
+					bool yIsHome = y.MountPoint.StartsWith("/home");
+
+					if (xIsHome != yIsHome)
+						return -xIsHome.CompareTo(yIsHome);
+					else
+						return x.MountPoint.CompareTo(y.MountPoint);
+				});
 		}
 	}
 }
