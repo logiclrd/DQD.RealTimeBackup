@@ -50,7 +50,7 @@ namespace DeltaQ.RTB.StateCache
 			{
 				lock (this)
 					using (var writer = new StreamWriter(_parameters.RemoteFileStateCacheDebugLogPath, append: true))
-						writer.WriteLine(line);
+						writer.WriteLine("[{0}] {1}", Thread.CurrentThread.ManagedThreadId, line);
 			}
 		}
 
@@ -72,14 +72,20 @@ namespace DeltaQ.RTB.StateCache
 			public BusyScope(RemoteFileStateCache owner)
 			{
 				_owner = owner;
-				_owner._busyCount++;
+
+				var newCount = Interlocked.Increment(ref _owner._busyCount);
+
+				_owner.DebugLog("[BUSY] count is now {0}", newCount);
 			}
 
 			public void Dispose()
 			{
 				if (_owner != null)
 				{
-					_owner._busyCount--;
+					var newCount = Interlocked.Decrement(ref _owner._busyCount);
+
+					_owner.DebugLog("[BUSY] count is now {0}", newCount);
+
 					_owner = null;
 				}
 			}
@@ -139,10 +145,17 @@ namespace DeltaQ.RTB.StateCache
 
 		public void WaitWhileBusy()
 		{
+			DebugLog("WaitWhileBusy: about to lock busysync");
+
 			lock (_busySync)
 			{
 				while (_busyCount > 0)
+				{
+					DebugLog("WaitWhileBusy: busy count is {0}, waiting", _busyCount);
 					Monitor.Wait(_busySync);
+				}
+
+				DebugLog("WaitWhileBusy: not busy");
 			}
 		}
 
@@ -394,7 +407,8 @@ namespace DeltaQ.RTB.StateCache
 			{
 				bool consolidated;
 
-				do
+				// Consolidate at most 2 batches per call
+				for (int i=0; i < 2; i++)
 				{
 					consolidated = false;
 
@@ -429,8 +443,10 @@ namespace DeltaQ.RTB.StateCache
 							}
 						}
 					}
+
+					if (!consolidated)
+						break;
 				}
-				while (consolidated);
 			}
 		}
 
@@ -651,6 +667,14 @@ namespace DeltaQ.RTB.StateCache
 
 						for (int retry = 0; retry < 5; retry++)
 						{
+							if (!File.Exists(action.SourcePath))
+							{
+								DebugLog("[PCA] ERROR: source file has gone away! {0}", action.SourcePath);
+								DebugLog("[PCA] uploading dummy file");
+
+								action.SourcePath = Path.GetTempFileName();
+							}
+
 							try
 							{
 								using (var stream = File.OpenRead(action.SourcePath!))

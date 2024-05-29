@@ -401,6 +401,8 @@ namespace DeltaQ.RTB
 								cancellationTokenSource.Token);
 						}
 
+						Console.Write("\x1B[2J");
+
 						if (args.InitialBackupThenExit)
 							stopEvent.Set();
 						else if (cancellationTokenSource.IsCancellationRequested)
