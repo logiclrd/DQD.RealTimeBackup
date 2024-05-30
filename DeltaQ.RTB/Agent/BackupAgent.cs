@@ -1100,8 +1100,9 @@ namespace DeltaQ.RTB.Agent
 					break;
 				case MoveAction moveAction:
 					VerboseDiagnosticOutput("[BQ] => MoveAction");
-					VerboseDiagnosticOutput("[BQ]   * From Path: {0}", moveAction.FromPath);
-					VerboseDiagnosticOutput("[BQ]   * To Path: {0}", moveAction.ToPath);
+					NonQuietDiagnosticOutput("[BQ] File moved locally, moving on server");
+					NonQuietDiagnosticOutput("[BQ]   * From Path: {0}", moveAction.FromPath);
+					NonQuietDiagnosticOutput("[BQ]   * To Path: {0}", moveAction.ToPath);
 
 					var fileState = _remoteFileStateCache.GetFileState(moveAction.FromPath);
 
@@ -1157,7 +1158,7 @@ namespace DeltaQ.RTB.Agent
 					break;
 				case DeleteAction deleteAction:
 					VerboseDiagnosticOutput("[BQ] => DeleteAction:");
-					VerboseDiagnosticOutput("[BQ]   * Path: {0}", deleteAction.Path);
+					NonQuietDiagnosticOutput("[BQ] File deleted locally, deleting from server: {0}", deleteAction.Path);
 					VerboseDiagnosticOutput("[BQ] Removing from Remote File State Cache");
 
 					bool expectContentFileToExist = _remoteFileStateCache.RemoveFileState(deleteAction.Path);
@@ -1312,7 +1313,7 @@ namespace DeltaQ.RTB.Agent
 
 					using (fileToUpload)
 					{
-						VerboseDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
+						NonQuietDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
 						VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
 
 						try
@@ -1332,11 +1333,12 @@ namespace DeltaQ.RTB.Agent
 								_uploadThreadStatus[threadIndex] = null;
 							}
 						}
-						catch (Exception ex)
+						catch (Exception exception)
 						{
-							OnDiagnosticOutput("Upload task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
-							OnDiagnosticOutput("Returning file to the intake queue");
+							_errorLogger.LogError("Upload task failed, returning file to the intake queue", exception);
+
 							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
+
 							continue;
 						}
 
