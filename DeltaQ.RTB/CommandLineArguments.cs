@@ -42,6 +42,9 @@ namespace DeltaQ.RTB
 		[Argument("/LOGFILEMAXLINES", Description = "Maximum number of lines to write to the log file. When the file reaches this many lines, it is rotated to '.old' and a new file is started. The number of lines retained is always between this number and twice this number.")]
 		public int LogFileMaxLines = 10000;
 
+		[Argument("/ERRORLOGFILE", Description = "Path to a log file to which important error information is written. This file should be monitored to ensure that there are no consistency issues with the backup. The default value is: /var/log/DeltaQ.RTB.error.log")]
+		public string? ErrorLogFilePath = null;
+
 		[Argument("/FANDEBUG", Description = "For debugging, a separate file that contains detailed logging of File Access Notify operations.")]
 		public string? FileAccessNotifyDebugLogPath = null;
 

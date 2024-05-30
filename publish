@@ -1,0 +1,7 @@
+#!/bin/bash
+
+systemctl stop DeltaQ.RTB.service
+
+dotnet build && dotnet publish -o /srv/DeltaQ.RTB
+
+diff DeltaQ.RTB.service /etc/systemd/system/DeltaQ.RTB.service || (cp DeltaQ.RTB.service /etc/systemd/system/DeltaQ.RTB.service && systemctl daemon-reload)

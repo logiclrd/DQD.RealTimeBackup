@@ -82,7 +82,7 @@ namespace DeltaQ.RTB.Utility
 
 			public DisableScope(ConsoleScrollWindow window)
 			{
-				_wasEnabled = window.IsEnabled;
+				_wasEnabled = window.IsEnabled && !Console.IsOutputRedirected;
 
 				_window = window;
 				if (_wasEnabled)

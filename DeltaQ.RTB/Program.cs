@@ -56,6 +56,9 @@ namespace DeltaQ.RTB
 			if (args.DisableFAN || args.InitialBackupThenExit)
 				parameters.EnableFileAccessNotify = false;
 
+			if (args.ErrorLogFilePath != null)
+				parameters.ErrorLogFilePath = args.ErrorLogFilePath;
+
 			if (args.FileAccessNotifyDebugLogPath != null)
 				parameters.FileAccessNotifyDebugLogPath = args.FileAccessNotifyDebugLogPath;
 			if (args.RemoteFileStateCacheDebugLogPath != null)
@@ -379,8 +382,11 @@ namespace DeltaQ.RTB
 									{
 										using (scrollWindow.Suspend())
 										{
-											Console.CursorLeft = 0;
-											Console.CursorTop = Console.WindowHeight - staticLineCount;
+											if (!Console.IsOutputRedirected)
+											{
+												Console.CursorLeft = 0;
+												Console.CursorTop = Console.WindowHeight - staticLineCount;
+											}
 
 											Console.WriteLine(headings);
 											Console.WriteLine(separator);
@@ -454,8 +460,11 @@ namespace DeltaQ.RTB
 								{
 									using (scrollWindow.Suspend())
 									{
-										Console.CursorLeft = 0;
-										Console.CursorTop = Console.WindowHeight - backupAgent.UploadThreadCount;
+										if (!Console.IsOutputRedirected)
+										{
+											Console.CursorLeft = 0;
+											Console.CursorTop = Console.WindowHeight - backupAgent.UploadThreadCount;
+										}
 
 										var uploadThreads = backupAgent.GetUploadThreads();
 
