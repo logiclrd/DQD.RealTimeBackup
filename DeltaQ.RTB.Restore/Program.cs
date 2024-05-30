@@ -13,6 +13,7 @@ using Autofac;
 
 using Bytewizer.Backblaze.Client;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
@@ -43,6 +44,7 @@ namespace DeltaQ.RTB.Restore
 			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCacheRemoteStorage>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<ErrorLogger>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<CacheActionLog>().AsImplementedInterfaces().SingleInstance();
 
