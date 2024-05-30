@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
+using DeltaQ.RTB.SurfaceArea;
+
 namespace DeltaQ.RTB
 {
 	public class OperatingParameters
@@ -25,83 +27,40 @@ namespace DeltaQ.RTB
 		// For debugging, a separate file that contains detailed logging of File Access Notify operations.
 		public string? FileAccessNotifyDebugLogPath = null;
 
-		public List<string> ExcludePaths =
-			new List<string>()
+		public List<PathFilter> PathFilters =
+			new List<PathFilter>()
 			{
-				"/var",
-				"/run",
-				"/tmp",
-				"/bin",
-				"/lib",
-				"/lib32",
-				"/lib64",
-				"/libx32",
-				"/usr/bin",
-				"/usr/lib",
-				"/usr/include",
-				"/usr/src",
-				"/usr/share",
-				"/opt",
-				"/var/lib/dpkg",
-				"/var/lib/swcatalog",
+				PathFilter.ExcludePrefix("/var"),
+				PathFilter.ExcludePrefix("/run"),
+				PathFilter.ExcludePrefix("/tmp"),
+				PathFilter.ExcludePrefix("/bin"),
+				PathFilter.ExcludePrefix("/lib"),
+				PathFilter.ExcludePrefix("/lib32"),
+				PathFilter.ExcludePrefix("/lib64"),
+				PathFilter.ExcludePrefix("/libx32"),
+				PathFilter.ExcludePrefix("/usr/bin"),
+				PathFilter.ExcludePrefix("/usr/lib"),
+				PathFilter.ExcludePrefix("/usr/include"),
+				PathFilter.ExcludePrefix("/usr/src"),
+				PathFilter.ExcludePrefix("/usr/share"),
+				PathFilter.ExcludePrefix("/opt"),
+				PathFilter.ExcludePrefix("/var/lib/dpkg"),
+				PathFilter.ExcludePrefix("/var/lib/swcatalog"),
+				PathFilter.ExcludeComponent(".cache"),
+				PathFilter.ExcludeComponent(".mozilla"),
+				PathFilter.ExcludeComponent("GUICache"),
+				PathFilter.ExcludeComponent("DawnCache"),
+				PathFilter.ExcludeComponent(".git"),
+				PathFilter.ExcludeRegex("~/.config/Code/"),
 			};
-
-		public List<string> ExcludePathsWithComponents =
-			new List<string>()
-			{
-				".cache",
-				".mozilla",
-			};
-
-		HashSet<string> _pathComponentsToIgnore = new HashSet<string>();
-
-		public void ResetCacheOfPathComponentsToIgnore()
-		{
-			_pathComponentsToIgnore.Clear();
-		}
 
 		public bool IsExcludedPath(string path)
 		{
-			// This is implemented in a slightly less readable way for performance reasons, since it will be
-			// called over and over and over. We avoid constructing objects.
-			//
-			// Semantics:
-			//   * If the path is exactly equal to an ExcludePaths member, return true.
-			//   * If the path starts with an ExcludePaths member which is then immediately followed by a '/', return true.
-			//   * Otherwise, return false.
-
-			for (int i = 0; i < ExcludePaths.Count; i++)
-			{
-				string excluded = ExcludePaths[i];
-
-				if (path.Length >= excluded.Length)
-				{
-					if ((path.Length == excluded.Length) || (path[excluded.Length] == '/'))
-					{
-						if (string.Compare(path, 0, excluded, 0, excluded.Length) == 0)
-						{
-							return true;
-						}
-					}
-				}
-			}
-
-			if (ShouldIgnorePathBasedOnComponents(path))
-				return true;
+			foreach (var filter in PathFilters)
+				if (filter.Matches(path))
+					return filter.ShouldExclude;
 
 			return false;
-		}
-
-		bool ShouldIgnorePathBasedOnComponents(string path)
-		{
-			if (_pathComponentsToIgnore.Count == 0)
-				_pathComponentsToIgnore.UnionWith(ExcludePathsWithComponents);
-
-			// No way to avoid constructing objects when checking for strings in a hash set.
-			return path
-				.Split(Path.DirectorySeparatorChar)
-				.Where(component => component.Length > 0)
-				.Any(_pathComponentsToIgnore.Contains);
 		}
 
 		// Used to resolve situations where the same device is mounted to multiple places. When this

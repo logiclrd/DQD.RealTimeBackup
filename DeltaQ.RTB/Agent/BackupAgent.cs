@@ -107,7 +107,10 @@ namespace DeltaQ.RTB.Agent
 				}
 			}
 
-			AddActionToBackupQueue(new MoveAction(move.PathFrom, move.PathTo));
+			if (_parameters.IsExcludedPath(move.PathFrom) && _parameters.IsExcludedPath(move.PathTo))
+				VerboseDiagnosticOutput("Ignoring PathMove event on excluded paths: {0} => {1}", move.PathFrom, move.PathTo);
+			else
+				AddActionToBackupQueue(new MoveAction(move.PathFrom, move.PathTo));
 		}
 
 		void monitor_PathDelete(object? sender, PathDelete delete)
@@ -124,7 +127,10 @@ namespace DeltaQ.RTB.Agent
 				}
 			}
 
-			AddActionToBackupQueue(new DeleteAction(delete.Path));
+			if (_parameters.IsExcludedPath(delete.Path))
+				VerboseDiagnosticOutput("Ignoring PathDelete event on excluded path: {0}", delete.Path);
+			else
+				AddActionToBackupQueue(new DeleteAction(delete.Path));
 		}
 
 		public void PauseMonitor()

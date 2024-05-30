@@ -766,6 +766,13 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			for (int i=0; i < 5; i++)
 				batch3FileStates.Add(faker.Generate<FileState>());
 
+			// Ensure that, as a starting point, none of the paths match.
+			var pathUsed = new HashSet<string>();
+
+			foreach (var state in batch1FileStates.Concat(batch2FileStates.Concat(batch3FileStates)))
+				while (!pathUsed.Add(state.Path))
+					state.Path = faker.Generate<FileState>().Path; // forgive me, I'm tired
+
 			// Select paths to delete.
 			var pathsToDelete = batch1FileStates.Skip(5).Take(5).Select(s => s.Path).ToList();
 
