@@ -207,7 +207,10 @@ namespace DeltaQ.RTB.Storage
 			else
 			{
 				// Workaround: b2_list_file_versions -> b2_download_file_by_id
-				var fileID = GetFileIdByName(serverPath);
+				var fileID = GetFileIdByName(serverPath, throwIfNotFound: false);
+
+				if (fileID == null)
+					return null;
 
 				var request = new DownloadFileByIdRequest(fileID);
 
