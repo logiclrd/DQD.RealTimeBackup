@@ -11,6 +11,7 @@ using DeltaQ.CommandLineParser;
 
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Agent;
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Scan;
 using DeltaQ.RTB.Interop;
@@ -93,6 +94,7 @@ namespace DeltaQ.RTB
 
 			builder.AddBackblazeAgent(backblazeAgentOptions);
 
+			builder.RegisterType<ErrorLogger>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<InitialBackupOrchestrator>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<BackupAgent>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<PeriodicRescanScheduler>().AsImplementedInterfaces().SingleInstance();
@@ -206,6 +208,8 @@ namespace DeltaQ.RTB
 
 			CommandLineArguments? args = null;
 
+			IErrorLogger errorLogger = new ErrorLogger(OperatingParameters.DefaultErrorLogFilePath);
+
 			try
 			{
 				var commandLine = new CommandLine();
@@ -286,6 +290,8 @@ namespace DeltaQ.RTB
 
 					var container = InitializeContainer(parameters);
 
+					errorLogger = container.Resolve<IErrorLogger>();
+
 					var storage = container.Resolve<IRemoteStorage>();
 					var backupAgent = container.Resolve<IBackupAgent>();
 					var remoteStorage = container.Resolve<IRemoteStorage>();
@@ -313,6 +319,7 @@ namespace DeltaQ.RTB
 							}
 						};
 
+					errorLogger.DiagnosticOutput += DiagnosticOutputHandler;
 					backupAgent.DiagnosticOutput += DiagnosticOutputHandler;
 					remoteStorage.DiagnosticOutput += DiagnosticOutputHandler;
 					remoteFileStateCache.DiagnosticOutput += DiagnosticOutputHandler;
@@ -500,6 +507,11 @@ namespace DeltaQ.RTB
 			}
 			catch (Exception e)
 			{
+				errorLogger.DisconnectDiagnosticOutput();
+				errorLogger.LogError(
+					"An error was caught by the exception handler in Main. This is a terminating error.",
+					exception: e);
+
 				bool quiet = false;
 				bool verbose = false;
 

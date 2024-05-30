@@ -19,6 +19,7 @@ using DeltaQ.RTB.Tests.Support;
 
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Agent;
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
@@ -35,8 +36,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 	{
 		Faker _faker = new Faker();
 
-		BackupAgent CreateSUT(OperatingParameters parameters, out ITimer timer, out IChecksum checksum, out ISurfaceArea surfaceArea, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
+		BackupAgent CreateSUT(OperatingParameters parameters, out IErrorLogger errorLogger, out ITimer timer, out IChecksum checksum, out ISurfaceArea surfaceArea, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
 		{
+			errorLogger = Substitute.For<IErrorLogger>();
 			timer = Substitute.For<ITimer>();
 			checksum = Substitute.For<IChecksum>();
 			surfaceArea = Substitute.For<ISurfaceArea>();
@@ -54,6 +56,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			return new BackupAgent(
 				parameters,
+				errorLogger,
 				timer,
 				checksum,
 				surfaceArea,
@@ -76,6 +79,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			var sut = CreateSUT(
 				parameters,
+				out var errorLogger,
 				out var timer,
 				out var checksum,
 				out var surfaceArea,
@@ -92,9 +96,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			var snapshot = Substitute.For<IZFSSnapshot>();
 
-			var referenceTracker = new SnapshotReferenceTracker(snapshot);
+			var referenceTracker = new SnapshotReferenceTracker(snapshot, errorLogger);
 
-			var reference = new SnapshotReference(referenceTracker, filePath);
+			var reference = new SnapshotReference(referenceTracker, filePath, errorLogger);
 
 			try
 			{
@@ -128,6 +132,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			var sut = CreateSUT(
 				parameters,
+				out var errorLogger,
 				out var timer,
 				out var checksum,
 				out var surfaceArea,
@@ -166,9 +171,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			string fileInSnapshotPath = Path.Combine(snapshotPath, filePath.TrimStart('/'));
 
-			var referenceTracker = new SnapshotReferenceTracker(snapshot);
+			var referenceTracker = new SnapshotReferenceTracker(snapshot, errorLogger);
 
-			var reference = new SnapshotReference(referenceTracker, filePath);
+			var reference = new SnapshotReference(referenceTracker, filePath, errorLogger);
 
 			sut.StartPollOpenFilesThread();
 
@@ -210,18 +215,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
 				parameters.MaximumFileSizeForStagingCopy = 100;
 
-				var snapshot = Substitute.For<IZFSSnapshot>();
-
-				snapshot.BuildPath().Returns("/");
-
-				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
-
-				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
-
-				var uploadAction = new UploadAction(reference, reference.Path);
-
 				var sut = CreateSUT(
 					parameters,
+					out var errorLogger,
 					out var timer,
 					out var checksum,
 					out var surfaceArea,
@@ -231,6 +227,16 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					out var staging,
 					out var remoteFileStateCache,
 					out var storage);
+
+				var snapshot = Substitute.For<IZFSSnapshot>();
+
+				snapshot.BuildPath().Returns("/");
+
+				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, errorLogger);
+
+				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path, errorLogger);
+
+				var uploadAction = new UploadAction(reference, reference.Path);
 
 				checksum.ComputeChecksum(Arg.Any<string>()).Returns(
 					x =>
@@ -273,18 +279,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
 				parameters.MaximumFileSizeForStagingCopy = 100;
 
-				var snapshot = Substitute.For<IZFSSnapshot>();
-
-				snapshot.BuildPath().Returns("/");
-
-				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
-
-				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
-
-				var uploadAction = new UploadAction(reference, reference.Path);
-
 				var sut = CreateSUT(
 					parameters,
+					out var errorLogger,
 					out var timer,
 					out var checksum,
 					out var surfaceArea,
@@ -294,6 +291,16 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					out var staging,
 					out var remoteFileStateCache,
 					out var storage);
+
+				var snapshot = Substitute.For<IZFSSnapshot>();
+
+				snapshot.BuildPath().Returns("/");
+
+				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, errorLogger);
+
+				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path, errorLogger);
+
+				var uploadAction = new UploadAction(reference, reference.Path);
 
 				checksum.ComputeChecksum(Arg.Any<string>()).Returns(
 					x =>
@@ -308,6 +315,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 				remoteFileStateCache.Received().GetFileState(file.Path);
 				staging.DidNotReceive().StageFile(Arg.Any<Stream>());
 
@@ -329,18 +338,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				parameters.OpenFileHandlePollingInterval = TimeSpan.Zero;
 				parameters.MaximumFileSizeForStagingCopy = 100;
 
-				var snapshot = Substitute.For<IZFSSnapshot>();
-
-				snapshot.BuildPath().Returns("/");
-
-				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
-
-				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path);
-
-				var uploadAction = new UploadAction(reference, reference.Path);
-
 				var sut = CreateSUT(
 					parameters,
+					out var errorLogger,
 					out var timer,
 					out var checksum,
 					out var surfaceArea,
@@ -350,6 +350,16 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 					out var staging,
 					out var remoteFileStateCache,
 					out var storage);
+
+				var snapshot = Substitute.For<IZFSSnapshot>();
+
+				snapshot.BuildPath().Returns("/");
+
+				var snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, errorLogger);
+
+				var reference = new SnapshotReference(snapshotReferenceTracker, file.Path, errorLogger);
+
+				var uploadAction = new UploadAction(reference, reference.Path);
 
 				checksum.ComputeChecksum(Arg.Any<string>()).Returns(
 					x =>
@@ -378,6 +388,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 				remoteFileStateCache.Received().GetFileState(file.Path);
 				staging.Received().StageFile(Arg.Any<Stream>());
 
@@ -397,6 +409,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 
 			var sut = CreateSUT(
 				parameters,
+				out var errorLogger,
 				out var timer,
 				out var checksum,
 				out var surfaceArea,

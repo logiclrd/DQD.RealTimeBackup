@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Threading;
 
+using DeltaQ.RTB.Diagnostics;
+
 namespace DeltaQ.RTB.FileSystem
 {
 	public class SnapshotReferenceTracker
@@ -10,15 +12,19 @@ namespace DeltaQ.RTB.FileSystem
 
 		static int s_nextID = 0;
 
+		IErrorLogger _errorLogger;
+
 		int _id;
 
-		public SnapshotReferenceTracker(IZFSSnapshot snapshot)
+		public SnapshotReferenceTracker(IZFSSnapshot snapshot, IErrorLogger errorLogger)
 		{
 			_id = Interlocked.Increment(ref s_nextID);
 
 			ZFSDebugLog.WriteLine("[{0}] Snapshot reference tracker set up for snapshot: {1}", _id, snapshot.SnapshotName);
 
 			this.Snapshot = snapshot;
+
+			_errorLogger = errorLogger;
 		}
 
 		public SnapshotReference AddReference(string path)
@@ -29,7 +35,7 @@ namespace DeltaQ.RTB.FileSystem
 
 			ZFSDebugLog.WriteLine("[{0}] Reference count is now {1}", _id, ReferenceCount);
 
-			return new SnapshotReference(this, path);
+			return new SnapshotReference(this, path, _errorLogger);
 		}
 
 		public void Release(SnapshotReference reference)

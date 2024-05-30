@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Utility;
 
 using Bytewizer.Backblaze;
@@ -24,6 +25,7 @@ namespace DeltaQ.RTB.Storage
 
 		OperatingParameters _parameters;
 		IStorageClient _b2Client;
+		IErrorLogger _errorLogger;
 
 		string? _bucketName;
 
@@ -41,10 +43,11 @@ namespace DeltaQ.RTB.Storage
 			return task.Result;
 		}
 
-		public B2RemoteStorage(OperatingParameters parameters, IStorageClient b2Client)
+		public B2RemoteStorage(OperatingParameters parameters, IStorageClient b2Client, IErrorLogger errorLogger)
 		{
 			_parameters = parameters;
 			_b2Client = b2Client;
+			_errorLogger = errorLogger;
 		}
 
 		object _authenticationSync = new object();
@@ -121,7 +124,11 @@ namespace DeltaQ.RTB.Storage
 				var bucketInfo = response.Response.Buckets.SingleOrDefault(bucket => bucket.BucketId == _parameters.RemoteStorageBucketID);
 
 				if (bucketInfo == null)
-					throw new Exception("Configuration error: Unable to resolve bucket name for bucket id " + _parameters.RemoteStorageBucketID);
+				{
+					throw _errorLogger
+						.LogError("Configuration error: Unable to resolve bucket name for bucket id " + _parameters.RemoteStorageBucketID)
+						.ToException();
+				}
 
 				_bucketName = bucketInfo.BucketName;
 			}
@@ -129,7 +136,7 @@ namespace DeltaQ.RTB.Storage
 			return _bucketName;
 		}
 
-		static char[] B2ProblematicFileNameCharacters = { ',', '[', ']' };
+		static char[] B2ProblematicFileNameCharacters = { ',', '[', ']', '&' };
 
 		// This method is intended for small resources.
 		string DownloadFileString(string serverPath, CancellationToken cancellationToken)

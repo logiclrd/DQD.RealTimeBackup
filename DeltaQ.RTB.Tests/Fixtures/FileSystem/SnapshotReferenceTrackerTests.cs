@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 using NUnit.Framework;
@@ -6,6 +7,7 @@ using NSubstitute;
 
 using Bogus;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
 
 namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
@@ -20,9 +22,10 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			// Arrange
 			var faker = new Faker();
 
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var snapshot = Substitute.For<IZFSSnapshot>();
 
-			var sut = new SnapshotReferenceTracker(snapshot);
+			var sut = new SnapshotReferenceTracker(snapshot, errorLogger);
 
 			// Act & Assert
 			var refs = new List<SnapshotReference>();
@@ -41,6 +44,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			}
 
 			snapshot.Received().Dispose();
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
 		}
 	}
 }

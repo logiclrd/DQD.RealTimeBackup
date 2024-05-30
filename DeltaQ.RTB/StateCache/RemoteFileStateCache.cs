@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
 
@@ -23,6 +24,7 @@ namespace DeltaQ.RTB.StateCache
 		//                        discard 0.
 		OperatingParameters _parameters;
 
+		IErrorLogger _errorLogger;
 		ITimer _timer;
 		IRemoteFileStateCacheStorage _cacheStorage;
 		ICacheActionLog _cacheActionLog;
@@ -124,12 +126,18 @@ namespace DeltaQ.RTB.StateCache
 
 						_actionQueue.Enqueue(action);
 					}
-					catch (Exception e)
+					catch (Exception exception)
 					{
-						Console.Error.WriteLine("Possible consistency problem. Error rehydrating Remote File State Cache action from path: " + _cacheActionLog.ActionQueuePath);
-						Console.Error.WriteLine("=> {0}: {1}", e.GetType().Name, e.Message);
+						_errorLogger.LogError(
+							$"An error occurred rehydrating an Remote File State Cache action with key {key} from path:\n" +
+							"\n" +
+							_cacheActionLog.ActionQueuePath + "\n" +
+							"\n" +
+							"This is a possible consistency problem.",
+							exception);
 					}
 				}
+
 				DebugLog("enqueued {0} actions", _actionQueue.Count);
 			}
 
@@ -166,10 +174,11 @@ namespace DeltaQ.RTB.StateCache
 		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
 		internal List<FileState> GetCurrentBatchForTest() => _currentBatch;
 
-		public RemoteFileStateCache(OperatingParameters parameters, ITimer timer, IRemoteFileStateCacheStorage cacheStorage, ICacheActionLog cacheActionLog, IRemoteStorage remoteStorage)
+		public RemoteFileStateCache(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, IRemoteFileStateCacheStorage cacheStorage, ICacheActionLog cacheActionLog, IRemoteStorage remoteStorage)
 		{
 			_parameters = parameters;
 
+			_errorLogger = errorLogger;
 			_timer = timer;
 			_cacheStorage = cacheStorage;
 			_cacheActionLog = cacheActionLog;
@@ -578,9 +587,9 @@ namespace DeltaQ.RTB.StateCache
 				// Return the batch number that no longer exists so that the caller can remove it from remote storage.
 				return oldestBatchNumber;
 			}
-			catch(Exception e)
+			catch (Exception exception)
 			{
-				DebugLog("ERROR IN ConsolidateOldestBatch: {0}", e);
+				_errorLogger.LogError("An error occurred while consolidating Remote File State Cache batches.", exception);
 				throw;
 			}
 		}
@@ -637,9 +646,35 @@ namespace DeltaQ.RTB.StateCache
 
 					action = _actionQueue.Dequeue();
 
-					DebugLog("[AT] processing action");
-					while (!action.IsComplete)
-						ProcessCacheAction(action);
+					DebugLog("[AT] checking if this action is redundant");
+
+					bool isRedundant = false;
+
+					if (action.CacheActionType == CacheActionType.UploadFile)
+					{
+						if (_actionQueue.Any(futureAction => (futureAction.Path == action.Path) && (futureAction.CacheActionType == CacheActionType.DeleteFile)))
+						{
+							DebugLog("[AT] => future action will delete this path anyway, no point in uploading");
+							isRedundant = true;
+						}
+					}
+
+					if (isRedundant)
+					{
+						if (File.Exists(action.SourcePath))
+						{
+							DebugLog("[AT] deleting source file: {0}", action.SourcePath);
+							File.Delete(action.SourcePath);
+						}
+						else
+							DebugLog("[AT] source file has gone missing anyway: {0}", action.SourcePath);
+					}
+					else
+					{
+						DebugLog("[AT] processing action");
+						while (!action.IsComplete)
+							ProcessCacheAction(action);
+					}
 
 					try
 					{
@@ -650,7 +685,11 @@ namespace DeltaQ.RTB.StateCache
 							action.ActionFileName = null;
 						}
 					}
-					catch {DebugLog("[AT] => error deleting action file");}
+					catch (Exception exception)
+					{
+						_errorLogger.LogError("An error occurred deleting an action file: " + action.ActionFileName, exception);
+						DebugLog("[AT] => error deleting action file (logged)");
+					}
 
 					DebugLog("[AT] notifying anybody waiting that we achieved something");
 
@@ -672,7 +711,15 @@ namespace DeltaQ.RTB.StateCache
 						{
 							if (!File.Exists(action.SourcePath))
 							{
-								DebugLog("[PCA] ERROR: source file has gone away! {0}", action.SourcePath);
+								_errorLogger.LogError(
+									"The source file for a queued Upload File action in the Remote File State Cache has gone missing.\n" +
+									"\n" +
+									"Was expecting to upload: " + action.SourcePath + "\n" +
+									"\n" +
+									"Will upload a 0-byte dummy file instead. This will unblock the queue but means that the data server-side is incomplete. " +
+									"A future batch upload should resolve this.");
+
+								DebugLog("[PCA] ERROR (logged): source file has gone away! {0}", action.SourcePath);
 								DebugLog("[PCA] uploading dummy file");
 
 								action.SourcePath = Path.GetTempFileName();

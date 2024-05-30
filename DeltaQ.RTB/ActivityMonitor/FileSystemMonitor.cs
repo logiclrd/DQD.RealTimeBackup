@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
 using DeltaQ.RTB.Utility;
@@ -19,6 +20,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 	{
 		OperatingParameters _parameters;
 
+		IErrorLogger _errorLogger;
 		ISurfaceArea _surfaceArea;
 		IMountTable _mountTable;
 		Func<IFileAccessNotify> _fileAccessNotifyFactory;
@@ -26,10 +28,11 @@ namespace DeltaQ.RTB.ActivityMonitor
 
 		IFileAccessNotify? _fileAccessNotify;
 
-		public FileSystemMonitor(OperatingParameters parameters, ISurfaceArea surfaceArea, IMountTable mountTable, Func<IFileAccessNotify> fileAccessNotifyFactory, IOpenByHandleAt openByHandleAt)
+		public FileSystemMonitor(OperatingParameters parameters, IErrorLogger errorLogger, ISurfaceArea surfaceArea, IMountTable mountTable, Func<IFileAccessNotify> fileAccessNotifyFactory, IOpenByHandleAt openByHandleAt)
 		{
 			_parameters = parameters;
 
+			_errorLogger = errorLogger;
 			_surfaceArea = surfaceArea;
 			_mountTable = mountTable;
 			_fileAccessNotifyFactory = fileAccessNotifyFactory;
@@ -50,6 +53,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 			if (!@event.InformationStructures.Any())
 			{
 				Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
+				_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures");
 				return;
 			}
 
@@ -68,6 +72,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 								if (!MountDescriptorByFileSystemID.TryGetValue(info.FileSystemID, out var mountDescriptor))
 								{
 									Console.Error.WriteLine("Using file system mount fallback");
+									_errorLogger.LogError("fanotify event was received with a FileSystemID that could not be resolved to a mount fd");
 									mountDescriptor = NativeMethods.AT_FDCWD;
 								}
 

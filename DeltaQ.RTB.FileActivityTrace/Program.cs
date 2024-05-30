@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 
 using DeltaQ.RTB.ActivityMonitor;
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
 using DeltaQ.RTB.Utility;
@@ -17,6 +18,8 @@ namespace DeltaQ.RTB.FileActivityTrace
 			var stopping = new ManualResetEvent(initialState: false);
 			var stopped = new ManualResetEvent(initialState: false);
 
+			var errorLogger = new ErrorLogger(parameters);
+
 			var mountTable = new MountTable();
 
 			var surfaceArea = new SurfaceAreaImplementation(parameters, mountTable);
@@ -24,9 +27,10 @@ namespace DeltaQ.RTB.FileActivityTrace
 
 			var fsm = new FileSystemMonitor(
 				parameters,
+				errorLogger,
 				surfaceArea,
 				mountTable,
-				() => new FileAccessNotify(parameters),
+				() => new FileAccessNotify(parameters, errorLogger),
 				openByHandleAt);
 
 			Console.CancelKeyPress +=

@@ -5,15 +5,21 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
+using DeltaQ.RTB.Diagnostics;
+
 namespace DeltaQ.RTB.Interop
 {
 	public class FileAccessNotify : IFileAccessNotify, IDisposable
 	{
 		int _fd;
 
-		public FileAccessNotify(OperatingParameters parameters)
+		IErrorLogger _errorLogger;
+
+		public FileAccessNotify(OperatingParameters parameters, IErrorLogger errorLogger)
 		{
 			s_fileAccessNotifyDebugLogPath = parameters.FileAccessNotifyDebugLogPath;
+
+			_errorLogger = errorLogger;
 
 			_fd = NativeMethods.fanotify_init(
 				FileAccessNotifyFlags.Class.Notification |
@@ -23,7 +29,10 @@ namespace DeltaQ.RTB.Interop
 				0);
 
 			if (_fd < 0)
+			{
+				_errorLogger.LogError("Unable to initialize fanotify, errno = " + Marshal.GetLastWin32Error());
 				throw new Exception("Cannot initialize fanotify");
+			}
 		}
 
 		public void Dispose()
@@ -229,7 +238,10 @@ namespace DeltaQ.RTB.Interop
 				int readSize = NativeMethods.read(_fd, buffer, BufferSize);
 
 				if (readSize < 0)
+				{
+					_errorLogger.LogError("Unexpected read error getting data from fanotify, errno = " + Marshal.GetLastWin32Error());
 					throw new Exception("Read error");
+				}
 
 				DebugLog("Read {0} bytes", readSize);
 

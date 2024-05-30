@@ -13,6 +13,7 @@ using AutoBogus;
 
 using FluentAssertions;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
@@ -97,7 +98,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 		}
 
 		[Test]
-		public void Constructor_should_load_cache_from_local_storage()
+		public void LoadCache_should_load_cache_from_local_storage()
 		{
 			// Arrange
 			var faker = CreateAutoFaker();
@@ -126,20 +127,26 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				batch3FileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
-			// Act
-			var result = new RemoteFileStateCache(
+			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
 				remoteStorage);
 
+			// Act
+			sut.LoadCache();
+
 			// Assert
-			result.GetCacheForTest().Should().BeEquivalentTo(expectedCache);
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
+			sut.GetCacheForTest().Should().BeEquivalentTo(expectedCache);
 		}
 
 		[Test]
@@ -158,6 +165,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(fileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -165,12 +173,15 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			// Act
 			var result = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
 				remoteStorage);
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			foreach (var fileState in fileStates)
 				result.GetFileState(fileState.Path).Should().BeEquivalentTo(fileState);
 		}
@@ -184,6 +195,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var dummyStorage = new DummyStorage();
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -191,12 +203,15 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			// Act
 			var result = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
 				remoteStorage);
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			result.GetFileState(faker.System.FilePath()).Should().BeNull();
 		}
 
@@ -214,12 +229,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(new[] { fileState });
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -233,6 +250,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var after = sut.GetFileState(fileState.Path);
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			before.Should().BeEquivalentTo(fileState);
 			after.Should().BeEquivalentTo(newFileState);
 		}
@@ -251,12 +270,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(new[] { fileState });
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -270,6 +291,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			maxBatchNumberAfter.Should().Be(maxBatchNumberBefore + 1);
 
 			using (var reader = dummyStorage.OpenBatchFileReader(maxBatchNumberAfter))
@@ -293,12 +316,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(new[] { fileState });
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -312,6 +337,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var after = sut.GetFileState(fileState.Path);
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			before.Should().BeEquivalentTo(fileState);
 			after.Should().BeNull();
 		}
@@ -329,12 +356,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(new[] { fileState });
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -348,6 +377,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			maxBatchNumberAfter.Should().Be(maxBatchNumberBefore + 1);
 
 			using (var reader = dummyStorage.OpenBatchFileReader(maxBatchNumberAfter))
@@ -378,6 +409,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(fileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -399,6 +431,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -413,6 +446,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			sut.GetCurrentBatchNumberForTest().Should().Be(batchNumber + 1);
 			sut.GetCurrentBatchForTest().Should().BeEmpty();
 		}
@@ -436,6 +471,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			dummyStorage.InitializeWithBatches(fileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -457,6 +493,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -473,6 +510,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			sut.DrainActionQueue();
 
 			uploads.Should().HaveCount(1);
@@ -532,6 +571,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				batch3FileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -562,6 +602,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -576,6 +617,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			uploads.Should().HaveCount(2);
 			deletions.Should().HaveCount(1);
 
@@ -602,7 +645,14 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			for (int i=0; i < 5; i++)
 				batch3FileStates.Add(faker.Generate<FileState>());
 
-			// Ensure that some of the paths match.
+			// Ensure that, as a starting point, none of the paths match.
+			var pathUsed = new HashSet<string>();
+
+			foreach (var state in batch1FileStates.Concat(batch2FileStates.Concat(batch3FileStates)))
+				while (!pathUsed.Add(state.Path))
+					state.Path = faker.Generate<FileState>().Path; // forgive me, I'm tired
+
+			// Now ensure that some of the paths match.
 			for (int i=5; i < 10; i++)
 				batch2FileStates[i].Path = batch1FileStates[i].Path;
 
@@ -633,6 +683,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				batch3FileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -654,6 +705,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -663,6 +715,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			int deletedBatchNumber = sut.ConsolidateOldestBatch();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			deletedBatchNumber.Should().Be(1);
 
 			int mergedBatchNumber = deletedBatchNumber + 1;
@@ -765,6 +819,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				batch3FileStates);
 
 			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var timer = Substitute.For<ITimer>();
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
@@ -786,6 +841,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var sut = new RemoteFileStateCache(
 				parameters,
+				errorLogger,
 				timer,
 				dummyStorage,
 				cacheActionLog,
@@ -797,6 +853,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			int deletedBatchNumber = sut.ConsolidateOldestBatch();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			sut.DrainActionQueue();
 
 			deletedBatchNumber.Should().Be(1);

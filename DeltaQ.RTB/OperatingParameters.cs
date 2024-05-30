@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace DeltaQ.RTB
 {
@@ -10,6 +12,11 @@ namespace DeltaQ.RTB
 
 		public bool Quiet => Verbosity < Verbosity.Normal;
 		public bool Verbose => Verbosity > Verbosity.Normal;
+
+		public const string DefaultErrorLogFilePath = "/var/log/DeltaQ.RTB.error.log";
+
+		// Path to which particularly important errors are written.
+		public string ErrorLogFilePath = DefaultErrorLogFilePath;
 
 		// Set to false to run a BackupAgent that responds only to explicit notifications. For instance,
 		// this is used to achieve initial backup.
@@ -39,6 +46,20 @@ namespace DeltaQ.RTB
 				"/var/lib/swcatalog",
 			};
 
+		public List<string> ExcludePathsWithComponents =
+			new List<string>()
+			{
+				".cache",
+				".mozilla",
+			};
+
+		HashSet<string> _pathComponentsToIgnore = new HashSet<string>();
+
+		public void ResetCacheOfPathComponentsToIgnore()
+		{
+			_pathComponentsToIgnore.Clear();
+		}
+
 		public bool IsExcludedPath(string path)
 		{
 			// This is implemented in a slightly less readable way for performance reasons, since it will be
@@ -65,7 +86,22 @@ namespace DeltaQ.RTB
 				}
 			}
 
+			if (ShouldIgnorePathBasedOnComponents(path))
+				return true;
+
 			return false;
+		}
+
+		bool ShouldIgnorePathBasedOnComponents(string path)
+		{
+			if (_pathComponentsToIgnore.Count == 0)
+				_pathComponentsToIgnore.UnionWith(ExcludePathsWithComponents);
+
+			// No way to avoid constructing objects when checking for strings in a hash set.
+			return path
+				.Split(Path.DirectorySeparatorChar)
+				.Where(component => component.Length > 0)
+				.Any(_pathComponentsToIgnore.Contains);
 		}
 
 		// Used to resolve situations where the same device is mounted to multiple places. When this

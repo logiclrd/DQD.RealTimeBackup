@@ -5,7 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+
 using DeltaQ.RTB.ActivityMonitor;
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.StateCache;
@@ -29,6 +31,7 @@ namespace DeltaQ.RTB.Agent
 
 		bool _stopping = false;
 
+		IErrorLogger _errorLogger;
 		ITimer _timer;
 		IChecksum _checksum;
 		ISurfaceArea _surfaceArea;
@@ -41,10 +44,11 @@ namespace DeltaQ.RTB.Agent
 
 		List<(string MountPoint, IZFS ZFS)> _zfsInstanceByMountPoint; // Sorted by decreasing length of MountPoint
 
-		public BackupAgent(OperatingParameters parameters, ITimer timer, IChecksum checksum, ISurfaceArea surfaceArea, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
+		public BackupAgent(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, IChecksum checksum, ISurfaceArea surfaceArea, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
 		{
 			_parameters = parameters;
 
+			_errorLogger = errorLogger;
 			_timer = timer;
 			_checksum = checksum;
 			_surfaceArea = surfaceArea;
@@ -363,6 +367,7 @@ namespace DeltaQ.RTB.Agent
 					if (zfs == null)
 					{
 						Console.Error.WriteLine("[IN] Can't process file because it doesn't appear to be on a ZFS volume: {0}", path);
+						_errorLogger.LogError("The Backup Agent was asked to consider the following path:\n\n" + path + "\n\nIt does not appear to be on a ZFS volume.");
 						continue;
 					}
 
@@ -377,7 +382,7 @@ namespace DeltaQ.RTB.Agent
 						{
 							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
 
-							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, _errorLogger);
 
 							snapshots[zfs] = snapshotReferenceTracker;
 						}
@@ -748,6 +753,7 @@ namespace DeltaQ.RTB.Agent
 					if (zfs == null)
 					{
 						Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
+						_errorLogger.LogError("The Backup Agent was asked to consider the path:\n\n" + item.CurrentSnapshotReference.Path + "\n\nThe Long Polling thread can't find the ZFS volume for this path.");
 						removeFromQueue.Add(item);
 						continue;
 					}
@@ -758,7 +764,7 @@ namespace DeltaQ.RTB.Agent
 
 						var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
 
-						snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot);
+						snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, _errorLogger);
 
 						newZFSSnapshots[zfs] = snapshotReferenceTracker;
 					}
@@ -1030,12 +1036,18 @@ namespace DeltaQ.RTB.Agent
 					{
 						stream = File.OpenRead(uploadAction.Source.SnapshottedPath);
 					}
-					catch (Exception e)
+					catch (Exception exception)
 					{
-						NonQuietDiagnosticOutput("Error opening file: {0}", uploadAction.Source.SnapshottedPath);
-						NonQuietDiagnosticOutput("=> {0}: {1}", e.GetType().Name, e.Message);
-						NonQuietDiagnosticOutput("This is a snapshot of: {0}", uploadAction.Source.Path);
-						NonQuietDiagnosticOutput("This should not have happened. Aborting this file upload and returning the file to the intake queue.");
+						_errorLogger.LogError(
+							"The Backup Agent queued an Upload Action with the following source path:\n" +
+							"\n" +
+							uploadAction.Source.SnapshottedPath + "\n" +
+							"\n" +
+							"This is a snapshot of: " + uploadAction.Source.Path + "\n" +
+							"\n" +
+							"The source path could not be opened in order to perform the upload. This should not have happened. The file upload " +
+							"will be aborted and the file will be returned to the intake queue.",
+							exception);
 
 						BeginQueuePathForOpenFilesCheck(uploadAction.Source.Path);
 
@@ -1088,7 +1100,17 @@ namespace DeltaQ.RTB.Agent
 					var fileState = _remoteFileStateCache.GetFileState(moveAction.FromPath);
 
 					if (fileState == null)
-						throw new Exception($"Consistency error: The remote file state cache does not have an entry for the 'from' path {moveAction.FromPath}. Maybe you just need a check action for the path?");
+					{
+						VerboseDiagnosticOutput("[BQ] From Path does not exist in the remote file state cache");
+						VerboseDiagnosticOutput("[MQ] => We should double-check that we don't have a content file at that path and then process the To Path as a new file");
+
+						var deleteAction = new DeleteAction(moveAction.FromPath);
+
+						ProcessBackupQueueAction(deleteAction);
+						BeginQueuePathForOpenFilesCheck(moveAction.ToPath);
+
+						break;
+					}
 
 					if (_parameters.IsExcludedPath(moveAction.ToPath))
 					{
@@ -1132,35 +1154,36 @@ namespace DeltaQ.RTB.Agent
 					VerboseDiagnosticOutput("[BQ]   * Path: {0}", deleteAction.Path);
 					VerboseDiagnosticOutput("[BQ] Removing from Remote File State Cache");
 
-					if (!_remoteFileStateCache.RemoveFileState(deleteAction.Path))
-						VerboseDiagnosticOutput("[BQ] Nothing to do, file was already not in the Remote File State Cache");
-					else
-					{
+					bool expectContentFileToExist = _remoteFileStateCache.RemoveFileState(deleteAction.Path);
+
+					if (expectContentFileToExist)
 						VerboseDiagnosticOutput("[BQ] Deleting file from storage");
+					else
+						VerboseDiagnosticOutput("[BQ] File was already not in the Remote File State Cache, double-check that there's no corresponding content file");
 
-						try
-						{
-							_storage.DeleteFile(
-								PlaceInContentPath(deleteAction.Path),
-								_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
-						}
-						catch (Exception ex)
-						{
-							OnDiagnosticOutput("Delete task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
-							break;
-						}
-
-						_remoteFileStateCache.RemoveFileState(deleteAction.Path);
+					try
+					{
+						_storage.DeleteFile(
+							PlaceInContentPath(deleteAction.Path),
+							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+					}
+					catch (Exception ex)
+					{
+						if (expectContentFileToExist)
+							_errorLogger.LogError("Failed to delete a content file that was expected to be present in remote storage: " + deleteAction.Path, ex);
+						else
+							VerboseDiagnosticOutput("Delete task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
 					}
 
 					break;
 
 				default:
-					NonQuietDiagnosticOutput("[BQ] INTERNAL ERROR: Have an action we don't know what to do with. None of the type filters matched it.");
-					if (action == null)
-						NonQuietDiagnosticOutput("[BQ] Somehow, this action is null (snuck past the nullability checks?)");
-					else
-						NonQuietDiagnosticOutput("[BQ] Action type is: {0}", action.GetType().FullName);
+					_errorLogger.LogError(
+						"BACKUP QUEUE INTERNAL ERROR: Have an action we don't know what to do with. None of the type filters matched it.\n" +
+						"\n" +
+						((action == null)
+						? "Somehow, this action is null (snuck past the nullability checks?)"
+						: ("Action type is: " + action.GetType().FullName)));
 
 					if (action is IDisposable disposableAction)
 					{
@@ -1244,7 +1267,10 @@ namespace DeltaQ.RTB.Agent
 			VerboseDiagnosticOutput("[UP{0}] Thread starting", threadIndex);
 
 			if (_uploadThreadStatus == null)
+			{
+				_errorLogger.LogError("UPLOAD THREAD INTERNAL ERROR: Was started without the _uploadThreadStatus array initialized");
 				throw new Exception("Internal error");
+			}
 
 			var exited = _uploadThreadsExited;
 
@@ -1321,9 +1347,9 @@ namespace DeltaQ.RTB.Agent
 									Checksum = fileToUpload.Checksum,
 								});
 						}
-						catch (TaskCanceledException)
+						catch (TaskCanceledException exception)
 						{
-							Console.Error.WriteLine("A remote file state cache upload operation was cancelled. This may result in consistency errors.");
+							_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", exception);
 						}
 					}
 				}
@@ -1426,9 +1452,9 @@ namespace DeltaQ.RTB.Agent
 			{
 				_remoteFileStateCache.UploadCurrentBatchAndBeginNext();
 			}
-			catch (TaskCanceledException)
+			catch (TaskCanceledException exception)
 			{
-				Console.Error.WriteLine("The remote file state cache upload operation was cancelled. This may result in consistency errors.");
+				_errorLogger.LogError("The remote file state cache upload operation was cancelled. This may result in consistency errors.", exception);
 			}
 
 			NonQuietDiagnosticOutput("Terminating uploads");

@@ -8,12 +8,15 @@ using System.Threading.Tasks;
 
 using NUnit.Framework;
 
+using NSubstitute;
+
 using Bogus;
 
 using FluentAssertions;
 
 using DeltaQ.RTB.Tests.Support;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Interop;
 
 namespace DeltaQ.RTB.Tests.Fixtures.Interop
@@ -32,7 +35,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 			// Arrange
 			var parameters = new OperatingParameters();
 
-			using (var fan = new FileAccessNotify(parameters))
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			using (var fan = new FileAccessNotify(parameters, errorLogger))
 			{
 				bool receivedEvent = false;
 
@@ -81,6 +86,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 					sync.WaitOne(TimeSpan.FromSeconds(2));
 
 					// Assert
+					errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 					receivedEvent.Should().BeTrue();
 				}
 				finally
@@ -99,7 +106,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 			// Arrange
 			var parameters = new OperatingParameters();
 
-			using (var fan = new FileAccessNotify(parameters))
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			using (var fan = new FileAccessNotify(parameters, errorLogger))
 			{
 				bool receivedEvent = false;
 
@@ -133,6 +142,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 					Thread.Sleep(50);
 
 					// Assert
+					errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 					receivedEvent.Should().BeFalse();
 				}
 				finally

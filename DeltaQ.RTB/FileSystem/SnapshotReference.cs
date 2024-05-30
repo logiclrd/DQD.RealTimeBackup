@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.CompilerServices;
 
+using DeltaQ.RTB.Diagnostics;
+
 namespace DeltaQ.RTB.FileSystem
 {
 	public class SnapshotReference : IDisposable
@@ -8,10 +10,14 @@ namespace DeltaQ.RTB.FileSystem
 		SnapshotReferenceTracker? _tracker;
 		string _path;
 
-		public SnapshotReference(SnapshotReferenceTracker tracker, string path)
+		IErrorLogger _errorLogger;
+
+		public SnapshotReference(SnapshotReferenceTracker tracker, string path, IErrorLogger errorLogger)
 		{
 			_tracker = tracker;
 			_path = path;
+
+			_errorLogger = errorLogger;
 		}
 
 		public void Dispose()
@@ -35,7 +41,7 @@ namespace DeltaQ.RTB.FileSystem
 					 && (subPath[_tracker.Snapshot.MountPoint.Length] == '/'))
 						subPath = subPath.Substring(_tracker.Snapshot.MountPoint.Length + 1);
 					else
-						Console.Error.WriteLine("WARNING: File '{0}' is supposed to be within mount '{1}'", subPath, _tracker.Snapshot.MountPoint);
+						_errorLogger.LogError($"When calculating the snapshotted path for file '{subPath}', it was supposed to be within mount '{_tracker.Snapshot.MountPoint}'");
 
 					return System.IO.Path.Combine(_tracker?.Snapshot.BuildPath() ?? "", subPath.TrimStart('/'));
 				}

@@ -17,6 +17,7 @@ using FluentAssertions;
 using NativeMethodsUnderTest = DeltaQ.RTB.Interop.NativeMethods;
 
 using DeltaQ.RTB.ActivityMonitor;
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
 
@@ -35,6 +36,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				var parameters = new OperatingParameters();
 
+				var errorLogger = Substitute.For<IErrorLogger>();
 				var surfaceArea = Substitute.For<ISurfaceArea>();
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
@@ -42,6 +44,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 				var sut = new FileSystemMonitor(
 					parameters,
+					errorLogger,
 					surfaceArea,
 					mountTable,
 					() => fileAccessNotify,
@@ -85,6 +88,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				sut.ProcessEvent(evt);
 
 				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 				openByHandleAt.Received().Open(mountDescriptor, fileHandleBytes);
 
 				receivedPathUpdate.Should().HaveCount(1);
@@ -105,6 +110,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				var parameters = new OperatingParameters();
 
+				var errorLogger = Substitute.For<IErrorLogger>();
 				var surfaceArea = Substitute.For<ISurfaceArea>();
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
@@ -112,6 +118,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 				var sut = new FileSystemMonitor(
 					parameters,
+					errorLogger,
 					surfaceArea,
 					mountTable,
 					() => fileAccessNotify,
@@ -170,6 +177,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				sut.ProcessEvent(evt);
 
 				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 				openByHandleAt.Received().Open(mountDescriptorFrom, fileHandleBytesFrom);
 				openByHandleAt.Received().Open(mountDescriptorTo, fileHandleBytesTo);
 				openByHandleAt.ReceivedCalls().Should().HaveCount(2);
@@ -193,6 +202,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			{
 				var parameters = new OperatingParameters();
 
+				var errorLogger = Substitute.For<IErrorLogger>();
 				var surfaceArea = Substitute.For<ISurfaceArea>();
 				var mountTable = Substitute.For<IMountTable>();
 				var fileAccessNotify = Substitute.For<IFileAccessNotify>();
@@ -200,6 +210,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 				var sut = new FileSystemMonitor(
 					parameters,
+					errorLogger,
 					surfaceArea,
 					mountTable,
 					() => fileAccessNotify,
@@ -243,6 +254,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				sut.ProcessEvent(evt);
 
 				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 				openByHandleAt.Received().Open(mountDescriptor, fileHandleBytes);
 
 				receivedPathUpdate.Should().BeEmpty();
@@ -261,6 +274,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// Arrange
 			var parameters = new OperatingParameters();
 
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var surfaceArea = Substitute.For<ISurfaceArea>();
 			var mountTable = Substitute.For<IMountTable>();
 			var fileAccessNotify = Substitute.For<IFileAccessNotify>();
@@ -268,6 +282,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 			var sut = new FileSystemMonitor(
 				parameters,
+				errorLogger,
 				surfaceArea,
 				mountTable,
 				() => fileAccessNotify,
@@ -354,6 +369,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			sut.SetUpFANotify();
 
 			// Assert
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+
 			var markedPaths = fileAccessNotify.ReceivedCalls()
 				.Where(call => call.GetMethodInfo().Name == nameof(fileAccessNotify.MarkPath))
 				.Select(call => call.GetArguments().Single()!.ToString())
@@ -376,6 +393,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			// Arrange
 			var parameters = new OperatingParameters();
 
+			var errorLogger = Substitute.For<IErrorLogger>();
 			var surfaceArea = Substitute.For<ISurfaceArea>();
 			var mountTable = Substitute.For<IMountTable>();
 			var fileAccessNotify = Substitute.For<IFileAccessNotify>();
@@ -383,6 +401,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 			var sut = new FileSystemMonitor(
 				parameters,
+				errorLogger,
 				surfaceArea,
 				mountTable,
 				() => fileAccessNotify,
@@ -429,6 +448,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 
 			stopwatch.Elapsed.Should().BeGreaterThanOrEqualTo(delayBeforeStop);
 			stopwatch.Elapsed.Should().BeLessThan(delayBeforeStop + allowableStopTime);
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
 		}
 	}
 }
