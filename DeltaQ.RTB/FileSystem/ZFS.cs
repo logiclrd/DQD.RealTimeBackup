@@ -185,6 +185,17 @@ namespace DeltaQ.RTB.FileSystem
 			{
 				string[] parts = line.Split('\t');
 
+				// 'zfs list' yields an entry for the pool itself, which includes a mount point but which isn't
+				// the actual volume. No error is given creating snapshots on this device (named simply "bpool"
+				// or "rpool") but the snapshot isn't meaningful and doesn't appear in /.zfs or /boot/.zfs.
+				//
+				// As far as I can tell, the only way to distinguish these entries is by the presence of
+				// path separator characters in the device name. "bpool" and "rpool" and the like are to be
+				// avoided.
+
+				if (parts[0].IndexOf('/') < 0)
+					continue;
+
 				var volume =
 					new ZFSVolume()
 					{
