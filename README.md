@@ -44,6 +44,28 @@ Then you can start the service:
 ```
 It is recommended that you briefly monitor the log file to ensure that it is in fact operating.
 
+## Monitoring
+
+There is a command-line tool DeltaQ.RTB.Console that can connect to a running Backup Agent and retrieve its current operating state and statistics. This tool can also submit paths to be processed and pause/unpause filesystem monitoring.
+```
+logiclrd@visor:/code/DeltaQ.RTB/DeltaQ.RTB.Console$ dotnet run
+usage: /code/DeltaQ.RTB/DeltaQ.RTB.Console/bin/Debug/net8.0/DeltaQ.RTB.Console.dll [/CONNECT <value>] [/GETSTATS] 
+    [/GETSTATSINCLUDEUPLOADS] [/GETSTATSREPEAT] [/CHECKPATH <value> [/CHECKPATH <value> [..]]] [/PAUSEMONITOR] 
+    [/UNPAUSEMONITOR] [/DISCARDBUFFEREDNOTIFICATIONS] [/XML] [/?]
+logiclrd@visor:/code/DeltaQ.RTB/DeltaQ.RTB.Console$ 
+```
+This utility provides the following options:
+
+* `/CONNECT` <value>: Specifies the endpoint to which to connect. Can be a UNIX socket (e.g. /run/DeltaQ.RTB/bridge.socket) or a TCP/IP endpoint (e.g. 127.0.0.1:12345 -- check /run/DeltaQ.RTB/bridge-tcp-port for the port number, which may be dynamically-assigned).
+* `/GETSTATS`: Requests operating statistics from the Backup Agent.
+    * `/GETSTATSINCLUDEUPLOADS`: If `false`, then detailed information about the upload threads is suppressed. Defaults to `true`.
+    * `/GETSTATSREPEAT`: Gets operating statistics repeatedly in a loop until the process is terminated.
+* `/CHECKPATH <value>`: Submits a file path to be checked for changes (including deletion). Can be specified multiple times.
+* `/PAUSEMONITOR`: Instructs the Backup Agent to pause monitoring. If it is already paused, there is no effect.
+* `/UNPAUSEMONITOR`: Instructs the Backup Agent to unpause monitoring. If it is not currently paused, there is no effect.
+    * `/DISCARDBUFFEREDNOTIFICATIONS`: When using /UNPAUSEMONITOR, instructs the Backup Agent to discard any buffered paths for which events were received while paused. By default, these paths are queued for processing as soon as File Monitoring in unpaused.
+* `/XML`: Write all output in XML, making it machine-readable.
+
 ## Configuration
 
 Configuration of the core Backup Agent within DeltaQ.RTB is done by means of a collection of properties called `OperatingParameters`. This collection is read from an XML file in `/etc`. The full list of properties is:

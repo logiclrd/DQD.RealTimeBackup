@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaQ.RTB.Restore", "Delta
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaQ.RTB.Tweaker", "DeltaQ.RTB.Tweaker\DeltaQ.RTB.Tweaker.csproj", "{8D005DC6-B5D7-4303-AE57-197E17FDB0F5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaQ.RTB.Console", "DeltaQ.RTB.Console\DeltaQ.RTB.Console.csproj", "{091C4256-A33D-4094-BCA3-64284D7CD500}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +44,9 @@ Global
 		{8D005DC6-B5D7-4303-AE57-197E17FDB0F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8D005DC6-B5D7-4303-AE57-197E17FDB0F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D005DC6-B5D7-4303-AE57-197E17FDB0F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{091C4256-A33D-4094-BCA3-64284D7CD500}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{091C4256-A33D-4094-BCA3-64284D7CD500}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{091C4256-A33D-4094-BCA3-64284D7CD500}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{091C4256-A33D-4094-BCA3-64284D7CD500}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
