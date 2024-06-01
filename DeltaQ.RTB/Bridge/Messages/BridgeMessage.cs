@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
+using DeltaQ.RTB.Bridge.Serialization;
 using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Bridge.Messages
@@ -18,7 +18,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 
 			int lengthBefore = buffer.Length;
 
-			Serialize(buffer);
+			ByteBufferSerializer.Instance.Serialize(GetType(), this, buffer);
 
 			int lengthAfter = buffer.Length;
 
@@ -34,7 +34,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 		{
 			buffer.AppendInt32((int)MessageType);
 
-			SerializeImplementation(buffer);
+			ByteBufferSerializer.Instance.Serialize(GetType(), this, buffer);
 		}
 
 		static Dictionary<int, Type> s_bridgeMessageTypes =
@@ -70,8 +70,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 			{
 				int lengthBefore = buffer.Length;
 
-				message = (BridgeMessage)Activator.CreateInstance(type)!;
-				message.DeserializeImplementation(buffer);
+				message = (BridgeMessage)ByteBufferSerializer.Instance.Deserialize(type, buffer)!;
 
 				int lengthAfter = buffer.Length;
 
@@ -85,28 +84,6 @@ namespace DeltaQ.RTB.Bridge.Messages
 
 				return true;
 			}
-		}
-
-		protected abstract void SerializeImplementation(ByteBuffer buffer);
-		protected abstract void DeserializeImplementation(ByteBuffer buffer);
-
-		protected void SerializeString(ByteBuffer buffer, string? str)
-		{
-			if (str == null)
-				buffer.AppendByte(0);
-			else
-			{
-				buffer.AppendByte(1);
-				buffer.AppendString(str);
-			}
-		}
-
-		protected string? DeserializeString(ByteBuffer buffer)
-		{
-			if (buffer.ReadByte() == 0)
-				return null;
-			else
-				return buffer.ReadString();
 		}
 	}
 }

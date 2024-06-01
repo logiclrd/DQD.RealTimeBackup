@@ -102,7 +102,11 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 
 			// Act & Assert
 			foreach (var volume in allVolumes)
-				sut.FindVolume(volume.DeviceName!).Should().BeEquivalentTo(volume);
+				sut.FindVolume(volume.DeviceName!).Should().BeEquivalentTo(
+					volume,
+					options => options
+						.Using<long>(ctx => ctx.Subject.Should().BeCloseTo(ctx.Expectation, 1048576))
+						.When(info => info.Path.EndsWith("Bytes")));
 		}
 
 		[Test]

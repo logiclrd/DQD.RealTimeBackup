@@ -2,9 +2,9 @@
 
 printf "Line count: "
 
-wc -l `find . -name '*.cs'` --total=only
+wc -l `find . -name '*.cs' -o -name '*.axaml' | grep -v '/obj/'` --total=only
 
 printf "TODO count: "
 
-grep TODO `find . -name '*.cs'` | wc -l
+grep TODO `find . -name '*.cs' -o -name '*.axaml'` | wc -l
 
