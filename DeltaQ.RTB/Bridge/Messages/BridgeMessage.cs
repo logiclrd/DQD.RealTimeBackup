@@ -18,7 +18,9 @@ namespace DeltaQ.RTB.Bridge.Messages
 
 			int lengthBefore = buffer.Length;
 
-			ByteBufferSerializer.Instance.Serialize(GetType(), this, buffer);
+			buffer.AppendInt32((int)MessageType);
+
+			ByteBufferSerializer.Instance.SerializeNotNull(GetType(), this, buffer);
 
 			int lengthAfter = buffer.Length;
 
@@ -70,7 +72,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 			{
 				int lengthBefore = buffer.Length;
 
-				message = (BridgeMessage)ByteBufferSerializer.Instance.Deserialize(type, buffer)!;
+				message = (BridgeMessage)ByteBufferSerializer.Instance.DeserializeNotNull(type, buffer)!;
 
 				int lengthAfter = buffer.Length;
 

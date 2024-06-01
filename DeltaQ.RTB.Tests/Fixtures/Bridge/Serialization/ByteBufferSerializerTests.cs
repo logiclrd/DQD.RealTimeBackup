@@ -516,5 +516,30 @@ namespace DeltaQ.RTB.Tests.Fixtures.Bridge.Serialization
 			stringPlan2.Should().BeSameAs(stringPlan1);
 			objPlan2.Should().BeSameAs(objPlan1);
 		}
+
+#pragma warning disable 649
+		public class BaseClass
+		{
+			[FieldOrder(0)]
+			public int InheritedField;
+		}
+
+		public class Subclass : BaseClass
+		{
+		}
+#pragma warning restore 649
+
+		[Test]
+		public void CreatePlan_should_see_inherited_fields()
+		{
+			// Arrange
+			var sut = new ByteBufferSerializer();
+
+			// Act
+			var plan = sut.CreatePlan<Subclass>();
+
+			// Assert
+			plan.Elements.Should().NotBeEmpty();
+		}
 	}
 }

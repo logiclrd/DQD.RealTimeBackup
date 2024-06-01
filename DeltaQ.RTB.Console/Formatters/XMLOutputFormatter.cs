@@ -3,6 +3,7 @@ using System.Xml;
 
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.Bridge.Messages;
+using DeltaQ.RTB.Scan;
 using DeltaQ.RTB.Storage;
 
 using Konsole = System.Console;
@@ -17,6 +18,7 @@ namespace DeltaQ.RTB.Console.Formatters
 		{
 			_writer = new XmlTextWriter(Konsole.Out);
 			_writer.WriteStartElement("RTBOutput");
+			_writer.WriteAttributeString("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
 		}
 
 		public void EmitGetStatsHeading()
@@ -27,27 +29,27 @@ namespace DeltaQ.RTB.Console.Formatters
 		{
 			_writer.WriteStartElement("Statistics");
 			_writer.WriteAttributeString("TimestampUTC", DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff"));
-			_writer.WriteAttributeString("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
-			
+
+			EmitBackupAgentQueueSizes(message.BackupAgentQueueSizes);
+
+			_writer.WriteElementString("ZFSSnapshotCount", message.ZFSSnapshotCount.ToString());
+
+			_writer.WriteEndElement();
+		}
+
+		void EmitBackupAgentQueueSizes(BackupAgentQueueSizes? queueSizes)
+		{
+			_writer.WriteStartElement("BackupAgentQueueSizes");
+
+			if (queueSizes == null)
+				_writer.WriteAttributeString("xsi:nil", "true");
+			else
 			{
-				_writer.WriteStartElement("BackupAgentQueueSizes");
-
-				{
-					if (!(message.BackupAgentQueueSizes is BackupAgentQueueSizes queueSizes))
-						_writer.WriteAttributeString("xsi:nil", "true");
-					else
-					{
-						_writer.WriteElementString("NumberOfFilesPendingIntake", queueSizes.NumberOfFilesPendingIntake.ToString());
-						_writer.WriteElementString("NumberOfFilesPollingOpenHandles", queueSizes.NumberOfFilesPollingOpenHandles.ToString());
-						_writer.WriteElementString("NumberOfFilesPollingContentChanges", queueSizes.NumberOfFilesPollingContentChanges.ToString());
-						_writer.WriteElementString("NumberOfBackupQueueActions", queueSizes.NumberOfBackupQueueActions.ToString());
-						_writer.WriteElementString("NumberOfQueuedUploads", queueSizes.NumberOfQueuedUploads.ToString());
-					}
-
-					_writer.WriteEndElement();
-				}
-
-				_writer.WriteElementString("ZFSSnapshotCount", message.ZFSSnapshotCount.ToString());
+				_writer.WriteElementString("NumberOfFilesPendingIntake", queueSizes.NumberOfFilesPendingIntake.ToString());
+				_writer.WriteElementString("NumberOfFilesPollingOpenHandles", queueSizes.NumberOfFilesPollingOpenHandles.ToString());
+				_writer.WriteElementString("NumberOfFilesPollingContentChanges", queueSizes.NumberOfFilesPollingContentChanges.ToString());
+				_writer.WriteElementString("NumberOfBackupQueueActions", queueSizes.NumberOfBackupQueueActions.ToString());
+				_writer.WriteElementString("NumberOfQueuedUploads", queueSizes.NumberOfQueuedUploads.ToString());
 			}
 
 			_writer.WriteEndElement();
@@ -56,7 +58,6 @@ namespace DeltaQ.RTB.Console.Formatters
 		public void EmitUploadThreads(UploadStatus?[] uploadThreads)
 		{
 			_writer.WriteStartElement("UploadThreads");
-			_writer.WriteAttributeString("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
 
 			for (int i=0; i < uploadThreads.Length; i++)
 			{
@@ -102,6 +103,47 @@ namespace DeltaQ.RTB.Console.Formatters
 		{
 			_writer.WriteStartElement("MonitorUnpaused");
 			_writer.WriteAttributeString("TimestampUTC", DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff"));
+			_writer.WriteEndElement();
+		}
+
+		public void EmitRescanStarted(PerformRescanResponse response)
+		{
+			_writer.WriteStartElement("RescanRequested");
+			_writer.WriteAttributeString("TimestampUTC", DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff"));
+			_writer.WriteAttributeString("RescanNumber", response.RescanNumber.ToString());
+			_writer.WriteAttributeString("AlreadyRunning", response.AlreadyRunning ? "true" : "false");
+			_writer.WriteEndElement();
+		}
+
+		public void EmitNoRescanStatus()
+		{
+			_writer.WriteStartElement("RescanStatus");
+			_writer.WriteAttributeString("xsi:nil", "true");
+			_writer.WriteEndElement();
+		}
+
+		public void EmitRescanStatusHeadings()
+		{
+		}
+
+		public void EmitRescanStatus(RescanStatus status)
+		{
+			_writer.WriteStartElement("Statistics");
+			_writer.WriteAttributeString("TimestampUTC", DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff"));
+			_writer.WriteAttributeString("RescanNumber", status.RescanNumber.ToString());
+			_writer.WriteAttributeString("IsRunning", status.IsRunning ? "true" : "false");
+			_writer.WriteAttributeString("NumberOfFilesLeftToMatch", status.NumberOfFilesLeftToMatch.ToString());
+
+			EmitBackupAgentQueueSizes(status.BackupAgentQueueSizes);
+
+			_writer.WriteElementString("ZFSSnapshotCount", status.ZFSSnapshotCount.ToString());
+
+			_writer.WriteEndElement();
+		}
+
+		public void EmitRescanCancelled()
+		{
+			_writer.WriteStartElement("CancelRescanRequested");
 			_writer.WriteEndElement();
 		}
 

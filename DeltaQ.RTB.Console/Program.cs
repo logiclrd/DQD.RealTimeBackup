@@ -1,16 +1,17 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Threading;
 
 using DeltaQ.RTB.Bridge;
+using DeltaQ.RTB.Scan;
 
 using DeltaQ.CommandLineParser;
 
 using DeltaQ.RTB.Console.Formatters;
 
 using Konsole = System.Console;
-using System.Threading;
-using System.Linq;
 
 namespace DeltaQ.RTB.Console
 {
@@ -42,7 +43,21 @@ namespace DeltaQ.RTB.Console
 				return 0;
 			}
 
-			IOutputFormatter output = (args.XML ? new XMLOutputFormatter() : new TextOutputFormatter());
+			if (args.GetStatsRepeat)
+				args.GetRescanStatus = true;
+
+			if (args.GetRescanStatus && args.FollowRescan)
+				args.GetRescanStatus = false;
+
+			if (args.CancelRescan && args.FollowRescan)
+			{
+				Konsole.WriteLine("Error: Cannot use /FOLLOWRESCAN and /CANCELRESCAN at the same time.");
+				return 2;
+			}
+
+			var scanStatusFormatter = new ScanStatusFormatter();
+
+			IOutputFormatter output = (args.XML ? new XMLOutputFormatter() : new TextOutputFormatter(scanStatusFormatter));
 
 			BridgeClient connection;
 
@@ -90,6 +105,20 @@ namespace DeltaQ.RTB.Console
 
 				if (args.UnpauseMonitor)
 					Commands.UnpauseMonitor.Execute(connection, output, args.DiscardBufferedNotifications);
+
+				int rescanNumber = -1;
+
+				if (args.PerformRescan)
+					Commands.PerformRescan.Execute(connection, output, out rescanNumber);
+
+				if (args.GetRescanStatus)
+					Commands.GetRescanStatus.Execute(connection, output);
+
+				if (args.FollowRescan)
+					Commands.FollowRescan.Execute(connection, output, rescanNumber);
+
+				if (args.CancelRescan)
+					Commands.CancelRescan.Execute(connection, output);
 			}
 			catch (Exception ex)
 			{

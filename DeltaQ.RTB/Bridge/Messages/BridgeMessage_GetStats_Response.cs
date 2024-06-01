@@ -13,5 +13,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 		public BackupAgentQueueSizes? BackupAgentQueueSizes;
 		[FieldOrder(1)]
 		public int ZFSSnapshotCount;
+
+		// TODO: rescan in progress?
 	}
 }

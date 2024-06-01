@@ -122,10 +122,11 @@ namespace DeltaQ.RTB
 
 			builder.RegisterType<BridgeServer>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<BridgeMessageProcessor>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<BridgeMessageProcessorImplementation_GetStats>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<BridgeMessageProcessorImplementation_CheckPath>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<BridgeMessageProcessorImplementation_PauseMonitor>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<BridgeMessageProcessorImplementation_UnpauseMonitor>().AsImplementedInterfaces().SingleInstance();
+
+			builder.RegisterAssemblyTypes(typeof(Program).Assembly)
+				.Where(t => typeof(IBridgeMessageProcessorImplementation).IsAssignableFrom(t) && !t.IsAbstract)
+				.AsImplementedInterfaces()
+				.SingleInstance();
 
 			return builder.Build();
 		}
@@ -277,6 +278,8 @@ namespace DeltaQ.RTB
 
 				try
 				{
+					var scanStatusFormatter = new ScanStatusFormatter();
+
 					Console.CancelKeyPress +=
 						(sender, e) =>
 						{
@@ -381,8 +384,8 @@ namespace DeltaQ.RTB
 
 						var orchestrator = container.Resolve<IInitialBackupOrchestrator>();
 
-						string headings = InitialBackupStatus.Headings;
-						string separator = InitialBackupStatus.Separator;
+						string headings = scanStatusFormatter.Headings;
+						string separator = scanStatusFormatter.Separator;
 
 						// Clear the screen.
 						if (!Console.IsOutputRedirected)
@@ -407,7 +410,7 @@ namespace DeltaQ.RTB
 
 											Console.WriteLine(headings);
 											Console.WriteLine(separator);
-											Console.WriteLine(statusUpdate);
+											Console.WriteLine(scanStatusFormatter.ToString(statusUpdate));
 
 											if ((statusUpdate.BackupAgentQueueSizes != null)
 											 && (statusUpdate.BackupAgentQueueSizes.UploadThreads != null))
@@ -417,7 +420,7 @@ namespace DeltaQ.RTB
 													if (i > 0)
 														Console.WriteLine();
 
-													string statusLine = statusUpdate.BackupAgentQueueSizes.UploadThreads[i]?.Format(Console.WindowWidth - 1) ?? "";
+													string statusLine = scanStatusFormatter.ToString(statusUpdate.BackupAgentQueueSizes.UploadThreads[i], Console.WindowWidth - 1);
 
 													Console.Write(statusLine);
 
@@ -493,7 +496,7 @@ namespace DeltaQ.RTB
 											if (i > 0)
 												Console.WriteLine();
 
-											string statusLine = uploadThreads[i]?.Format(Console.WindowWidth - 1) ?? "";
+											string statusLine = scanStatusFormatter.ToString(uploadThreads[i], Console.WindowWidth - 1);
 
 											Console.Write(statusLine);
 

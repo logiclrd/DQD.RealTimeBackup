@@ -1,19 +1,23 @@
-using System.Runtime.CompilerServices;
+using System;
 using System.Threading;
 
 namespace DeltaQ.RTB.Scan
 {
 	public class PeriodicRescanScheduler : IPeriodicRescanScheduler
-		{
+	{
 		OperatingParameters _parameters;
 
 		IPeriodicRescanOrchestrator _orchestrator;
 
 		Timer? _timer;
-		CancellationToken _cancellationToken = CancellationToken.None;
+
+		CancellationToken _upstreamCancellationToken = CancellationToken.None;
 
 		object _sync = new object();
-		bool _isBusy = false;
+		int _nextRescanNumber = 0;
+		int? _currentRescanNumber = null;
+		RescanStatus? _rescanStatus;
+		CancellationTokenSource? _currentRescanCancellationTokenSource = null;
 
 		public PeriodicRescanScheduler(OperatingParameters parameters, IPeriodicRescanOrchestrator orchestrator)
 		{
@@ -24,7 +28,7 @@ namespace DeltaQ.RTB.Scan
 
 		public void Start(CancellationToken cancellationToken)
 		{
-			_cancellationToken = cancellationToken;
+			_upstreamCancellationToken = cancellationToken;
 
 			_timer = new Timer(
 				TimerElapsed,
@@ -41,25 +45,83 @@ namespace DeltaQ.RTB.Scan
 
 		void TimerElapsed(object? state)
 		{
-			ThreadPool.QueueUserWorkItem(PeriodicRescanWorker, state: null);
+			PerformRescanNow();
+		}
+
+		public PerformRescanResponse PerformRescanNow()
+		{
+			var response = new PerformRescanResponse();
+
+			lock (_sync)
+			{
+				if (_currentRescanNumber is int rescanNumber)
+				{
+					response.RescanNumber = rescanNumber;
+					response.AlreadyRunning = true;
+				}
+				else
+				{
+					_currentRescanNumber = Interlocked.Increment(ref _nextRescanNumber);
+					_currentRescanCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_upstreamCancellationToken);
+
+					ThreadPool.QueueUserWorkItem(PeriodicRescanWorker, state: _currentRescanCancellationTokenSource.Token);
+
+					response.RescanNumber = _currentRescanNumber.Value;
+					response.AlreadyRunning = false;
+
+					Monitor.PulseAll(_sync);
+				}
+			}
+
+			return response;
+		}
+
+		public void CancelRescan()
+		{
+			lock (_sync)
+			{
+				if (_currentRescanCancellationTokenSource != null)
+					_currentRescanCancellationTokenSource.Cancel();
+			}
+		}
+
+		public RescanStatus? GetRescanStatus(bool wait)
+		{
+			if (wait && _currentRescanNumber.HasValue)
+			{
+				lock (_sync)
+					Monitor.Wait(_sync, TimeSpan.FromSeconds(5));
+			}
+
+			return _rescanStatus;
 		}
 
 		void PeriodicRescanWorker(object? state)
 		{
-			lock (_sync)
+			int rescanNumber = _currentRescanNumber ?? -1;
+
+			try
 			{
-				if (_isBusy)
-					return;
+				var token = (CancellationToken)state!;
 
-				_isBusy = true;
-
-				try
+				_orchestrator.PerformPeriodicRescan(
+					rescanNumber,
+					updatedStatus =>
+					{
+						lock (_sync)
+						{
+							_rescanStatus = updatedStatus;
+							Monitor.PulseAll(_sync);
+						}
+					},
+					token);
+			}
+			finally
+			{
+				lock (_sync)
 				{
-					_orchestrator.PerformPeriodicRescan(_cancellationToken);
-				}
-				finally
-				{
-					_isBusy = false;
+					_currentRescanNumber = null;
+					Monitor.PulseAll(_sync);
 				}
 			}
 		}

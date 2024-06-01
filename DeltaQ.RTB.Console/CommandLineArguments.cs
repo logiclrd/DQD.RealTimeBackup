@@ -45,6 +45,30 @@ namespace DeltaQ.RTB.Console
 			"File Monitoring in unpaused.")]
 		public bool DiscardBufferedNotifications;
 
+		[Switch("/PERFORMRESCAN", Description =
+			"Instructs the DeltaQ.RTB service to begin a rescan. This scan is exactly the same " +
+			"as the periodic rescan that is started on a timer to check for differences between the " +
+			"actual state of files on the filesystem and the state stored in remote storage. If a rescan " +
+			"is already underway, then this operation has no effect.")]
+		public bool PerformRescan;
+
+		[Switch("/GETRESCANSTATUS", Description =
+			"Retrieves a status update for any currently-running rescan.")]
+		public bool GetRescanStatus;
+
+		[Switch("/FOLLOWRESCAN", Description =
+			"Stays attached to the Backup Agent while a periodic rescan runs, displaying ongoing " +
+			"statistics about the scan. When the scan completes, DeltaQ.RTB.Console exits. This " +
+			"switch will follow a scan started with /PERFORMRESCAN, but it can also connect to rescans " +
+			"that are already underway.")]
+		public bool FollowRescan;
+
+		[Switch("/CANCELRESCAN", Description =
+			"Instructs the DeltaQ.RTB to stop any ongoing rescan, whether it was started by the " +
+			"periodic rescan scheduler or explicitly by the user. If no scan is currently in progress " +
+			"this command has no effect.")]
+		public bool CancelRescan;
+
 		[Switch("/XML", Description =
 			"Write all output in XML, making it machine-readable.")]
 		public bool XML = false;

@@ -15,5 +15,14 @@ namespace DeltaQ.RTB.Bridge.Messages
 
 		UnpauseMonitor_Request,
 		UnpauseMonitor_Response,
+
+		PerformRescan_Request,
+		PerformRescan_Response,
+
+		CancelRescan_Request,
+		CancelRescan_Response,
+
+		GetRescanStatus_Request,
+		GetRescanStatus_Response,
 	}
 }

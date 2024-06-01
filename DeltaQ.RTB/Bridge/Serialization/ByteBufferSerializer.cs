@@ -61,6 +61,8 @@ namespace DeltaQ.RTB.Bridge.Serialization
 				if (type == typeof(long))
 					return SerializeInt64;
 			}
+			else if (type.IsArray)
+				return GetSerializeArrayFunctor(type.GetElementType()!);
 			else
 			{
 				Action<ByteBuffer, object?>? valueFunctor = null;
@@ -126,6 +128,26 @@ namespace DeltaQ.RTB.Bridge.Serialization
 			buffer.AppendString((string)value!);
 		}
 
+		static void SerializeArray(ByteBuffer buffer, object? value, Action<ByteBuffer, object?> elementFunctor)
+		{
+			if (!(value is Array array))
+				buffer.AppendInt32(0);
+			else
+			{
+				buffer.AppendInt32(array.Length);
+
+				for (int i=0; i < array.Length; i++)
+					elementFunctor(buffer, array.GetValue(i));
+			}
+		}
+
+		Action<ByteBuffer, object?> GetSerializeArrayFunctor(Type elementType)
+		{
+			var elementFunctor = GetSerializationFunctorForType(elementType);
+
+			return (buffer, value) => SerializeArray(buffer, value, elementFunctor);
+		}
+
 		Func<ByteBuffer, object?> GetDeserializationFunctorForType(Type type)
 		{
 			if (type.IsValueType)
@@ -137,6 +159,8 @@ namespace DeltaQ.RTB.Bridge.Serialization
 				if (type == typeof(long))
 					return DeserializeInt64;
 			}
+			else if (type.IsArray)
+				return GetDeserializeArrayFunctor(type.GetElementType()!);
 			else
 			{
 				Func<ByteBuffer, object?>? valueFunctor = null;
@@ -194,6 +218,25 @@ namespace DeltaQ.RTB.Bridge.Serialization
 			return buffer.ReadString();
 		}
 
+		static object? DeserializeArray(ByteBuffer buffer, Type elementType, Func<ByteBuffer, object?> elementFunctor)
+		{
+			int elementCount = buffer.ReadInt32();
+
+			var array = Array.CreateInstance(elementType, elementCount);
+
+			for (int i=0; i < elementCount; i++)
+				array.SetValue(elementFunctor(buffer), i);
+
+			return array;
+		}
+
+		Func<ByteBuffer, object?> GetDeserializeArrayFunctor(Type elementType)
+		{
+			var elementFunctor = GetDeserializationFunctorForType(elementType);
+
+			return (buffer) => DeserializeArray(buffer, elementType, elementFunctor);
+		}
+
 		public void Serialize<T>(T instance, ByteBuffer buffer)
 		{
 			if (instance == null)
@@ -212,8 +255,13 @@ namespace DeltaQ.RTB.Bridge.Serialization
 			else
 			{
 				buffer.AppendByte(1);
-				CreatePlan(type).Serialize(buffer, instance);
+				SerializeNotNull(type, instance, buffer);
 			}
+		}
+
+		public void SerializeNotNull(Type type, object instance, ByteBuffer buffer)
+		{
+			CreatePlan(type).Serialize(buffer, instance);
 		}
 
 		public T? Deserialize<T>(ByteBuffer buffer)
@@ -227,13 +275,16 @@ namespace DeltaQ.RTB.Bridge.Serialization
 			if (buffer.ReadByte() == 0)
 				return null;
 			else
-			{
-				var instance = Activator.CreateInstance(type)!;
+				return DeserializeNotNull(type, buffer);
+		}
 
-				CreatePlan(type).Deserialize(buffer, instance);
+		public object? DeserializeNotNull(Type type, ByteBuffer buffer)
+		{
+			var instance = Activator.CreateInstance(type)!;
 
-				return instance;
-			}
+			CreatePlan(type).Deserialize(buffer, instance);
+
+			return instance;
 		}
 	}
 }

@@ -1,15 +1,23 @@
 using System.Linq;
 
+using DeltaQ.RTB.Bridge.Serialization;
+
 namespace DeltaQ.RTB.Agent
 {
 	public class BackupAgentQueueSizes
 	{
+		[FieldOrder(0)]
 		public int NumberOfFilesPendingIntake;
+		[FieldOrder(1)]
 		public int NumberOfFilesPollingOpenHandles;
+		[FieldOrder(2)]
 		public int NumberOfFilesPollingContentChanges;
+		[FieldOrder(3)]
 		public int NumberOfBackupQueueActions;
+		[FieldOrder(4)]
 		public int NumberOfQueuedUploads;
 
+		[FieldOrder(5)]
 		public UploadStatus?[]? UploadThreads;
 
 		public bool IsBackupAgentBusy =>

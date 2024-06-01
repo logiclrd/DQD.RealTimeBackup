@@ -3,6 +3,7 @@ using System.Text;
 
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.Bridge.Messages;
+using DeltaQ.RTB.Scan;
 
 using Konsole = System.Console;
 
@@ -10,6 +11,13 @@ namespace DeltaQ.RTB.Console.Formatters
 {
 	public class TextOutputFormatter : IOutputFormatter
 	{
+		ScanStatusFormatter _scanStatusFormatter;
+
+		public TextOutputFormatter(ScanStatusFormatter scanStatusFormatter)
+		{
+			_scanStatusFormatter = scanStatusFormatter;
+		}
+
 		public void EmitGetStatsHeading()
 		{
 			Konsole.WriteLine("DELTAQ.RTB STATISTICS");
@@ -102,7 +110,7 @@ namespace DeltaQ.RTB.Console.Formatters
 			for (int i=0; i < uploadThreads.Length; i++)
 			{
 				if (uploadThreads[i] is UploadStatus uploadThreadStatus)
-					Konsole.WriteLine("[{0}] {1}", i, uploadThreadStatus.Format(int.MaxValue));
+					Konsole.WriteLine("[{0}] {1}", i, _scanStatusFormatter.ToString(uploadThreadStatus, int.MaxValue));
 				else
 					Konsole.WriteLine("[{0}] idle", i);
 			}
@@ -121,6 +129,37 @@ namespace DeltaQ.RTB.Console.Formatters
 		public void EmitMonitorUnpaused()
 		{
 			Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] *** Monitor Unpaused", DateTime.Now);
+		}
+
+		public void EmitRescanStarted(PerformRescanResponse response)
+		{
+			Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] A rescan has been requested", DateTime.Now);
+			Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] => Rescan number: {1}", DateTime.Now, response.RescanNumber);
+			if (response.AlreadyRunning)
+				Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] => This rescan was already running", DateTime.Now);
+			else
+				Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] => This rescan was just started in response to this request", DateTime.Now);
+		}
+
+		public void EmitNoRescanStatus()
+		{
+			Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] No rescan status information is available", DateTime.Now);
+		}
+
+		public void EmitRescanStatusHeadings()
+		{
+			Konsole.WriteLine(_scanStatusFormatter.Headings);
+			Konsole.WriteLine(_scanStatusFormatter.Separator);
+		}
+
+		public void EmitRescanStatus(RescanStatus status)
+		{
+			Konsole.WriteLine(_scanStatusFormatter.ToString(status));
+		}
+
+		public void EmitRescanCancelled()
+		{
+			Konsole.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.fffffff}] Cancellation has been requested for any rescan in progress", DateTime.Now);
 		}
 
 		public void EmitError(Exception ex)

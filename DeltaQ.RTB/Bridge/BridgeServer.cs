@@ -300,10 +300,10 @@ namespace DeltaQ.RTB.Bridge
 
 								var result = _messageProcessor.ProcessMessage(message);
 
-								DebugLog("ProcessMessage returned a message of type {0}", result!.ResponseMessage!.MessageType);
 
 								if (result != null)
 								{
+									DebugLog("ProcessMessage returned a message of type {0}", result!.ResponseMessage!.MessageType);
 									if (result.DisconnectClient)
 									{
 										client.IsDead = true;

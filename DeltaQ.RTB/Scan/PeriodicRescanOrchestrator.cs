@@ -28,7 +28,7 @@ namespace DeltaQ.RTB.Scan
 			_remoteFileStateCache = remoteFileStateCache;
 		}
 
-		public void PerformPeriodicRescan(CancellationToken cancellationToken)
+		public void PerformPeriodicRescan(int rescanNumber, Action<RescanStatus> statusUpdateCallback, CancellationToken cancellationToken)
 		{
 			NonQuietDiagnosticOutput("[PR] Beginning periodic rescan");
 
@@ -38,12 +38,39 @@ namespace DeltaQ.RTB.Scan
 
 			NonQuietDiagnosticOutput("[PR] => {0} path{1} currently being tracked", deletedPaths.Count, deletedPaths.Count == 1 ? "" : "s");
 
-			foreach (var path in EnumerateAllFilesInSurfaceArea())
+			RescanStatus rescanStatus = new RescanStatus();
+
+			rescanStatus.RescanNumber = rescanNumber;
+			rescanStatus.IsRunning = true;
+
+			Action enqueued =
+				() => Interlocked.Increment(ref rescanStatus.DirectoryQueueSize);
+			Action dequeued =
+				() => Interlocked.Decrement(ref rescanStatus.DirectoryQueueSize);
+			Action fileDiscovered =
+				() => Interlocked.Increment(ref rescanStatus.FilesDiscovered);
+			Action mountProcessed =
+				() => Interlocked.Increment(ref rescanStatus.MountsProcessed);
+
+			DateTime nextStatusUpdateUTC = DateTime.UtcNow;
+
+			foreach (var path in EnumerateAllFilesInSurfaceArea(enqueued, dequeued, fileDiscovered, mountProcessed))
 			{
 				if (cancellationToken.IsCancellationRequested)
 					break;
 
+				if (DateTime.UtcNow >= nextStatusUpdateUTC)
+				{
+					rescanStatus.BackupAgentQueueSizes = _backupAgent.GetQueueSizes();
+
+					statusUpdateCallback?.Invoke(rescanStatus);
+
+					nextStatusUpdateUTC = DateTime.UtcNow.AddSeconds(0.4);
+				}
+
 				deletedPaths.Remove(path);
+
+				rescanStatus.NumberOfFilesLeftToMatch = deletedPaths.Count;
 
 				var fileState = _remoteFileStateCache.GetFileState(path);
 
@@ -58,8 +85,10 @@ namespace DeltaQ.RTB.Scan
 				{
 					var fileInfo = new FileInfo(fileState.Path);
 					
-					if ((fileState.FileSize != fileInfo.Length)
-					 || (fileState.LastModifiedUTC != fileInfo.LastWriteTimeUtc))
+					if ((fileState.FileSize == fileInfo.Length)
+					 && (fileState.LastModifiedUTC == fileInfo.LastWriteTimeUtc))
+						VerboseDiagnosticOutput("[PR] - Unchanged path: {0}", path);
+					else
 					{
 						NonQuietDiagnosticOutput("[PR] - Changed path: {0}", path);
 						checkPath = true;
@@ -78,6 +107,10 @@ namespace DeltaQ.RTB.Scan
 				}
 			}
 
+			rescanStatus.BackupAgentQueueSizes = _backupAgent.GetQueueSizes();
+
+			statusUpdateCallback?.Invoke(rescanStatus);
+
 			if (deletedPaths.Count < 50)
 				foreach (var deletedPath in deletedPaths)
 					NonQuietDiagnosticOutput("[PR] - Deleted path: {0}", deletedPath);
@@ -87,6 +120,10 @@ namespace DeltaQ.RTB.Scan
 			_backupAgent.CheckPaths(deletedPaths);
 
 			NonQuietDiagnosticOutput("[PR] Periodic rescan complete");
+
+			rescanStatus.IsRunning = false;
+
+			statusUpdateCallback?.Invoke(rescanStatus);
 		}
 	}
 }
