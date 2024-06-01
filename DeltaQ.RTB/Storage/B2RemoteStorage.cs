@@ -136,7 +136,7 @@ namespace DeltaQ.RTB.Storage
 			return _bucketName;
 		}
 
-		static char[] B2ProblematicFileNameCharacters = { ',', '[', ']', '&' };
+		static char[] B2ProblematicFileNameCharacters = { ',', '[', ']', '&', '_' };
 
 		// This method is intended for small resources.
 		string DownloadFileString(string serverPath, CancellationToken cancellationToken)

@@ -17,7 +17,7 @@ namespace DeltaQ.RTB.Agent
 		int OpenFilesCount { get; }
 
 		void PauseMonitor();
-		void UnpauseMonitor();
+		void UnpauseMonitor(bool processBufferedPaths);
 
 		int CheckPath(string path);
 		int CheckPaths(IEnumerable<string> paths);

@@ -11,6 +11,8 @@ using DeltaQ.CommandLineParser;
 
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Agent;
+using DeltaQ.RTB.Bridge;
+using DeltaQ.RTB.Bridge.Processors;
 using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
 using DeltaQ.RTB.Scan;
@@ -118,6 +120,13 @@ namespace DeltaQ.RTB
 			builder.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<ZFS>().AsImplementedInterfaces().SingleInstance();
 
+			builder.RegisterType<BridgeServer>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<BridgeMessageProcessor>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<BridgeMessageProcessorImplementation_GetStats>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<BridgeMessageProcessorImplementation_CheckPath>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<BridgeMessageProcessorImplementation_PauseMonitor>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<BridgeMessageProcessorImplementation_UnpauseMonitor>().AsImplementedInterfaces().SingleInstance();
+
 			return builder.Build();
 		}
 
@@ -207,7 +216,8 @@ namespace DeltaQ.RTB
 
 		static int Main()
 		{
-			Console.Write("\x1B[;r\x1B[2J");
+			if (!Console.IsOutputRedirected)
+				Console.Write("\x1B[;r\x1B[2J");
 
 			CommandLineArguments? args = null;
 
@@ -302,6 +312,7 @@ namespace DeltaQ.RTB
 					var remoteFileStateCacheStorage = container.Resolve<IRemoteFileStateCacheStorage>();
 					var periodicRescanScheduler = container.Resolve<IPeriodicRescanScheduler>();
 					var periodicRescanOrchestrator = container.Resolve<IPeriodicRescanOrchestrator>();
+					var bridgeServer = container.Resolve<IBridgeServer>();
 
 					remoteFileStateCache.LoadCache();
 
@@ -339,6 +350,11 @@ namespace DeltaQ.RTB
 					backupAgent.Start();
 
 					if (!parameters.Quiet)
+						Output("Starting bridge server...");
+
+					bridgeServer.Start();
+
+					if (!parameters.Quiet)
 							Output("Processing manual submissions");
 
 					foreach (var move in args.PathsToMove)
@@ -369,7 +385,8 @@ namespace DeltaQ.RTB
 						string separator = InitialBackupStatus.Separator;
 
 						// Clear the screen.
-						Console.Write("\x1B[;r\x1B[2J");
+						if (!Console.IsOutputRedirected)
+							Console.Write("\x1B[;r\x1B[2J");
 
 						int staticLineCount = 3 + backupAgent.UploadThreadCount;
 
@@ -416,7 +433,8 @@ namespace DeltaQ.RTB
 								cancellationTokenSource.Token);
 						}
 
-						Console.Write("\x1B[2J");
+						if (!Console.IsOutputRedirected)
+							Console.Write("\x1B[2J");
 
 						if (args.InitialBackupThenExit)
 							stopEvent.Set();
@@ -430,7 +448,7 @@ namespace DeltaQ.RTB
 								Output("Initial backup complete, switching to realtime mode");
 							}
 
-							backupAgent.UnpauseMonitor();
+							backupAgent.UnpauseMonitor(processBufferedPaths: true);
 						}
 					}
 
@@ -443,7 +461,9 @@ namespace DeltaQ.RTB
 						if (!parameters.Quiet)
 						{
 							// Clear the screen.
-							Console.Write("\x1B[;r\x1B[2J");
+							if (!Console.IsOutputRedirected)
+								Console.Write("\x1B[;r\x1B[2J");
+
 							Output("Waiting for stop signal");
 						}
 
@@ -486,6 +506,14 @@ namespace DeltaQ.RTB
 								}
 							}
 						}
+
+						// Move cursor to the bottom end of the screen, so that output doesn't interfere with
+						// what's left behind after the Backup Agent exits.
+						if (!Console.IsOutputRedirected)
+						{
+							Console.WriteLine("\x1B[{0};1H", Console.WindowHeight);
+							Console.WriteLine();
+						}
 					}
 
 					if (!parameters.Quiet)
@@ -495,6 +523,10 @@ namespace DeltaQ.RTB
 					if (!parameters.Quiet)
 						Output("Stopping backup agent...");
 					backupAgent.Stop();
+
+					if (!parameters.Quiet)
+						Output("Stopping bridge server...");
+					bridgeServer.Stop();
 
 					if (!parameters.Quiet)
 						Output("Removing ZFS snapshots...");

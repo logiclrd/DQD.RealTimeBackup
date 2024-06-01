@@ -20,6 +20,24 @@ namespace DeltaQ.RTB
 		// Path to which particularly important errors are written.
 		public string ErrorLogFilePath = DefaultErrorLogFilePath;
 
+		// Path in which IPC parameters are stashed, and subsequently read by interface processes.
+		public string IPCPath = "/run/DeltaQ.RTB";
+
+		// If true, the Bridge server will listen for connections in UNIX domain sockets. The socket
+		// will be named "bridge.socket" in the folder identified by IPCPath.
+		public bool IPCUseUNIXSocket = true;
+
+		// If true, the Bridge server will listen for TCP/IP connections. The TCP port number will
+		// be stored in a file named "bridge-tcp-port" in the folder identified by IPCPath.
+		public bool IPCUseTCPSocket = false;
+
+		// Allows you to bind the TCP endpoint for IPC to an address other than localhost. This can
+		// allow a remote user interface. Consider security implications before doing this.
+		public string IPCBindTCPAddress = "127.0.0.1";
+
+		// Allows the port number for the TCP endpoint to be fixed. By default it is dynamically-assigned.
+		public int IPCBindTCPPortNumber = 0;
+
 		// Set to false to run a BackupAgent that responds only to explicit notifications. For instance,
 		// this is used to achieve initial backup.
 		public bool EnableFileAccessNotify = true;

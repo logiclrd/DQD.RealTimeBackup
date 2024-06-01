@@ -139,34 +139,51 @@ namespace DeltaQ.RTB.Agent
 			{
 				_paused = true;
 				_pathsWithActivityWhilePaused.Clear();
+
+				NonQuietDiagnosticOutput("File System Monitor processing in the Backup Agent is paused.");
+				NonQuietDiagnosticOutput("Events will be buffered until processing is resumed.");
 			}
 		}
 
-		public void UnpauseMonitor()
+		public void UnpauseMonitor(bool processBufferedPaths)
 		{
 			lock (_pauseSync)
 			{
-				string[] capturedPaths = _pathsWithActivityWhilePaused.ToArray();
-
-				_pathsWithActivityWhilePaused.Clear();
-
 				_paused = false;
 
-				foreach (string path in capturedPaths)
+				try
 				{
-					try
-					{
-						Monitor.Exit(_pauseSync);
+					NonQuietDiagnosticOutput("File System Monitor processing in the Backup Agent is resuming.");
 
-						if (File.Exists(path))
-							BeginQueuePathForOpenFilesCheck(path);
-						else
-							AddActionToBackupQueue(new DeleteAction(path));
-					}
-					finally
+					if (!processBufferedPaths)
+						NonQuietDiagnosticOutput("=> Ignoring buffered events for {0} paths", _pathsWithActivityWhilePaused.Count);
+					else
 					{
-						Monitor.Enter(_pauseSync);
+						string[] capturedPaths = _pathsWithActivityWhilePaused.ToArray();
+
+						NonQuietDiagnosticOutput("=> Processing {0} paths that had events while paused", capturedPaths.Length);
+
+						foreach (string path in capturedPaths)
+						{
+							try
+							{
+								Monitor.Exit(_pauseSync);
+
+								if (File.Exists(path))
+									BeginQueuePathForOpenFilesCheck(path);
+								else
+									AddActionToBackupQueue(new DeleteAction(path));
+							}
+							finally
+							{
+								Monitor.Enter(_pauseSync);
+							}
+						}
 					}
+				}
+				finally
+				{
+					_pathsWithActivityWhilePaused.Clear();
 				}
 			}
 		}
@@ -1262,6 +1279,18 @@ namespace DeltaQ.RTB.Agent
 		{
 			lock (_uploadQueueSync)
 			{
+				// Ensure we don't upload the same file multiple times.
+				foreach (var queueEntry in _uploadQueue)
+				{
+					if (queueEntry.Path == fileReference.Path)
+					{
+						// Already set to upload this file.
+						fileReference.Dispose();
+						return _uploadQueue.Count;
+					}
+				}
+
+				// Didn't already find the file in the upload queue.
 				_uploadQueue.Add(fileReference);
 				Monitor.PulseAll(_uploadQueueSync);
 

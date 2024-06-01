@@ -88,7 +88,12 @@ The options are:
     * `Verbose` displays extended information about most things the service does. This can be useful when diagnostic problems and debugging.
     * `Normal` displays basic information about ongoing operations.
     * `Quiet` suppresses most output. Only messages that are important to the state of the service or consistency of the data are displayed.
-* `ErrorLogFilePath`: Specifies where _important_ errors are written.
+* `ErrorLogFilePath`: Specifies where _important_ errors are written. Default: `/var/log/DeltaQ.RTB.error.log`
+* `IPCPath`: Specifies where details needed for inter-process communication are written. Default: `/run/DeltaQ.RTB`
+* `IPCUseUNIXSocket`: Specifies whether DeltaQ.RTB should listen for bridge connections on UNIX domain sockets. The socket will be named `bridge.socket` in the folder identified by `IPCPath`. Defaults to true.
+* `IPCUseTCPSocket`: Specifiec whether DeltaQ.RTB should listen for bridge connections on a TCP endpoint. The TCP port number will be written to a file named `bridge-tcp-port` in the folder identified by `IPCPath`. Defaults to false.
+* `IPCBindTCPAddress`: Allows the TCP endpoint for IPC to be bound to an address other than localhost. This can allow a remote user interface. Consider security implications before doing this. This parameter has no effect when `IPCUseTCPSocket` is not `true`.
+* `IPCBindTCPPortNumber`: Allows the port number for the TCP endpoint to be fixed. By default it is dynamically-assigned. This parameter has no effect when `IPCUseTCPSocket` is not `true`.
 * `EnableFileAccessNotify`: Master switch that turns realtime monitoring of the filesystem on/off.
 * `PathFilters`: Collection of filters that determine which files should be considered and which should be ignored. See detailed documentation below.
 * `PreferredMountPoints`: If your configuration binds the exact same devices to multiple mount points, you must pick which one should be considered the canonical mount point for each device. Specify these mount points in this collection. The values are only used when disambiguation is needed.
