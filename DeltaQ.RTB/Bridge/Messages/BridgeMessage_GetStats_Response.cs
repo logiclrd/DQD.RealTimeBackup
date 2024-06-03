@@ -1,7 +1,5 @@
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.Bridge.Serialization;
-using DeltaQ.RTB.Storage;
-using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Bridge.Messages
 {
@@ -13,7 +11,5 @@ namespace DeltaQ.RTB.Bridge.Messages
 		public BackupAgentQueueSizes? BackupAgentQueueSizes;
 		[FieldOrder(1)]
 		public int ZFSSnapshotCount;
-
-		// TODO: rescan in progress?
 	}
 }

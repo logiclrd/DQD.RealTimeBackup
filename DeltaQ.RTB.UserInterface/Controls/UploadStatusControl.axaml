@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:DeltaQ.RTB.UserInterface.Converters"
+             x:Class="DeltaQ.RTB.UserInterface.Controls.UploadStatusControl"
+             HorizontalAlignment="Stretch"
+             Height="20"
+             FontSize="8">
+
+    <UserControl.Resources>
+        <converters:UploadStatusSpeedConverter x:Key="UploadStatusSpeedConverter" />
+        <converters:UploadStatusProgressConverter x:Key="UploadStatusProgressConverter" />
+        <converters:UploadStatusProgressTextConverter x:Key="UploadStatusProgressTextConverter" />
+        <converters:UploadStatusPathConverter x:Key="UploadStatusPathConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="65" />
+            <ColumnDefinition Width="130" />
+            <ColumnDefinition Width="65" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Label Grid.Column="0" Content="{Binding UploadStatus, Converter={StaticResource UploadStatusSpeedConverter}}" />
+        <ProgressBar Grid.Column="1" MinWidth="0" Minimum="0" Maximum="1" Value="{Binding UploadStatus, Converter={StaticResource UploadStatusProgressConverter}}" />
+        <Label Grid.Column="2" Content="{Binding UploadStatus, Converter={StaticResource UploadStatusProgressTextConverter}}" />
+        <Label Grid.Column="3" Content="{Binding UploadStatus, Converter={StaticResource UploadStatusPathConverter}}" />
+    </Grid>
+</UserControl>

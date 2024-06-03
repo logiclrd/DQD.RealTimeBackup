@@ -59,7 +59,7 @@ namespace DeltaQ.RTB.Bridge
 				DebugLog(value.ToString()!);
 		}
 
-		public BridgeMessage? SendRequestAndReceiveResponse(BridgeMessage request)
+		public BridgeResponseMessage SendRequestAndReceiveResponse(BridgeRequestMessage request)
 		{
 			var buffer = new ByteBuffer();
 
@@ -81,18 +81,16 @@ namespace DeltaQ.RTB.Bridge
 
 				buffer.ReceiveFromSocket(_socket, count: 4);
 
-				if (buffer.TryPeekInt32(out var messageSize))
-				{
-					buffer.ReceiveFromSocket(_socket, messageSize);
+				if (!buffer.TryPeekInt32(out var messageSize))
+					throw new Exception("Sanity failure: ReceiveFromSocket says we received 4 bytes but TryPeekInt32 returned false");
 
-					if (!BridgeMessage.DeserializeWithLengthPrefix(buffer, out var message))
-						throw new Exception($"Could not deserialize the bridge message that was received ({messageSize} bytes)");
+				buffer.ReceiveFromSocket(_socket, messageSize);
 
-					return message;
-				}
+				if (!BridgeMessage.DeserializeWithLengthPrefix<BridgeResponseMessage>(buffer, out var message))
+					throw new Exception($"Could not deserialize the bridge message that was received ({messageSize} bytes)");
+
+				return message;
 			}
-
-			return null;
 		}
 	}
 }

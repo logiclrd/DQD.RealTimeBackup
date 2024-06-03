@@ -49,12 +49,15 @@ namespace DeltaQ.RTB.Bridge
 				DebugLog(value.ToString()!);
 		}
 
+		public const string UNIXSocketName = "bridge.socket";
+		public const string TCPPortFileName = "bridge-tcp-port";
+
 		public void Start()
 		{
 			Directory.CreateDirectory(_parameters.IPCPath);
 
-			string unixSocketPath = Path.Combine(_parameters.IPCPath, "bridge.socket");
-			string tcpPortPath = Path.Combine(_parameters.IPCPath, "bridge-tcp-port");
+			string unixSocketPath = Path.Combine(_parameters.IPCPath, UNIXSocketName);
+			string tcpPortPath = Path.Combine(_parameters.IPCPath, TCPPortFileName);
 
 			File.Delete(unixSocketPath);
 			File.Delete(tcpPortPath);
@@ -257,8 +260,17 @@ namespace DeltaQ.RTB.Bridge
 					}
 
 					foreach (var client in activeClients)
-						lock (client)
-							client.SendOnceToSocket();
+					{
+						try
+						{
+							lock (client)
+								client.SendOnceToSocket();
+						}
+						catch
+						{
+							client.IsDead = true;
+						}
+					}
 				}
 
 				if (checkRead.Count > 0)
@@ -268,7 +280,7 @@ namespace DeltaQ.RTB.Bridge
 					lock (_clientSync)
 					{
 						foreach (var client in _clients)
-							if (checkRead.Contains(client.Socket))
+							if (checkRead.Contains(client.Socket) && !client.IsDead)
 								activeClients.Add(client);
 					}
 
@@ -294,7 +306,7 @@ namespace DeltaQ.RTB.Bridge
 								builder.AppendFormat("{0:X2} ", client.ReceiveBuffer[i]);
 							DebugLog(builder);
 
-							while (BridgeMessage.DeserializeWithLengthPrefix(client.ReceiveBuffer, out var message))
+							while (BridgeMessage.DeserializeWithLengthPrefix<BridgeRequestMessage>(client.ReceiveBuffer, out var message))
 							{
 								DebugLog("got a message of type {0}", message.MessageType);
 

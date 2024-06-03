@@ -47,7 +47,8 @@ namespace DeltaQ.RTB.Bridge.Messages
 				keySelector: instance => (int)instance.MessageType,
 				elementSelector: instance => instance.GetType());
 
-		public static bool DeserializeWithLengthPrefix(ByteBuffer buffer, out BridgeMessage message)
+		public static bool DeserializeWithLengthPrefix<TMessageBase>(ByteBuffer buffer, out TMessageBase message)
+			where TMessageBase : BridgeMessage
 		{
 			message = default!;
 
@@ -63,7 +64,8 @@ namespace DeltaQ.RTB.Bridge.Messages
 			messageLength -= 4;
 
 			if (!s_bridgeMessageTypes.TryGetValue(messageType, out var type)
-			 || (type == null))
+			 || (type == null)
+			 || !typeof(TMessageBase).IsAssignableFrom(type))
 			{
 				buffer.Consume(messageLength - 4);
 				throw new Exception("Unrecognized message type: " + messageType);
@@ -72,7 +74,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 			{
 				int lengthBefore = buffer.Length;
 
-				message = (BridgeMessage)ByteBufferSerializer.Instance.DeserializeNotNull(type, buffer)!;
+				message = (TMessageBase)ByteBufferSerializer.Instance.DeserializeNotNull(type, buffer)!;
 
 				int lengthAfter = buffer.Length;
 

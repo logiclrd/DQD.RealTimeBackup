@@ -1342,6 +1342,12 @@ namespace DeltaQ.RTB.Agent
 
 					using (fileToUpload)
 					{
+						if (_uploadThreadStatus.Any(status => (status != null) && (status.Path == fileToUpload.Path)))
+						{
+							NonQuietDiagnosticOutput("[UP{0}] Ignoring upload action because another thread is already uploading this path: {0}", fileToUpload.Path);
+							continue;
+						}
+
 						NonQuietDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
 						VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
 

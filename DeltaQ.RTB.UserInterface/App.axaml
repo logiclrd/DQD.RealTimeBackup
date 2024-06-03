@@ -1,0 +1,31 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DeltaQ.RTB.UserInterface.App"
+             RequestedThemeVariant="Default">
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon Icon="DeltaQ.RTB.ico" ToolTipText="DeltaQ Real-Time Backup">
+                <TrayIcon.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="_Show Status Window" Command="{Binding ShowWindowCommand}" />
+                        <NativeMenuItem Header="_Pause Monitoring" Command="{Binding PauseMonitoringCommand}" />
+                        <NativeMenuItem Header="_Resume Monitoring">
+                            <NativeMenu>
+                                <NativeMenuItem Header="Resume &amp; _Process Buffered Events" Command="{Binding ResumeMonitoring_ProcessBufferedEvents_Command}" />
+                                <NativeMenuItem Header="Resume &amp; _Discard Buffered Events" Command="{Binding ResumeMonitoring_DiscardBufferedEvents_Command}" />
+                            </NativeMenu>
+                        </NativeMenuItem>
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="E_xit Front-end" Command="{Binding ExitCommand}" />
+                    </NativeMenu>
+                </TrayIcon.Menu>
+            </TrayIcon>
+        </TrayIcons>
+    </TrayIcon.Icons>
+</Application>

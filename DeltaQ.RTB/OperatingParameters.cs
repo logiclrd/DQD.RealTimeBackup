@@ -20,8 +20,10 @@ namespace DeltaQ.RTB
 		// Path to which particularly important errors are written.
 		public string ErrorLogFilePath = DefaultErrorLogFilePath;
 
+		public const string DefaultIPCPath = "/run/DeltaQ.RTB";
+
 		// Path in which IPC parameters are stashed, and subsequently read by interface processes.
-		public string IPCPath = "/run/DeltaQ.RTB";
+		public string IPCPath = DefaultIPCPath;
 
 		// If true, the Bridge server will listen for connections in UNIX domain sockets. The socket
 		// will be named "bridge.socket" in the folder identified by IPCPath.

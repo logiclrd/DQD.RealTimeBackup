@@ -474,8 +474,23 @@ namespace DeltaQ.RTB.Storage
 				VerboseDiagnosticOutput("[B2] => Existing content key: {0}", contentKey);
 				VerboseDiagnosticOutput("[B2] => Deleting...");
 
-				DeleteFileDirect(serverPath, cancellationToken);
-				DeleteFileDirect(contentKey, cancellationToken);
+				try
+				{
+					DeleteFileDirect(serverPath, cancellationToken);
+				}
+				catch (Exception e)
+				{
+					_errorLogger.LogError("Error while deleting path: " + serverPath, e);
+				}
+
+				try
+				{
+					DeleteFileDirect(contentKey, cancellationToken);
+				}
+				catch (Exception e)
+				{
+					_errorLogger.LogError("Error while deleting path: " + contentKey, e);
+				}
 			}
 
 			char[] contentKeyChars = new char[128];

@@ -204,3 +204,9 @@ This library uses a couple of external libraries in its implementation:
     * `Bogus`
     * `AutoBogus`
     * `FluentAssertions`
+
+## Icon
+
+The icon image used by DeltaQ.RTB.UserInterface is based on the following free icon:
+
+<a href="https://www.flaticon.com/free-icons/backup" title="backup icons">Backup icons created by Freepik - Flaticon</a>

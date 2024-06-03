@@ -39,5 +39,11 @@
 			"program": "${workspaceFolder}/DeltaQ.RTB.Restore/bin/Debug/net8.0/DeltaQ.RTB.Restore.dll",
 			"args": [ "/RESTOREDIRECTORY", "/DrBuffy/8-Cameo/Source" ],
 		},
+		{
+			"type": "dotnet",
+			"request": "launch",
+			"name": "User Interface",
+			"projectPath": "${workspaceFolder}/DeltaQ.RTB.UserInterface/DeltaQ.RTB.UserInterface.csproj",
+		},
 	]
 }
