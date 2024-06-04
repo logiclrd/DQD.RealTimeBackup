@@ -19,7 +19,9 @@ namespace DeltaQ.RTB.Bridge.Processors
 			_zfs = zfs;
 		}
 
-		public ProcessMessageResult? ProcessMessage(BridgeMessage message)
+		public bool IsLongRunning => false;
+
+		public ProcessMessageResult? ProcessMessage(BridgeRequestMessage message)
 		{
 			var response = new BridgeMessage_CheckPath_Response();
 

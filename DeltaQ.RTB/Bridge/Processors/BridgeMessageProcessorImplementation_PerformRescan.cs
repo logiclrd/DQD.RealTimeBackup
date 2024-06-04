@@ -16,7 +16,9 @@ namespace DeltaQ.RTB.Bridge.Processors
 			_periodicRescanScheduler = periodicRescanScheduler;
 		}
 
-		public ProcessMessageResult? ProcessMessage(BridgeMessage message)
+		public bool IsLongRunning => false;
+
+		public ProcessMessageResult? ProcessMessage(BridgeRequestMessage message)
 		{
 			var response = new BridgeMessage_PerformRescan_Response();
 

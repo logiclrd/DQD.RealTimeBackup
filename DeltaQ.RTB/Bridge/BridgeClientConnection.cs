@@ -13,6 +13,8 @@ namespace DeltaQ.RTB.Bridge
 		public ByteBuffer SendBuffer = new ByteBuffer();
 		public ByteBuffer ReceiveBuffer = new ByteBuffer();
 
+		public bool IsProcessingMessage;
+
 		public BridgeClientConnection(Socket socket)
 		{
 			Socket = socket;

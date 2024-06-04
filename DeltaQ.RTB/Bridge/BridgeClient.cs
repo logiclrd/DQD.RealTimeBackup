@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 
 using DeltaQ.RTB.Bridge.Messages;
@@ -42,10 +43,13 @@ namespace DeltaQ.RTB.Bridge
 			_socket.Dispose();
 		}
 
+		object _dls = new object();
+
 		void DebugLog(string line)
 		{
-			using (var writer = new StreamWriter("/tmp/DeltaQ.RTB.bridge.client.log", append: true))
-				writer.WriteLine(line);
+			lock (_dls)
+				using (var writer = new StreamWriter("/tmp/DeltaQ.RTB.bridge.client.log", append: true))
+					writer.WriteLine("[{0:HH:mm:ss.fffffff}] [{1}] {2}", DateTime.Now, System.Threading.Thread.CurrentThread.ManagedThreadId, line);
 		}
 
 		void DebugLog(string format, params object?[] args)
@@ -65,7 +69,7 @@ namespace DeltaQ.RTB.Bridge
 
 			request.SerializeWithLengthPrefix(buffer);
 
-			DebugLog("Serialized request:");
+			DebugLog("Serialized request of type {0}:", request.GetType().Name);
 
 			var builder = new StringBuilder();
 			for (int i=0; i < buffer.Length; i++)
@@ -84,10 +88,19 @@ namespace DeltaQ.RTB.Bridge
 				if (!buffer.TryPeekInt32(out var messageSize))
 					throw new Exception("Sanity failure: ReceiveFromSocket says we received 4 bytes but TryPeekInt32 returned false");
 
+				DebugLog("Response is {0} bytes long", messageSize);
+
 				buffer.ReceiveFromSocket(_socket, messageSize);
 
+				DebugLog("Response received");
+
 				if (!BridgeMessage.DeserializeWithLengthPrefix<BridgeResponseMessage>(buffer, out var message))
+				{
+					DebugLog("Can't deserialize");
 					throw new Exception($"Could not deserialize the bridge message that was received ({messageSize} bytes)");
+				}
+
+				DebugLog("Returning message of type {0}", message.GetType().Name);
 
 				return message;
 			}

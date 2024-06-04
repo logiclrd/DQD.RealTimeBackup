@@ -18,7 +18,15 @@ namespace DeltaQ.RTB.Bridge.Processors
 
 		Dictionary<BridgeMessageType, IBridgeMessageProcessorImplementation> _processorByMessageType = new Dictionary<BridgeMessageType, IBridgeMessageProcessorImplementation>();
 
-		public virtual ProcessMessageResult? ProcessMessage(BridgeMessage message)
+		public bool IsLongRunning(BridgeRequestMessage message)
+		{
+			if (_processorByMessageType.TryGetValue(message.MessageType, out var processor))
+				return processor.IsLongRunning;
+
+			return false;
+		}
+
+		public virtual ProcessMessageResult? ProcessMessage(BridgeRequestMessage message)
 		{
 			if (_processorByMessageType.TryGetValue(message.MessageType, out var processor))
 				return processor.ProcessMessage(message);

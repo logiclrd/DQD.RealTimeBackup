@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -35,7 +36,7 @@ namespace DeltaQ.RTB.Bridge
 		void DebugLog(string line)
 		{
 			using (var writer = new StreamWriter("/tmp/DeltaQ.RTB.bridge.server.log", append: true))
-				writer.WriteLine(line);
+				writer.WriteLine("[{0:HH:mm:ss.fffffff}] {1}", DateTime.Now, line);
 		}
 
 		void DebugLog(string format, params object?[] args)
@@ -200,6 +201,7 @@ namespace DeltaQ.RTB.Bridge
 			var checkRead = new List<Socket>();
 			var checkWrite = new List<Socket>();
 			var activeClients = new List<BridgeClientConnection>();
+			var clientsWithBufferedData = new List<BridgeClientConnection>();
 
 			byte[] receiveBuffer = new byte[4096];
 
@@ -276,12 +278,18 @@ namespace DeltaQ.RTB.Bridge
 				if (checkRead.Count > 0)
 				{
 					activeClients.Clear();
+					clientsWithBufferedData.Clear();
 
 					lock (_clientSync)
 					{
 						foreach (var client in _clients)
+						{
 							if (checkRead.Contains(client.Socket) && !client.IsDead)
 								activeClients.Add(client);
+
+							if (client.ReceiveBuffer.Length > 0)
+								clientsWithBufferedData.Add(client);
+						}
 					}
 
 					foreach (var client in activeClients)
@@ -297,6 +305,9 @@ namespace DeltaQ.RTB.Bridge
 								continue;
 							}
 
+							if (client.ReceiveBuffer.Length == 0)
+								clientsWithBufferedData.Add(client);
+
 							client.ReceiveBuffer.Append(receiveBuffer, 0, bytesRead);
 
 							DebugLog("read {0} bytes", bytesRead);
@@ -305,35 +316,6 @@ namespace DeltaQ.RTB.Bridge
 							for (int i=0; i < client.ReceiveBuffer.Length; i++)
 								builder.AppendFormat("{0:X2} ", client.ReceiveBuffer[i]);
 							DebugLog(builder);
-
-							while (BridgeMessage.DeserializeWithLengthPrefix<BridgeRequestMessage>(client.ReceiveBuffer, out var message))
-							{
-								DebugLog("got a message of type {0}", message.MessageType);
-
-								var result = _messageProcessor.ProcessMessage(message);
-
-
-								if (result != null)
-								{
-									DebugLog("ProcessMessage returned a message of type {0}", result!.ResponseMessage!.MessageType);
-									if (result.DisconnectClient)
-									{
-										client.IsDead = true;
-										break;
-									}
-
-									if (result.ResponseMessage != null)
-									{
-										result.ResponseMessage.SerializeWithLengthPrefix(client.SendBuffer);
-
-										DebugLog("send buffer:");
-										builder = new StringBuilder();
-										for (int i=0; i < client.SendBuffer.Length; i++)
-											builder.AppendFormat("{0:X2} ", client.SendBuffer[i]);
-										DebugLog(builder);
-									}
-								}
-							}
 						}
 						catch (Exception e)
 						{
@@ -341,6 +323,88 @@ namespace DeltaQ.RTB.Bridge
 							DebugLog(e);
 							client.IsDead = true;
 						}
+					}
+				}
+
+				foreach (var client in clientsWithBufferedData)
+				{
+					if (client.IsProcessingMessage)
+					{
+						DebugLog("Client is already processing a message, skipping for now");
+						continue;
+					}
+
+					try
+					{
+						while (BridgeMessage.DeserializeWithLengthPrefix<BridgeRequestMessage>(client.ReceiveBuffer, out var message))
+						{
+							DebugLog("got a message of type {0}", message.MessageType);
+
+							client.IsProcessingMessage = true;
+
+							void ProcessMessage()
+							{
+								try
+								{
+									var result = _messageProcessor.ProcessMessage(message);
+
+									if (result != null)
+									{
+										DebugLog("ProcessMessage returned a message of type {0}", result!.ResponseMessage!.MessageType);
+
+										if (result.DisconnectClient)
+											client.IsDead = true;
+
+										if (result.ResponseMessage != null)
+										{
+											lock (_clientSync)
+												result.ResponseMessage.SerializeWithLengthPrefix(client.SendBuffer);
+
+											DebugLog("send buffer:");
+											var builder = new StringBuilder();
+											for (int i=0; i < client.SendBuffer.Length; i++)
+												builder.AppendFormat("{0:X2} ", client.SendBuffer[i]);
+											DebugLog(builder);
+										}
+									}
+								}
+								finally
+								{
+									client.IsProcessingMessage = false;
+								}
+							}
+
+							if (!_messageProcessor.IsLongRunning(message))
+							{
+								DebugLog("Processing this message");
+
+								ProcessMessage();
+
+								DebugLog("Processing returned");
+
+								if (client.IsDead)
+									break;
+							}
+							else
+							{
+								DebugLog("Dispatching processing of this message to the thread pool");
+
+								ThreadPool.QueueUserWorkItem(
+									(state) =>
+									{
+										ProcessMessage();
+										WakeClientThreadProc();
+									});
+
+								break;
+							}
+						}
+					}
+					catch (Exception e)
+					{
+						DebugLog("exception:");
+						DebugLog(e);
+						client.IsDead = true;
 					}
 				}
 			}

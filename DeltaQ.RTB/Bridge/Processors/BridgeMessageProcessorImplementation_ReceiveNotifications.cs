@@ -16,7 +16,9 @@ namespace DeltaQ.RTB.Bridge.Processors
 			_notificationBus = notificationBus;
 		}
 
-		public ProcessMessageResult? ProcessMessage(BridgeMessage message)
+		public bool IsLongRunning => true;
+
+		public ProcessMessageResult? ProcessMessage(BridgeRequestMessage message)
 		{
 			var response = new BridgeMessage_ReceiveNotifications_Response();
 

@@ -5,6 +5,7 @@ namespace DeltaQ.RTB.Bridge.Processors
 	public interface IBridgeMessageProcessorImplementation
 	{
 		BridgeMessageType MessageType { get; }
-		ProcessMessageResult? ProcessMessage(BridgeMessage message);
+		bool IsLongRunning { get; }
+		ProcessMessageResult? ProcessMessage(BridgeRequestMessage message);
 	}
 }

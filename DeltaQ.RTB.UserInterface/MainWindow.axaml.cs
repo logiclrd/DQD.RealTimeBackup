@@ -148,23 +148,39 @@ namespace DeltaQ.RTB.UserInterface
 
 		public void NotifyRescanStarted()
 		{
+			if (!Dispatcher.UIThread.CheckAccess())
+			{
+				Dispatcher.UIThread.Invoke(NotifyRescanStarted);
+				return;
+			}
+
 			_gatherRescanStatus = true;
 			cmdPerformRescan.IsVisible = false;
 			cmdCancelRescan.IsVisible = true;
+			grdRescan.IsVisible = true;
 		}
 
 		public void NotifyRescanCompleted()
 		{
+			if (!Dispatcher.UIThread.CheckAccess())
+			{
+				Dispatcher.UIThread.Invoke(NotifyRescanCompleted);
+				return;
+			}
+
 			_gatherRescanStatus = false;
 			grdRescan.IsVisible = false;
 			cmdCancelRescan.IsVisible = false;
 			cmdPerformRescan.IsVisible = true;
+			grdRescan.IsVisible = true;
 		}
 
 		void refreshTimer_Elapsed(object? sender, EventArgs e)
 		{
 			try
 			{
+				_refreshTimer.Enabled = false;
+
 				if (_bridgeClient == null)
 				{
 					IsConnected = false;
@@ -249,6 +265,10 @@ namespace DeltaQ.RTB.UserInterface
 				_refreshTimer.Enabled = false;
 
 				BeginConnectToBackupService();
+			}
+			finally
+			{
+				_refreshTimer.Enabled = true;
 			}
 		}
 	}
