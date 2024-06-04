@@ -205,7 +205,7 @@ namespace DeltaQ.RTB.UserInterface
 
 					rescanRequest.Wait = false;
 
-					var response = _bridgeClient.SendRequestAndReceiveResponse(statsRequest);
+					var response = _bridgeClient.SendRequestAndReceiveResponse(rescanRequest);
 
 					if (response is BridgeMessage_GetRescanStatus_Response rescanResponse)
 						rescanStatus = rescanResponse.RescanStatus;
