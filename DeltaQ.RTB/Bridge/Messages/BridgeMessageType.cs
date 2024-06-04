@@ -4,6 +4,9 @@ namespace DeltaQ.RTB.Bridge.Messages
 	{
 		Unknown,
 
+		ReceiveNotifications_Request,
+		ReceiveNotifications_Response,
+
 		GetStats_Request,
 		GetStats_Response,
 

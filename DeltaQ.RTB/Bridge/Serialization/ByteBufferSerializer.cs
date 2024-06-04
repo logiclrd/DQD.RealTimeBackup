@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-
 using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Bridge.Serialization
@@ -24,6 +23,8 @@ namespace DeltaQ.RTB.Bridge.Serialization
 				{
 					plan = new SerializationPlan(type);
 
+					_serializationPlans[type] = plan;
+
 					var fields = new List<(FieldInfo FieldInfo, int Order)>();
 
 					foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.Public)
@@ -42,12 +43,23 @@ namespace DeltaQ.RTB.Bridge.Serialization
 							GetSerializationFunctorForType(field.FieldInfo.FieldType),
 							GetDeserializationFunctorForType(field.FieldInfo.FieldType)));
 					}
-
-					_serializationPlans[type] = plan;
 				}
 
 				return plan;
 			}
+		}
+
+		static bool IsListType(Type type)
+		{
+			if (type.IsGenericType)
+			{
+				var typeDefinition = type.GetGenericTypeDefinition();
+
+				if (typeDefinition == typeof(List<>))
+					return true;
+			}
+
+			return false;
 		}
 
 		Action<ByteBuffer, object?> GetSerializationFunctorForType(Type type)
@@ -60,7 +72,13 @@ namespace DeltaQ.RTB.Bridge.Serialization
 					return SerializeInt32;
 				if (type == typeof(long))
 					return SerializeInt64;
+				if (type == typeof(DateTime))
+					return SerializeDateTime;
+				if (type == typeof(TimeSpan))
+					return SerializeTimeSpan;
 			}
+			else if (IsListType(type))
+				return SerializeList;
 			else if (type.IsArray)
 				return GetSerializeArrayFunctor(type.GetElementType()!);
 			else
@@ -123,6 +141,22 @@ namespace DeltaQ.RTB.Bridge.Serialization
 			buffer.AppendInt64(longValue);
 		}
 
+		static void SerializeDateTime(ByteBuffer buffer, object? value)
+		{
+			if (!(value is DateTime dateTime))
+				dateTime = DateTime.MinValue;
+
+			buffer.AppendInt64(dateTime.ToBinary());
+		}
+
+		static void SerializeTimeSpan(ByteBuffer buffer, object? value)
+		{
+			if (!(value is TimeSpan timeSpan))
+				timeSpan = TimeSpan.Zero;
+
+			buffer.AppendInt64(timeSpan.Ticks);
+		}
+
 		static void SerializeString(ByteBuffer buffer, object? value)
 		{
 			buffer.AppendString((string)value!);
@@ -131,13 +165,44 @@ namespace DeltaQ.RTB.Bridge.Serialization
 		static void SerializeArray(ByteBuffer buffer, object? value, Action<ByteBuffer, object?> elementFunctor)
 		{
 			if (!(value is Array array))
-				buffer.AppendInt32(0);
+				buffer.AppendByte(0);
 			else
 			{
+				buffer.AppendByte(1);
 				buffer.AppendInt32(array.Length);
 
 				for (int i=0; i < array.Length; i++)
 					elementFunctor(buffer, array.GetValue(i));
+			}
+		}
+
+		static Type GetGenericListElementType(Type genericListType)
+		{
+			foreach (var iface in genericListType.GetInterfaces())
+				if (iface.IsGenericType && (iface.GetGenericTypeDefinition() == typeof(IList<>)))
+					return iface.GetGenericArguments()[0];
+
+			throw new Exception("Couldn't identify list element type for type: " + genericListType);
+		}
+
+		void SerializeList(ByteBuffer buffer, object? value)
+		{
+			if (!(value is System.Collections.IList list))
+				buffer.AppendByte(0);
+			else
+			{
+				buffer.AppendByte(1);
+
+				var listType = value.GetType();
+
+				var elementType = GetGenericListElementType(listType);
+
+				var elementFunctor = GetSerializationFunctorForType(elementType);
+
+				buffer.AppendInt32(list.Count);
+
+				for (int i=0, l=list.Count; i < l; i++)
+					elementFunctor(buffer, list[i]);
 			}
 		}
 
@@ -158,7 +223,13 @@ namespace DeltaQ.RTB.Bridge.Serialization
 					return DeserializeInt32;
 				if (type == typeof(long))
 					return DeserializeInt64;
+				if (type == typeof(DateTime))
+					return DeserializeDateTime;
+				if (type == typeof(TimeSpan))
+					return DeserializeTimeSpan;
 			}
+			else if (IsListType(type))
+				return GetDeserializeListFunctor(type);
 			else if (type.IsArray)
 				return GetDeserializeArrayFunctor(type.GetElementType()!);
 			else
@@ -213,13 +284,50 @@ namespace DeltaQ.RTB.Bridge.Serialization
 			return buffer.ReadInt64();
 		}
 
+		static object? DeserializeDateTime(ByteBuffer buffer)
+		{
+			return DateTime.FromBinary(buffer.ReadInt64());
+		}
+
+		static object? DeserializeTimeSpan(ByteBuffer buffer)
+		{
+			return TimeSpan.FromTicks(buffer.ReadInt64());
+		}
+
 		static object? DeserializeString(ByteBuffer buffer)
 		{
 			return buffer.ReadString();
 		}
 
+		object? DeserializeList(ByteBuffer buffer, Type listType)
+		{
+			if (buffer.ReadByte() == 0)
+				return null;
+
+			var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+			var elementType = GetGenericListElementType(listType);
+
+			var elementFunctor = GetDeserializationFunctorForType(elementType);
+
+			int elementCount = buffer.ReadInt32();
+
+			for (int i=0; i < elementCount; i++)
+				list.Add(elementFunctor(buffer));
+
+			return list;
+		}
+
+		Func<ByteBuffer, object?> GetDeserializeListFunctor(Type listType)
+		{
+			return (buffer) => DeserializeList(buffer, listType);
+		}
+
 		static object? DeserializeArray(ByteBuffer buffer, Type elementType, Func<ByteBuffer, object?> elementFunctor)
 		{
+			if (buffer.ReadByte() == 0)
+				return null;
+
 			int elementCount = buffer.ReadInt32();
 
 			var array = Array.CreateInstance(elementType, elementCount);

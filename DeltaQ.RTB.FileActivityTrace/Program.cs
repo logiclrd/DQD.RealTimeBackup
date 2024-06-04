@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 
 using DeltaQ.RTB.ActivityMonitor;
+using DeltaQ.RTB.Bridge.Notifications;
 using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Interop;
 using DeltaQ.RTB.SurfaceArea;
@@ -15,10 +16,18 @@ namespace DeltaQ.RTB.FileActivityTrace
 		{
 			var parameters = new OperatingParameters();
 
+			var notificationBus = new NotificationBus();
+
 			var stopping = new ManualResetEvent(initialState: false);
 			var stopped = new ManualResetEvent(initialState: false);
 
-			var errorLogger = new ErrorLogger(parameters);
+			var errorLogger = new ErrorLogger(parameters, notificationBus);
+
+			errorLogger.DiagnosticOutput +=
+				(sender, message) =>
+				{
+					Console.Error.WriteLine(message.Message);
+				};
 
 			var mountTable = new MountTable();
 

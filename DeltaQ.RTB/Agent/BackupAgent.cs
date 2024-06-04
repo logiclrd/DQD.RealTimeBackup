@@ -294,6 +294,8 @@ namespace DeltaQ.RTB.Agent
 
 		void BeginQueuePathForOpenFilesCheck(string path)
 		{
+			if (path.IndexOf("/.zfs/snapshot/") >= 0)
+				return;
 			if (_parameters.IsExcludedPath(path))
 				return;
 
@@ -1342,9 +1344,12 @@ namespace DeltaQ.RTB.Agent
 
 					using (fileToUpload)
 					{
-						if (_uploadThreadStatus.Any(status => (status != null) && (status.Path == fileToUpload.Path)))
+						var existingUploadOfPath = _uploadThreadStatus.FirstOrDefault(status => (status != null) && (status.Path == fileToUpload.Path));
+
+						if (existingUploadOfPath != null)
 						{
 							NonQuietDiagnosticOutput("[UP{0}] Ignoring upload action because another thread is already uploading this path: {0}", fileToUpload.Path);
+							existingUploadOfPath.RecheckAfterUploadCompletes = true;
 							continue;
 						}
 
@@ -1364,6 +1369,13 @@ namespace DeltaQ.RTB.Agent
 									stream,
 									progress => _uploadThreadStatus[threadIndex]!.Progress = progress,
 									cancellationToken);
+
+								if (_uploadThreadStatus[threadIndex]!.RecheckAfterUploadCompletes)
+								{
+									VerboseDiagnosticOutput("[UP{0}] Another thread tried to begin an upload while we were uploading the file. It may have been altered. Returning file to the intake queue.", threadIndex);
+
+									BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
+								}
 
 								_uploadThreadStatus[threadIndex] = null;
 							}

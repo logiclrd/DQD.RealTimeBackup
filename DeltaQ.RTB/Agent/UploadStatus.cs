@@ -14,6 +14,8 @@ namespace DeltaQ.RTB.Agent
 		[FieldOrder(2)]
 		public UploadProgress? Progress;
 
+		public bool RecheckAfterUploadCompletes;
+
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public UploadStatus()
 		{

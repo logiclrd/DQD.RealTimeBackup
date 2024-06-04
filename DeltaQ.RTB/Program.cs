@@ -12,6 +12,7 @@ using DeltaQ.CommandLineParser;
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.Bridge;
+using DeltaQ.RTB.Bridge.Notifications;
 using DeltaQ.RTB.Bridge.Processors;
 using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
@@ -127,6 +128,8 @@ namespace DeltaQ.RTB
 				.Where(t => typeof(IBridgeMessageProcessorImplementation).IsAssignableFrom(t) && !t.IsAbstract)
 				.AsImplementedInterfaces()
 				.SingleInstance();
+
+			builder.RegisterType<NotificationBus>().AsImplementedInterfaces().SingleInstance();
 
 			return builder.Build();
 		}
@@ -308,6 +311,8 @@ namespace DeltaQ.RTB
 
 					errorLogger = container.Resolve<IErrorLogger>();
 
+					var notificationBus = container.Resolve<INotificationBus>();
+
 					var storage = container.Resolve<IRemoteStorage>();
 					var backupAgent = container.Resolve<IBackupAgent>();
 					var remoteStorage = container.Resolve<IRemoteStorage>();
@@ -380,6 +385,12 @@ namespace DeltaQ.RTB
 
 					if (args.InitialBackupThenMonitor || args.InitialBackupThenExit)
 					{
+						notificationBus.Post(
+							new Notification()
+							{
+								Event = StateEvent.InitialBackupStarted,
+							});
+
 						backupAgent.PauseMonitor();
 
 						var orchestrator = container.Resolve<IInitialBackupOrchestrator>();
@@ -453,6 +464,12 @@ namespace DeltaQ.RTB
 
 							backupAgent.UnpauseMonitor(processBufferedPaths: true);
 						}
+
+						notificationBus.Post(
+							new Notification()
+							{
+								Event = StateEvent.InitialBackupCompleted,
+							});
 					}
 
 					if (!cancellationTokenSource.IsCancellationRequested)

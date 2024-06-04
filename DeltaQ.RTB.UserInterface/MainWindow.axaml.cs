@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.Bridge;
 using DeltaQ.RTB.Bridge.Messages;
+using DeltaQ.RTB.Scan;
 using DeltaQ.RTB.UserInterface.Controls;
 
 using Timer = System.Timers.Timer;
@@ -39,12 +40,14 @@ namespace DeltaQ.RTB.UserInterface
 		Timer _refreshTimer;
 		BridgeClient? _bridgeClient;
 		bool _isConnected;
+		bool _gatherRescanStatus;
 
 		void MainWindow_Loaded(object? sender, RoutedEventArgs e)
 		{
 			CenterWindow();
 
 			slcStatistics.ConfigureForGetStatsResponse();
+			slcRescan.ConfigureForRescanStatus(includeBackupAgentQueueSizes: false);
 
 			BeginConnectToBackupService();
 		}
@@ -112,6 +115,8 @@ namespace DeltaQ.RTB.UserInterface
 							IsConnected = true;
 
 							_refreshTimer.Enabled = true;
+
+							break;
 						}
 						catch
 						{
@@ -119,6 +124,17 @@ namespace DeltaQ.RTB.UserInterface
 						}
 					}
 				});
+		}
+
+		public void NotifyRescanStarted()
+		{
+			_gatherRescanStatus = true;
+		}
+
+		public void NotifyRescanCompleted()
+		{
+			_gatherRescanStatus = false;
+			grdRescan.IsVisible = false;
 		}
 
 		void refreshTimer_Elapsed(object? sender, EventArgs e)
@@ -134,19 +150,41 @@ namespace DeltaQ.RTB.UserInterface
 					return;
 				}
 
-				var request = new BridgeMessage_GetStats_Request();
+				var statsRequest = new BridgeMessage_GetStats_Request();
 
-				var response = _bridgeClient.SendRequestAndReceiveResponse(request);
+				var statsResponse = _bridgeClient.SendRequestAndReceiveResponse(statsRequest);
 
-				if (response.Error != null)
-					throw new Exception(response.Error.Message);
+				if (statsResponse.Error != null)
+					throw new Exception(statsResponse.Error.Message);
+
+				RescanStatus? rescanStatus = null;
+
+				if (_gatherRescanStatus)
+				{
+					var rescanRequest = new BridgeMessage_GetRescanStatus_Request();
+
+					rescanRequest.Wait = false;
+
+					var response = _bridgeClient.SendRequestAndReceiveResponse(statsRequest);
+
+					if (response is BridgeMessage_GetRescanStatus_Response rescanResponse)
+						rescanStatus = rescanResponse.RescanStatus;
+				}
 
 				Dispatcher.UIThread.Post(
 					() =>
 					{
-						slcStatistics.StatisticsObject = response;
+						slcStatistics.StatisticsObject = statsResponse;
 
-						if ((response is BridgeMessage_GetStats_Response getStatsResponse)
+						if (rescanStatus != null)
+						{
+							slcRescan.StatisticsObject = rescanStatus;
+
+							if (grdRescan.IsVisible == false)
+								grdRescan.IsVisible = true;
+						}
+
+						if ((statsResponse is BridgeMessage_GetStats_Response getStatsResponse)
 						 && (getStatsResponse.BackupAgentQueueSizes?.UploadThreads is UploadStatus?[] uploadStatuses))
 						{
 							while (spUploads.Children.Count > uploadStatuses.Length)

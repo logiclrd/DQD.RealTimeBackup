@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 
+using DeltaQ.RTB.Bridge.Messages;
+using DeltaQ.RTB.Bridge.Notifications;
 using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Diagnostics
@@ -9,12 +11,15 @@ namespace DeltaQ.RTB.Diagnostics
 	{
 		OperatingParameters _parameters;
 
+		INotificationBus? _notificationBus;
+
 		object _sync = new object();
 		string? _errorLogFilePath;
 		bool _diagnosticOutputDisconnected = false;
 
-		public ErrorLogger(OperatingParameters parameters)
+		public ErrorLogger(OperatingParameters parameters, INotificationBus notificationBus)
 		{
+			_notificationBus = notificationBus;
 			_parameters = parameters;
 		}
 
@@ -64,6 +69,13 @@ namespace DeltaQ.RTB.Diagnostics
 
 				if (!_diagnosticOutputDisconnected)
 					OnDiagnosticOutput(Importance.Normal, "----------\n" + serializedErrorText + "----------\n");
+
+				_notificationBus?.Post(
+						new Notification()
+						{
+							ErrorMessage = context,
+							Error = (exception == null) ? null : new ErrorInfo(exception),
+						});
 
 				return new LoggedError(serializedErrorText);
 			}

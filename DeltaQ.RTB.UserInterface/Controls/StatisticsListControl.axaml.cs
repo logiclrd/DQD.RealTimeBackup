@@ -48,12 +48,28 @@ namespace DeltaQ.RTB.UserInterface.Controls
 			AddFieldBindingsForType<BridgeMessage_GetStats_Response>();
 		}
 
-		public void ConfigureForRescanStatus()
+		public void ConfigureForRescanStatus(bool includeBackupAgentQueueSizes)
 		{
 			ClearFieldBindings();
 
-			AddFieldBindingsForType<RescanStatus>();
-			AddFieldBindingsForType<RescanStatus, ScanStatus>(response => response);
+			bool RescanStatusFilter(FieldInfo fieldInfo) =>
+				fieldInfo.Name == nameof(RescanStatus.NumberOfFilesLeftToMatch);
+			bool ScanStatusFilter(FieldInfo fieldInfo) =>
+				fieldInfo.Name != nameof(ScanStatus.ZFSSnapshotCount);
+
+			AddFieldBindingsForType<RescanStatus, ScanStatus>(response => response, ScanStatusFilter);
+			AddFieldBindingsForType<RescanStatus>(RescanStatusFilter);
+
+			if (includeBackupAgentQueueSizes)
+			{
+				bool IncludeZFSSnapshotCountFilter(FieldInfo fieldInfo) =>
+					fieldInfo.Name == nameof(ScanStatus.ZFSSnapshotCount);
+
+				AddFieldBindingsForType<ScanStatus, BackupAgentQueueSizes>(response => response.BackupAgentQueueSizes);
+				AddFieldBindingsForType<ScanStatus>(IncludeZFSSnapshotCountFilter);
+			}
+
+			var zfsFieldIndex = _fieldBindings.Count - 1;
 		}
 
 		class FieldBinding
@@ -83,13 +99,15 @@ namespace DeltaQ.RTB.UserInterface.Controls
 			_fieldBindings.Clear();
 		}
 
-		void AddFieldBindingsForType<TObject>()
+		void AddFieldBindingsForType<TObject>(Func<FieldInfo, bool>? filter = null)
 		{
 			List<(FieldInfo FieldInfo, int Order)> fields = new List<(FieldInfo FieldInfo, int Order)>();
 
 			foreach (var fieldInfo in typeof(TObject).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
 			{
 				if (fieldInfo.FieldType.IsClass && (fieldInfo.FieldType != typeof(string)))
+					continue;
+				if ((filter != null) && !filter(fieldInfo))
 					continue;
 
 				int fieldOrder = int.MaxValue;
@@ -109,6 +127,61 @@ namespace DeltaQ.RTB.UserInterface.Controls
 				_fieldBindings.Add(new FieldBinding(
 					field.FieldInfo,
 					label));
+			}
+		}
+
+		void AddFieldBindingsForType<TObject, TSubject>(Func<TObject, TSubject?> resolveSubject, Func<FieldInfo, bool>? filter = null)
+		{
+			object cacheKey = default!;
+			TSubject? cachedSubject = default;
+
+			TSubject? GetResolvedSubject(object obj)
+			{
+				if (!ReferenceEquals(obj, cacheKey))
+				{
+					if (obj is TObject typedObject)
+						cachedSubject = resolveSubject(typedObject);
+					else
+						cachedSubject = default;
+
+					cacheKey = obj;
+				}
+
+				return cachedSubject;
+			}
+
+			List<(FieldInfo FieldInfo, int Order)> fields = new List<(FieldInfo FieldInfo, int Order)>();
+
+			foreach (var fieldInfo in typeof(TSubject).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
+			{
+				if (fieldInfo.FieldType.IsClass && (fieldInfo.FieldType != typeof(string)))
+					continue;
+				if ((filter != null) && !filter(fieldInfo))
+					continue;
+
+				int fieldOrder = int.MaxValue;
+
+				if (fieldInfo.GetCustomAttribute<FieldOrderAttribute>() is FieldOrderAttribute fieldOrderAttribute)
+					fieldOrder = fieldOrderAttribute.Order;
+
+				fields.Add((fieldInfo, fieldOrder));
+			}
+
+			fields.Sort((a, b) => a.Order.CompareTo(b.Order));
+
+			foreach (var field in fields)
+			{
+				var label = AddLineForField(field.FieldInfo);
+
+				void Apply(object obj)
+				{
+					label.Content = string.Format("{0:#,##0}", field.FieldInfo.GetValue(GetResolvedSubject(obj)));
+				}
+
+				_fieldBindings.Add(new FieldBinding(
+					field.FieldInfo,
+					label,
+					Apply));
 			}
 		}
 
@@ -140,59 +213,6 @@ namespace DeltaQ.RTB.UserInterface.Controls
 			grdTable.Children.Add(lblValue);
 
 			return lblValue;
-		}
-
-		void AddFieldBindingsForType<TObject, TSubject>(Func<TObject, TSubject?> resolveSubject)
-		{
-			object cacheKey = default!;
-			TSubject? cachedSubject = default;
-
-			TSubject? GetResolvedSubject(object obj)
-			{
-				if (!ReferenceEquals(obj, cacheKey))
-				{
-					if (obj is TObject typedObject)
-						cachedSubject = resolveSubject(typedObject);
-					else
-						cachedSubject = default;
-
-					cacheKey = obj;
-				}
-
-				return cachedSubject;
-			}
-
-			List<(FieldInfo FieldInfo, int Order)> fields = new List<(FieldInfo FieldInfo, int Order)>();
-
-			foreach (var fieldInfo in typeof(TSubject).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
-			{
-				if (fieldInfo.FieldType.IsClass && (fieldInfo.FieldType != typeof(string)))
-					continue;
-
-				int fieldOrder = int.MaxValue;
-
-				if (fieldInfo.GetCustomAttribute<FieldOrderAttribute>() is FieldOrderAttribute fieldOrderAttribute)
-					fieldOrder = fieldOrderAttribute.Order;
-
-				fields.Add((fieldInfo, fieldOrder));
-			}
-
-			fields.Sort((a, b) => a.Order.CompareTo(b.Order));
-
-			foreach (var field in fields)
-			{
-				var label = AddLineForField(field.FieldInfo);
-
-				void Apply(object obj)
-				{
-					label.Content = string.Format("{0:#,##0}", field.FieldInfo.GetValue(GetResolvedSubject(obj)));
-				}
-
-				_fieldBindings.Add(new FieldBinding(
-					field.FieldInfo,
-					label,
-					Apply));
-			}
 		}
 
 		internal static string InferHeadingFromFieldName(string name)

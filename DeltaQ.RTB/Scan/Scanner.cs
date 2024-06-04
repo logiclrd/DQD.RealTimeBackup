@@ -32,6 +32,8 @@ namespace DeltaQ.RTB.Scan
 				directoryQueue.Enqueue(mount.MountPoint);
 				enqueued?.Invoke();
 
+				bool isRootOfMount = true;
+
 				while (directoryQueue.Any())
 				{
 					string path = directoryQueue.Dequeue();
@@ -54,6 +56,9 @@ namespace DeltaQ.RTB.Scan
 					enumerable.ShouldIncludePredicate =
 						(ref FileSystemEntry entry) =>
 						{
+							if (isRootOfMount && (entry.FileName == ".zfs"))
+								return false;
+
 							if (!entry.IsDirectory)
 								return true;
 							else
@@ -98,6 +103,8 @@ namespace DeltaQ.RTB.Scan
 							yield return enumerator.Current;
 						}
 					}
+
+					isRootOfMount = false;
 				}
 
 				mountProcessed?.Invoke();

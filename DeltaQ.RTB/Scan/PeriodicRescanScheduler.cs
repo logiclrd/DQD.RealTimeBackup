@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using DeltaQ.RTB.Bridge.Notifications;
 
 namespace DeltaQ.RTB.Scan
 {
@@ -8,6 +9,7 @@ namespace DeltaQ.RTB.Scan
 		OperatingParameters _parameters;
 
 		IPeriodicRescanOrchestrator _orchestrator;
+		INotificationBus _notificationBus;
 
 		Timer? _timer;
 
@@ -19,11 +21,12 @@ namespace DeltaQ.RTB.Scan
 		RescanStatus? _rescanStatus;
 		CancellationTokenSource? _currentRescanCancellationTokenSource = null;
 
-		public PeriodicRescanScheduler(OperatingParameters parameters, IPeriodicRescanOrchestrator orchestrator)
+		public PeriodicRescanScheduler(OperatingParameters parameters, IPeriodicRescanOrchestrator orchestrator, INotificationBus notificationBus)
 		{
 			_parameters = parameters;
 
 			_orchestrator = orchestrator;
+			_notificationBus = notificationBus;
 		}
 
 		public void Start(CancellationToken cancellationToken)
@@ -61,10 +64,17 @@ namespace DeltaQ.RTB.Scan
 				}
 				else
 				{
-					_currentRescanNumber = Interlocked.Increment(ref _nextRescanNumber);
-					_currentRescanCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_upstreamCancellationToken);
+					var linkedCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_upstreamCancellationToken);
 
-					ThreadPool.QueueUserWorkItem(PeriodicRescanWorker, state: _currentRescanCancellationTokenSource.Token);
+					var input = new RescanWorkerInput();
+
+					input.RescanNumber = Interlocked.Increment(ref _nextRescanNumber);
+					input.CancellationToken = linkedCancellationTokenSource.Token;
+
+					_currentRescanNumber = input.RescanNumber;
+					_currentRescanCancellationTokenSource = linkedCancellationTokenSource;
+
+					ThreadPool.QueueUserWorkItem(PeriodicRescanWorker, state: input);
 
 					response.RescanNumber = _currentRescanNumber.Value;
 					response.AlreadyRunning = false;
@@ -96,14 +106,26 @@ namespace DeltaQ.RTB.Scan
 			return _rescanStatus;
 		}
 
+		class RescanWorkerInput
+		{
+			public int RescanNumber;
+			public CancellationToken CancellationToken;
+		}
+
 		void PeriodicRescanWorker(object? state)
 		{
-			int rescanNumber = _currentRescanNumber ?? -1;
+			var input = (RescanWorkerInput)state!;
+
+			int rescanNumber = input.RescanNumber;
+
+			_notificationBus.Post(
+				new Notification()
+				{
+					Event = StateEvent.RescanStarted,
+				});
 
 			try
 			{
-				var token = (CancellationToken)state!;
-
 				_orchestrator.PerformPeriodicRescan(
 					rescanNumber,
 					updatedStatus =>
@@ -114,7 +136,7 @@ namespace DeltaQ.RTB.Scan
 							Monitor.PulseAll(_sync);
 						}
 					},
-					token);
+					input.CancellationToken);
 			}
 			finally
 			{
@@ -123,6 +145,12 @@ namespace DeltaQ.RTB.Scan
 					_currentRescanNumber = null;
 					Monitor.PulseAll(_sync);
 				}
+
+				_notificationBus.Post(
+					new Notification()
+					{
+						Event = StateEvent.RescanCompleted,
+					});
 			}
 		}
 	}
