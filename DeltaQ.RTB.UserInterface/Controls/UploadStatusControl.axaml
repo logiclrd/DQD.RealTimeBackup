@@ -24,6 +24,8 @@
         <Label Grid.Column="0" Content="{Binding UploadStatus, Converter={StaticResource UploadStatusSpeedConverter}}" />
         <ProgressBar Grid.Column="1" MinWidth="0" Minimum="0" Maximum="1" Value="{Binding UploadStatus, Converter={StaticResource UploadStatusProgressConverter}}" />
         <Label Grid.Column="2" Content="{Binding UploadStatus, Converter={StaticResource UploadStatusProgressTextConverter}}" />
-        <Label Grid.Column="3" Content="{Binding UploadStatus, Converter={StaticResource UploadStatusPathConverter}}" />
+        <Label Grid.Column="3" ToolTip.Tip="{Binding UploadStatus, Converter={StaticResource UploadStatusPathConverter}, StringFormat='Click to copy: {0}'}" PointerPressed="UploadStatus_PointerPressed">
+            <TextBlock TextTrimming="CharacterEllipsis" Text="{Binding UploadStatus, Converter={StaticResource UploadStatusPathConverter}}" />
+        </Label>
     </Grid>
 </UserControl>

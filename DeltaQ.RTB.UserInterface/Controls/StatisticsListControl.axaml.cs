@@ -124,6 +124,8 @@ namespace DeltaQ.RTB.UserInterface.Controls
 
 			lblHeading.Margin = new Thickness(0, 0, 30, 0);
 
+			lblValue.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
+
 			int rowIndex = grdTable.RowDefinitions.Count;
 
 			grdTable.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
@@ -183,7 +185,7 @@ namespace DeltaQ.RTB.UserInterface.Controls
 
 				void Apply(object obj)
 				{
-					label.Content = field.FieldInfo.GetValue(GetResolvedSubject(obj));
+					label.Content = string.Format("{0:#,##0}", field.FieldInfo.GetValue(GetResolvedSubject(obj)));
 				}
 
 				_fieldBindings.Add(new FieldBinding(
@@ -270,7 +272,7 @@ namespace DeltaQ.RTB.UserInterface.Controls
 					if (binding.Apply != null)
 						binding.Apply(newObject);
 					else
-						binding.Label.Content = binding.FieldInfo.GetValue(newObject);
+						binding.Label.Content = string.Format("{0:#,##0}", binding.FieldInfo.GetValue(newObject));
 				}
 			}
 		}

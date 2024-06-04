@@ -152,7 +152,13 @@ namespace DeltaQ.RTB.UserInterface
 							while (spUploads.Children.Count > uploadStatuses.Length)
 								spUploads.Children.RemoveAt(spUploads.Children.Count - 1);
 							while (spUploads.Children.Count < uploadStatuses.Length)
-								spUploads.Children.Add(new UploadStatusControl());
+							{
+								var uploadStatusControl = new UploadStatusControl();
+
+								uploadStatusControl.CopyPath += (_, path) => Clipboard?.SetTextAsync(path).Wait();
+
+								spUploads.Children.Add(uploadStatusControl);
+							}
 
 							for (int i=0; i < uploadStatuses.Length; i++)
 							{
