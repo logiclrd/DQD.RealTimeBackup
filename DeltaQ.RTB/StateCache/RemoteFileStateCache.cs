@@ -468,7 +468,7 @@ namespace DeltaQ.RTB.StateCache
 
 			string batchRemotePath = "/state/" + batchNumberToUpload;
 
-			var temporaryCopyPath = Path.GetTempFileName();
+			var temporaryCopyPath = _cacheActionLog.CreateTemporaryCacheActionDataFile();
 
 			using (var temporaryCopy = File.Open(temporaryCopyPath, FileMode.OpenOrCreate, FileAccess.ReadWrite))
 			{

@@ -325,6 +325,12 @@ namespace DeltaQ.RTB.Bridge
 									if (result.ResponseMessage != null)
 									{
 										result.ResponseMessage.SerializeWithLengthPrefix(client.SendBuffer);
+
+										DebugLog("send buffer:");
+										builder = new StringBuilder();
+										for (int i=0; i < client.SendBuffer.Length; i++)
+											builder.AppendFormat("{0:X2} ", client.SendBuffer[i]);
+										DebugLog(builder);
 									}
 								}
 							}

@@ -8,6 +8,7 @@ using FluentAssertions;
 
 using DeltaQ.RTB.Bridge.Serialization;
 using DeltaQ.RTB.Utility;
+using System.IO;
 
 namespace DeltaQ.RTB.Tests.Fixtures.Bridge.Serialization
 {
@@ -296,6 +297,129 @@ namespace DeltaQ.RTB.Tests.Fixtures.Bridge.Serialization
 			sut.Serialize<DateTimeFieldTestClass>(testObject, buffer);
 
 			var result = sut.Deserialize<DateTimeFieldTestClass>(buffer);
+		}
+
+#pragma warning disable 649
+		class EnumInt32FieldTestClass
+		{
+			[FieldOrder(0)]
+			public FileAccess TestField;
+		}
+
+		class EnumInt64FieldTestClass
+		{
+			[FieldOrder(0)]
+			public EnumInt64 TestField;
+		}
+
+		enum EnumInt64 : long
+		{
+			TestValue = unchecked((long)0xDEADBEEFCAFEBABE),
+		}
+#pragma warning restore 649
+
+		[Test]
+		public void Serialize_should_handle_Int32_enum_fields()
+		{
+			// Arrange
+			var testObject = new EnumInt32FieldTestClass();
+
+			testObject.TestField = FileAccess.ReadWrite;
+
+			var sut = new ByteBufferSerializer();
+
+			var buffer = new ByteBuffer();
+
+			// Expected output:
+			// (byte) is object non-null?    SHOULD BE 1
+			// (byte[4]) field value         SHOULD BE value bytes
+
+			byte[] expectedOutputBytes = BitConverter.GetBytes((int)testObject.TestField);
+
+			// Act
+			sut.Serialize<EnumInt32FieldTestClass>(testObject, buffer);
+
+			// Assert
+			buffer.Length.Should().Be(5);
+			buffer[0].Should().Be(1);
+
+			for (int i = 0; i < expectedOutputBytes.Length; i++)
+				buffer[i + 1].Should().Be(expectedOutputBytes[i]);
+		}
+
+		[Test]
+		public void Serialize_should_handle_Int64_enum_fields()
+		{
+			// Arrange
+			var testObject = new EnumInt64FieldTestClass();
+
+			testObject.TestField = EnumInt64.TestValue;
+
+			var sut = new ByteBufferSerializer();
+
+			var buffer = new ByteBuffer();
+
+			// Expected output:
+			// (byte) is object non-null?    SHOULD BE 1
+			// (byte[8]) field value         SHOULD BE value bytes
+
+			byte[] expectedOutputBytes = BitConverter.GetBytes((long)testObject.TestField);
+
+			// Act
+			sut.Serialize<EnumInt64FieldTestClass>(testObject, buffer);
+
+			// Assert
+			buffer.Length.Should().Be(9);
+			buffer[0].Should().Be(1);
+
+			for (int i = 0; i < expectedOutputBytes.Length; i++)
+				buffer[i + 1].Should().Be(expectedOutputBytes[i]);
+		}
+
+		[Test]
+		public void Deserialize_should_handle_Int32_enum_fields()
+		{
+			// Arrange
+			var value = FileAccess.ReadWrite;
+
+			var sut = new ByteBufferSerializer();
+
+			var buffer = new ByteBuffer();
+
+			byte[] valueBytes = BitConverter.GetBytes((int)value);
+
+			buffer.AppendByte(1); // is object non-null?
+			buffer.Append(valueBytes); // TestField value
+
+			// Act
+			var result = sut.Deserialize<EnumInt32FieldTestClass>(buffer);
+
+			// Assert
+			result.Should().NotBeNull();
+			result!.TestField.Should().Be(value);
+		}
+
+		[Test]
+		public void Deserialize_should_handle_Int64_enum_fields()
+		{
+			// Arrange
+			var value = EnumInt64.TestValue;
+
+			var sut = new ByteBufferSerializer();
+
+			var buffer = new ByteBuffer();
+
+			byte[] valueBytes = BitConverter.GetBytes((long)value);
+
+			buffer.AppendByte(1); // is object non-null?
+			buffer.Append(valueBytes); // TestField value
+
+			// Act
+			var result = sut.Deserialize<EnumInt64FieldTestClass>(buffer);
+
+			// Assert
+			result.Should().NotBeNull();
+			result!.TestField.Should().Be(value);
 		}
 
 #pragma warning disable 649

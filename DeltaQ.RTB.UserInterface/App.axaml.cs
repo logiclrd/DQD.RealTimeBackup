@@ -158,6 +158,9 @@ namespace DeltaQ.RTB.UserInterface
 								}
 
 								ShowNotificationToast(notification);
+
+								if (notification.MessageID > lastMessageID)
+									lastMessageID = notification.MessageID;
 							}
 						}
 					}

@@ -40,8 +40,12 @@
             </DockPanel>
         </Grid>
 
-        <Button Name="cmdPerformRescan" Grid.Row="1" Grid.ColumnSpan="2" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16">
+        <Button Name="cmdPerformRescan" Grid.Row="1" Grid.ColumnSpan="2" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16" Click="cmdPerformRescan_Click">
             Perform Rescan Now
+        </Button>
+
+        <Button Name="cmdCancelRescan" Grid.Row="1" Grid.ColumnSpan="2" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16" Click="cmdCancelRescan_Click" IsVisible="false">
+            Cancel Rescan
         </Button>
     </Grid>
 </Window>

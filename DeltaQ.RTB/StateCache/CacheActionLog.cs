@@ -42,6 +42,11 @@ namespace DeltaQ.RTB.StateCache
 			return Path.Combine(_actionQueuePath, key.ToString());
 		}
 
+		public string GetQueueActionDataFileName(long key)
+		{
+			return Path.Combine(_actionQueuePath, "Data-" + key);
+		}
+
 		public void LogAction(CacheAction action)
 		{
 			long actionKey = DateTime.UtcNow.Ticks;
@@ -60,6 +65,28 @@ namespace DeltaQ.RTB.StateCache
 			action.ActionFileName = actionFileName;
 
 			File.WriteAllText(action.ActionFileName, action.Serialize());
+		}
+
+		public string CreateTemporaryCacheActionDataFile()
+		{
+			long dataKey = DateTime.UtcNow.Ticks;
+
+			string dataFileName = GetQueueActionDataFileName(dataKey);
+
+			for (int retry = 0; retry < 1000; retry++)
+			{
+				try
+				{
+					using (File.Open(dataFileName, FileMode.CreateNew, FileAccess.ReadWrite))
+						return dataFileName;
+				}
+				catch {}
+
+				dataKey++;
+				dataFileName = GetQueueActionDataFileName(dataKey);
+			}
+
+			throw new Exception("Couldn't find a working path for temporary cache action data file");
 		}
 
 		public CacheAction RehydrateAction(long key)

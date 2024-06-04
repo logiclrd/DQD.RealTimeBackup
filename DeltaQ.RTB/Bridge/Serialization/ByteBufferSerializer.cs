@@ -76,6 +76,16 @@ namespace DeltaQ.RTB.Bridge.Serialization
 					return SerializeDateTime;
 				if (type == typeof(TimeSpan))
 					return SerializeTimeSpan;
+
+				if (type.IsEnum)
+				{
+					type = Enum.GetUnderlyingType(type);
+
+					if (type == typeof(int))
+						return SerializeInt32Enum;
+					if (type == typeof(long))
+						return SerializeInt64Enum;
+				}
 			}
 			else if (IsListType(type))
 				return SerializeList;
@@ -137,6 +147,20 @@ namespace DeltaQ.RTB.Bridge.Serialization
 		{
 			if (!(value is long longValue))
 				longValue = 0;
+
+			buffer.AppendInt64(longValue);
+		}
+
+		static void SerializeInt32Enum(ByteBuffer buffer, object? value)
+		{
+			int intValue = Convert.ToInt32(value);
+
+			buffer.AppendInt32(intValue);
+		}
+
+		static void SerializeInt64Enum(ByteBuffer buffer, object? value)
+		{
+			long longValue = Convert.ToInt64(value);
 
 			buffer.AppendInt64(longValue);
 		}
@@ -227,6 +251,16 @@ namespace DeltaQ.RTB.Bridge.Serialization
 					return DeserializeDateTime;
 				if (type == typeof(TimeSpan))
 					return DeserializeTimeSpan;
+
+				if (type.IsEnum)
+				{
+					var underlyingType = Enum.GetUnderlyingType(type);
+
+					if (underlyingType == typeof(int))
+						return (buffer) => Enum.ToObject(type, buffer.ReadInt32());
+					if (underlyingType == typeof(long))
+						return (buffer) => Enum.ToObject(type, buffer.ReadInt64());
+				}
 			}
 			else if (IsListType(type))
 				return GetDeserializeListFunctor(type);

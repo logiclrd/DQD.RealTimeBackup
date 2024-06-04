@@ -52,6 +52,26 @@ namespace DeltaQ.RTB.UserInterface
 			BeginConnectToBackupService();
 		}
 
+		void cmdPerformRescan_Click(object? sender, RoutedEventArgs e)
+		{
+			using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+			{
+				var request = new BridgeMessage_PerformRescan_Request();
+
+				client.SendRequestAndReceiveResponse(request);
+			}
+		}
+
+		void cmdCancelRescan_Click(object? sender, RoutedEventArgs e)
+		{
+			using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+			{
+				var request = new BridgeMessage_CancelRescan_Request();
+
+				client.SendRequestAndReceiveResponse(request);
+			}
+		}
+
 		protected override void OnClosing(WindowClosingEventArgs e)
 		{
 			e.Cancel = true;
@@ -129,12 +149,16 @@ namespace DeltaQ.RTB.UserInterface
 		public void NotifyRescanStarted()
 		{
 			_gatherRescanStatus = true;
+			cmdPerformRescan.IsVisible = false;
+			cmdCancelRescan.IsVisible = true;
 		}
 
 		public void NotifyRescanCompleted()
 		{
 			_gatherRescanStatus = false;
 			grdRescan.IsVisible = false;
+			cmdCancelRescan.IsVisible = false;
+			cmdPerformRescan.IsVisible = true;
 		}
 
 		void refreshTimer_Elapsed(object? sender, EventArgs e)
