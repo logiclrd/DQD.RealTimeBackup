@@ -360,11 +360,19 @@ namespace DeltaQ.RTB.Bridge
 											lock (_clientSync)
 												result.ResponseMessage.SerializeWithLengthPrefix(client.SendBuffer);
 
-											DebugLog("send buffer:");
-											var builder = new StringBuilder();
-											for (int i=0; i < client.SendBuffer.Length; i++)
-												builder.AppendFormat("{0:X2} ", client.SendBuffer[i]);
-											DebugLog(builder);
+											try
+											{
+												DebugLog("send buffer:");
+												var builder = new StringBuilder();
+												for (int i=0; i < client.SendBuffer.Length; i++)
+													builder.AppendFormat("{0:X2} ", client.SendBuffer[i]);
+												DebugLog(builder);
+											}
+											catch
+											{
+												// a long-running message might pull bytes out in another thread while we're doing this
+												DebugLog("(another thread modified the send buffer while we were formatting it)");
+											}
 										}
 									}
 								}

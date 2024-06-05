@@ -117,7 +117,7 @@ namespace DeltaQ.RTB.UserInterface
 							_bridgeClient = BridgeClient.ConnectTo(
 								Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName));
 
-							new Thread(NotificationsThreadProc).Start(_bridgeClient);
+							new Thread(NotificationsThreadProc) { IsBackground = true }.Start(_bridgeClient);
 
 							break;
 						}
@@ -179,8 +179,12 @@ namespace DeltaQ.RTB.UserInterface
 				}
 			}
 
-			if (!_shuttingDown)
+			if (_shuttingDown)
+				Console.WriteLine("Notifications pump thread exiting");
+			else
 			{
+				Console.WriteLine("Notifications pump thread will restart in 5 seconds");
+
 				Thread.Sleep(TimeSpan.FromSeconds(5));
 
 				BeginConnectToBackupService();
