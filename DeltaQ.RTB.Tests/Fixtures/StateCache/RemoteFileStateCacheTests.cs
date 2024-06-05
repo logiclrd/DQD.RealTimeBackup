@@ -144,7 +144,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.LoadCache();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			sut.GetCacheForTest().Should().BeEquivalentTo(expectedCache);
 		}
@@ -180,7 +180,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				remoteStorage);
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			foreach (var fileState in fileStates)
 				result.GetFileState(fileState.Path).Should().BeEquivalentTo(fileState);
@@ -210,7 +210,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				remoteStorage);
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			result.GetFileState(faker.System.FilePath()).Should().BeNull();
 		}
@@ -250,7 +250,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var after = sut.GetFileState(fileState.Path);
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			before.Should().BeEquivalentTo(fileState);
 			after.Should().BeEquivalentTo(newFileState);
@@ -291,7 +291,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			maxBatchNumberAfter.Should().Be(maxBatchNumberBefore + 1);
 
@@ -337,7 +337,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var after = sut.GetFileState(fileState.Path);
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			before.Should().BeEquivalentTo(fileState);
 			after.Should().BeNull();
@@ -377,7 +377,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			maxBatchNumberAfter.Should().Be(maxBatchNumberBefore + 1);
 
@@ -446,7 +446,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			sut.GetCurrentBatchNumberForTest().Should().Be(batchNumber + 1);
 			sut.GetCurrentBatchForTest().Should().BeEmpty();
@@ -510,7 +510,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			sut.DrainActionQueue();
 
@@ -617,7 +617,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			sut.UploadCurrentBatchAndBeginNext();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			uploads.Should().HaveCount(2);
 			deletions.Should().HaveCount(1);
@@ -715,7 +715,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			int deletedBatchNumber = sut.ConsolidateOldestBatch();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			deletedBatchNumber.Should().Be(1);
 
@@ -860,7 +860,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			int deletedBatchNumber = sut.ConsolidateOldestBatch();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			sut.DrainActionQueue();
 

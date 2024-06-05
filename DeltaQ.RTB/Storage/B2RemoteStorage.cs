@@ -126,7 +126,7 @@ namespace DeltaQ.RTB.Storage
 				if (bucketInfo == null)
 				{
 					throw _errorLogger
-						.LogError("Configuration error: Unable to resolve bucket name for bucket id " + _parameters.RemoteStorageBucketID)
+						.LogError("Configuration error: Unable to resolve bucket name for bucket id " + _parameters.RemoteStorageBucketID, ErrorLogger.Summary.ConfigurationError)
 						.ToException();
 				}
 
@@ -480,7 +480,7 @@ namespace DeltaQ.RTB.Storage
 				}
 				catch (Exception e)
 				{
-					_errorLogger.LogError("Error while deleting path: " + serverPath, e);
+					_errorLogger.LogError("Error while deleting path: " + serverPath, ErrorLogger.Summary.SystemError, e);
 				}
 
 				try
@@ -489,7 +489,7 @@ namespace DeltaQ.RTB.Storage
 				}
 				catch (Exception e)
 				{
-					_errorLogger.LogError("Error while deleting path: " + contentKey, e);
+					_errorLogger.LogError("Error while deleting path: " + contentKey, ErrorLogger.Summary.SystemError, e);
 				}
 			}
 

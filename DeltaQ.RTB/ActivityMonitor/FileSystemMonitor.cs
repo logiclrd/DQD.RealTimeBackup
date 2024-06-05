@@ -53,7 +53,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 			if (!@event.InformationStructures.Any())
 			{
 				Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
-				_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures");
+				_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures", ErrorLogger.Summary.InternalError);
 				return;
 			}
 
@@ -72,7 +72,7 @@ namespace DeltaQ.RTB.ActivityMonitor
 								if (!MountDescriptorByFileSystemID.TryGetValue(info.FileSystemID, out var mountDescriptor))
 								{
 									Console.Error.WriteLine("Using file system mount fallback");
-									_errorLogger.LogError("fanotify event was received with a FileSystemID that could not be resolved to a mount fd");
+									_errorLogger.LogError("fanotify event was received with a FileSystemID that could not be resolved to a mount fd", ErrorLogger.Summary.InternalError);
 									mountDescriptor = NativeMethods.AT_FDCWD;
 								}
 

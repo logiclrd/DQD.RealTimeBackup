@@ -88,7 +88,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				sut.ProcessEvent(evt);
 
 				// Assert
-				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 				openByHandleAt.Received().Open(mountDescriptor, fileHandleBytes);
 
@@ -177,7 +177,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				sut.ProcessEvent(evt);
 
 				// Assert
-				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 				openByHandleAt.Received().Open(mountDescriptorFrom, fileHandleBytesFrom);
 				openByHandleAt.Received().Open(mountDescriptorTo, fileHandleBytesTo);
@@ -254,7 +254,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 				sut.ProcessEvent(evt);
 
 				// Assert
-				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 				openByHandleAt.Received().Open(mountDescriptor, fileHandleBytes);
 
@@ -369,7 +369,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			sut.SetUpFANotify();
 
 			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 			var markedPaths = fileAccessNotify.ReceivedCalls()
 				.Where(call => call.GetMethodInfo().Name == nameof(fileAccessNotify.MarkPath))
@@ -449,7 +449,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.ActivityMonitor
 			stopwatch.Elapsed.Should().BeGreaterThanOrEqualTo(delayBeforeStop);
 			stopwatch.Elapsed.Should().BeLessThan(delayBeforeStop + allowableStopTime);
 
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 		}
 	}
 }

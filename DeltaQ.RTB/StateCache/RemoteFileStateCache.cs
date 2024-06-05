@@ -134,6 +134,7 @@ namespace DeltaQ.RTB.StateCache
 							_cacheActionLog.ActionQueuePath + "\n" +
 							"\n" +
 							"This is a possible consistency problem.",
+							ErrorLogger.Summary.ImportantBackupError,
 							exception);
 					}
 				}
@@ -589,7 +590,7 @@ namespace DeltaQ.RTB.StateCache
 			}
 			catch (Exception exception)
 			{
-				_errorLogger.LogError("An error occurred while consolidating Remote File State Cache batches.", exception);
+				_errorLogger.LogError("An error occurred while consolidating Remote File State Cache batches.", ErrorLogger.Summary.InternalError, exception);
 				throw;
 			}
 		}
@@ -687,7 +688,7 @@ namespace DeltaQ.RTB.StateCache
 					}
 					catch (Exception exception)
 					{
-						_errorLogger.LogError("An error occurred deleting an action file: " + action.ActionFileName, exception);
+						_errorLogger.LogError("An error occurred deleting an action file: " + action.ActionFileName, ErrorLogger.Summary.SystemError, exception);
 						DebugLog("[AT] => error deleting action file (logged)");
 					}
 
@@ -717,7 +718,8 @@ namespace DeltaQ.RTB.StateCache
 									"Was expecting to upload: " + action.SourcePath + "\n" +
 									"\n" +
 									"Will upload a 0-byte dummy file instead. This will unblock the queue but means that the data server-side is incomplete. " +
-									"A future batch upload should resolve this.");
+									"A future batch upload should resolve this.",
+									ErrorLogger.Summary.ImportantBackupError);
 
 								DebugLog("[PCA] ERROR (logged): source file has gone away! {0}", action.SourcePath);
 								DebugLog("[PCA] uploading dummy file");

@@ -14,8 +14,10 @@ namespace DeltaQ.RTB.Bridge.Notifications
 		[FieldOrder(2)]
 		public string? ErrorMessage;
 		[FieldOrder(3)]
-		public ErrorInfo? Error;
+		public string? Summary;
 		[FieldOrder(4)]
+		public ErrorInfo? Error;
+		[FieldOrder(5)]
 		public StateEvent Event;
 	}
 }

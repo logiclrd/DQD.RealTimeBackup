@@ -7,14 +7,16 @@ namespace DeltaQ.RTB.Bridge.Messages
 	public class ErrorInfo
 	{
 		[FieldOrder(0)]
-		public string? Message;
+		public string? ExceptionType;
 		[FieldOrder(1)]
-		public string? Source;
+		public string? Message;
 		[FieldOrder(2)]
-		public string? StackTrace;
+		public string? Source;
 		[FieldOrder(3)]
-		public ErrorInfo? InnerError;
+		public string? StackTrace;
 		[FieldOrder(4)]
+		public ErrorInfo? InnerError;
+		[FieldOrder(5)]
 		public List<ErrorInfo?>? InnerErrors;
 
 		public ErrorInfo()
@@ -23,6 +25,7 @@ namespace DeltaQ.RTB.Bridge.Messages
 
 		public ErrorInfo(Exception ex)
 		{
+			ExceptionType = ex.GetType().FullName;
 			Message = ex.Message;
 			Source = ex.Source;
 			StackTrace = ex.StackTrace;

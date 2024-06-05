@@ -315,7 +315,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
-				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 				remoteFileStateCache.Received().GetFileState(file.Path);
 				staging.DidNotReceive().StageFile(Arg.Any<Stream>());
@@ -388,7 +388,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Agent
 				sut.ProcessBackupQueueAction(uploadAction);
 
 				// Assert
-				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 				remoteFileStateCache.Received().GetFileState(file.Path);
 				staging.Received().StageFile(Arg.Any<Stream>());

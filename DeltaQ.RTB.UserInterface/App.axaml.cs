@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -13,6 +15,7 @@ using ReactiveUI;
 using DeltaQ.RTB.Bridge;
 using DeltaQ.RTB.Bridge.Messages;
 using DeltaQ.RTB.Bridge.Notifications;
+using DeltaQ.RTB.UserInterface.Notifications;
 
 namespace DeltaQ.RTB.UserInterface
 {
@@ -32,6 +35,9 @@ namespace DeltaQ.RTB.UserInterface
 			ExitCommand = ReactiveCommand.Create(Exit);
 
 			DataContext = this;
+
+			_notifications = new FreeDesktopNotifications();
+			_notifications.Connect();
 
 			BeginConnectToBackupService();
 		}
@@ -56,6 +62,7 @@ namespace DeltaQ.RTB.UserInterface
 
 		bool _shuttingDown;
 		BridgeClient? _bridgeClient;
+		INotifications? _notifications;
 
 		void ShowWindow()
 		{
@@ -182,7 +189,41 @@ namespace DeltaQ.RTB.UserInterface
 
 		void ShowNotificationToast(Notification notification)
 		{
-			// TODO
+			var notifications = _notifications;
+
+			if (notifications != null)
+				notifications.PostNotification(notification.ErrorMessage ?? "", notification.Summary ?? GetEventText(notification.Event), notification.Error);
+		}
+
+		object _eventTextSync = new object();
+		Dictionary<StateEvent, string> _eventTextCache = new Dictionary<StateEvent, string>();
+
+		string GetEventText(StateEvent notificationEvent)
+		{
+			lock (_eventTextSync)
+			{
+				if (!_eventTextCache.TryGetValue(notificationEvent, out var text))
+				{
+					text = _eventTextCache[notificationEvent] = SpaceWords(notificationEvent.ToString());
+				}
+
+				return text ?? "(internal error: unknown notification event)";
+			}
+		}
+
+		string SpaceWords(string text)
+		{
+			var buffer = new StringBuilder();
+
+			for (int i=0; i < text.Length; i++)
+			{
+				if ((i > 0) && char.IsUpper(text[i]))
+					buffer.Append(' ');
+
+				buffer.Append(text[i]);
+			}
+
+			return buffer.ToString();
 		}
 	}
 }

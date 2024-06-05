@@ -45,7 +45,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 
 			snapshot.Received().Dispose();
 
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 		}
 	}
 }

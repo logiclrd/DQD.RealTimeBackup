@@ -9,6 +9,14 @@ namespace DeltaQ.RTB.Diagnostics
 {
 	public class ErrorLogger : DiagnosticOutputBase, IErrorLogger
 	{
+		public class Summary
+		{
+			public const string InternalError = "DeltaQ.RTB: Internal Error";
+			public const string ImportantBackupError = "DeltaQ.RTB: Important Backup Error";
+			public const string SystemError = "DeltaQ.RTB: System Error";
+			public const string ConfigurationError = "DeltaQ.RTB: Configuration Error";
+		}
+
 		OperatingParameters _parameters;
 
 		INotificationBus? _notificationBus;
@@ -29,7 +37,7 @@ namespace DeltaQ.RTB.Diagnostics
 			_errorLogFilePath = errorLogFilePath;
 		}
 
-		public ILoggedError LogError(string context, Exception? exception = null)
+		public ILoggedError LogError(string context, string? summary = null, Exception? exception = null)
 		{
 			lock (_sync)
 			{
@@ -74,6 +82,7 @@ namespace DeltaQ.RTB.Diagnostics
 						new Notification()
 						{
 							ErrorMessage = context,
+							Summary = summary ?? "Important Backup Error",
 							Error = (exception == null) ? null : new ErrorInfo(exception),
 						});
 

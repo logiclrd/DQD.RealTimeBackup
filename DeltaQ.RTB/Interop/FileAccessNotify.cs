@@ -30,7 +30,7 @@ namespace DeltaQ.RTB.Interop
 
 			if (_fd < 0)
 			{
-				_errorLogger.LogError("Unable to initialize fanotify, errno = " + Marshal.GetLastWin32Error());
+				_errorLogger.LogError("Unable to initialize fanotify, errno = " + Marshal.GetLastWin32Error(), ErrorLogger.Summary.SystemError);
 				throw new Exception("Cannot initialize fanotify");
 			}
 		}
@@ -239,7 +239,7 @@ namespace DeltaQ.RTB.Interop
 
 				if (readSize < 0)
 				{
-					_errorLogger.LogError("Unexpected read error getting data from fanotify, errno = " + Marshal.GetLastWin32Error());
+					_errorLogger.LogError("Unexpected read error getting data from fanotify, errno = " + Marshal.GetLastWin32Error(), ErrorLogger.Summary.SystemError);
 					throw new Exception("Read error");
 				}
 

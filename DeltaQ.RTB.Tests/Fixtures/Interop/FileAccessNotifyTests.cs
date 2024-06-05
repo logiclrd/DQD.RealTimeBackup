@@ -86,7 +86,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 					sync.WaitOne(TimeSpan.FromSeconds(2));
 
 					// Assert
-					errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+					errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 					receivedEvent.Should().BeTrue();
 				}
@@ -142,7 +142,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.Interop
 					Thread.Sleep(50);
 
 					// Assert
-					errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<Exception>());
+					errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
 					receivedEvent.Should().BeFalse();
 				}
