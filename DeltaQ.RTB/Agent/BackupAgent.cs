@@ -417,9 +417,18 @@ namespace DeltaQ.RTB.Agent
 						}
 					}
 
-					VerboseDiagnosticOutput("[IN]   * Queuing path for open files check");
+					var snapshotReference = snapshotReferenceTracker.AddReference(path);
 
-					QueuePathForOpenFilesCheck(snapshotReferenceTracker.AddReference(path));
+					if (!File.Exists(snapshotReference.SnapshottedPath))
+					{
+						VerboseDiagnosticOutput("[IN]   * File does not exist in the snapshot, it must have already been deleted. Removing from consideration.");
+						snapshotReference.Dispose();
+					}
+					else
+					{
+						VerboseDiagnosticOutput("[IN]   * Queuing path for open files check");
+						QueuePathForOpenFilesCheck(snapshotReference);
+					}
 
 					if (_stopping)
 						break;

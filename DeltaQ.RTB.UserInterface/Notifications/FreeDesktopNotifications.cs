@@ -67,7 +67,7 @@ namespace DeltaQ.RTB.UserInterface.Notifications
 						title += " (" + _notificationCount + " others)";
 				}
 
-				string body = notificationText;
+				string body = ToHTML(notificationText);
 
 				if (errorInfo != null)
 				{
@@ -88,11 +88,19 @@ namespace DeltaQ.RTB.UserInterface.Notifications
 						new Dictionary<string, object>()
 						{
 							{ "urgency", (byte)1 },
+							{ "use-body-markup", true },
 							{ "category", "transfer" },
 						},
 						(int)TimeSpan.FromSeconds(8).TotalMilliseconds));
 				}
 			}
+		}
+
+		static string ToHTML(string textBlock)
+		{
+			string[] paragraphs = textBlock.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+			return string.Concat(paragraphs.Select(paragraph => "<p>" + HttpUtility.HtmlEncode(paragraph) + "</p>"));
 		}
 
 		string FormatException(ErrorInfo errorInfo)

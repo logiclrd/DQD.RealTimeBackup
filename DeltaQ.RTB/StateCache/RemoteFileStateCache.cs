@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.Storage;
@@ -42,6 +43,7 @@ namespace DeltaQ.RTB.StateCache
 		volatile bool _stopping;
 		volatile int _busyCount;
 		object _busySync = new object();
+		CancellationTokenSource _cancellationTokenSource;
 
 		internal const long DeletedFileSize = -1;
 		internal const string DeletedChecksum = "-";
@@ -152,7 +154,7 @@ namespace DeltaQ.RTB.StateCache
 			DebugLog("stopping");
 
 			_stopping = true;
-			WakeActionThread();
+			WakeActionThread(hardCancel: true);
 		}
 
 		public void WaitWhileBusy()
@@ -397,7 +399,7 @@ namespace DeltaQ.RTB.StateCache
 			DebugLog("batch number to upload is {0}", batchNumberToUpload);
 
 			if (batchNumberToUpload > 0)
-				UploadBatch(batchNumberToUpload);
+				QueueUploadBatch(batchNumberToUpload);
 
 			DebugLog("checking if should consolidate");
 
@@ -420,8 +422,8 @@ namespace DeltaQ.RTB.StateCache
 			{
 				bool consolidated;
 
-				// Consolidate at most 2 batches per call
-				for (int i=0; i < 2; i++)
+				// Consolidate at most 5 batches per call
+				for (int i=0; i < 5; i++)
 				{
 					consolidated = false;
 
@@ -460,10 +462,12 @@ namespace DeltaQ.RTB.StateCache
 					if (!consolidated)
 						break;
 				}
+
+				WakeActionThread(hardCancel: false);
 			}
 		}
 
-		internal void UploadBatch(int batchNumberToUpload)
+		internal void QueueUploadBatch(int batchNumberToUpload)
 		{
 			DebugLog("beginning UploadBatch of {0}", batchNumberToUpload);
 
@@ -583,7 +587,7 @@ namespace DeltaQ.RTB.StateCache
 
 				DebugLog("calling UploadBatch on {0}", mergeIntoBatchNumber);
 
-				UploadBatch(mergeIntoBatchNumber);
+				QueueUploadBatch(mergeIntoBatchNumber);
 
 				// Return the batch number that no longer exists so that the caller can remove it from remote storage.
 				return oldestBatchNumber;
@@ -597,14 +601,19 @@ namespace DeltaQ.RTB.StateCache
 
 		void StartActionThread()
 		{
+			_cancellationTokenSource = new CancellationTokenSource();
+
 			Thread thread = new Thread(ActionThreadProc);
 
 			thread.Name = "Remote File State Cache Action Thread";
 			thread.Start();
 		}
 
-		void WakeActionThread()
+		void WakeActionThread(bool hardCancel)
 		{
+			if (hardCancel)
+				_cancellationTokenSource.Cancel();
+
 			lock (_actionThreadSync)
 				Monitor.PulseAll(_actionThreadSync);
 		}
@@ -614,10 +623,7 @@ namespace DeltaQ.RTB.StateCache
 			_cacheActionLog.LogAction(action);
 
 			lock (_actionThreadSync)
-			{
 				_actionQueue.Enqueue(action);
-				WakeActionThread();
-			}
 		}
 
 		internal void DrainActionQueue()
@@ -708,40 +714,48 @@ namespace DeltaQ.RTB.StateCache
 					case CacheActionType.UploadFile:
 						DebugLog("[PCA] performing upload of {0} to {1}", action.SourcePath, action.Path);
 
-						for (int retry = 0; retry < 5; retry++)
+						try
 						{
-							if (!File.Exists(action.SourcePath))
+							for (int retry = 0; retry < 5; retry++)
 							{
-								_errorLogger.LogError(
-									"The source file for a queued Upload File action in the Remote File State Cache has gone missing.\n" +
-									"\n" +
-									"Was expecting to upload: " + action.SourcePath + "\n" +
-									"\n" +
-									"Will upload a 0-byte dummy file instead. This will unblock the queue but means that the data server-side is incomplete. " +
-									"A future batch upload should resolve this.",
-									ErrorLogger.Summary.ImportantBackupError);
+								if (!File.Exists(action.SourcePath))
+								{
+									_errorLogger.LogError(
+										"The source file for a queued Upload File action in the Remote File State Cache has gone missing.\n" +
+										"\n" +
+										"Was expecting to upload: " + action.SourcePath + "\n" +
+										"\n" +
+										"Will upload a 0-byte dummy file instead. This will unblock the queue but means that the data server-side is incomplete. " +
+										"A future batch upload should resolve this.",
+										ErrorLogger.Summary.ImportantBackupError);
 
-								DebugLog("[PCA] ERROR (logged): source file has gone away! {0}", action.SourcePath);
-								DebugLog("[PCA] uploading dummy file");
+									DebugLog("[PCA] ERROR (logged): source file has gone away! {0}", action.SourcePath);
+									DebugLog("[PCA] uploading dummy file");
 
-								action.SourcePath = Path.GetTempFileName();
+									action.SourcePath = Path.GetTempFileName();
+								}
+
+								try
+								{
+									using (var stream = File.OpenRead(action.SourcePath!))
+										_remoteStorage.UploadFileDirect(action.Path!, stream, _cancellationTokenSource.Token);
+									break;
+								}
+								catch (Exception e) when (retry < 4)
+								{
+									DebugLog("[PCA] => upload failed: {0}: {1}", e.GetType().Name, e.Message);
+									Thread.Sleep(TimeSpan.FromSeconds(0.5));
+								}
 							}
 
-							try
-							{
-								using (var stream = File.OpenRead(action.SourcePath!))
-									_remoteStorage.UploadFileDirect(action.Path!, stream, CancellationToken.None);
-								break;
-							}
-							catch (Exception e) when (retry < 4)
-							{
-								DebugLog("[PCA] => upload failed: {0}: {1}", e.GetType().Name, e.Message);
-								Thread.Sleep(TimeSpan.FromSeconds(0.5));
-							}
+							DebugLog("[PCA] upload succeeded, deleting source file: {0}", action.SourcePath);
+							File.Delete(action.SourcePath!);
 						}
-
-						DebugLog("[PCA] upload succeeded, deleting source file: {0}", action.SourcePath);
-						File.Delete(action.SourcePath!);
+						catch (TaskCanceledException)
+						{
+							DebugLog("[PCA] => upload cancelled, leaving file for next run");
+							return;
+						}
 
 						break;
 					case CacheActionType.DeleteFile:
