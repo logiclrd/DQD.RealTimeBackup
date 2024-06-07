@@ -18,6 +18,8 @@ using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
 
+using DeltaQ.RTB.Tests.Support;
+
 using CancellationToken = System.Threading.CancellationToken;
 
 namespace DeltaQ.RTB.Tests.Fixtures.StateCache
@@ -35,6 +37,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			public Dictionary<int, MemoryStream> NewBatchData = new Dictionary<int, MemoryStream>();
 
 			public void InitializeWithBatches(params IEnumerable<FileState>[] batches)
+				=> InitializeWithBatches(batches.AsEnumerable());
+
+			public void InitializeWithBatches(IEnumerable<IEnumerable<FileState>> batches)
 			{
 				foreach (var batch in batches)
 				{
@@ -78,15 +83,16 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				return new StreamWriter(stream);
 			}
 
-			public void SwitchToConsolidatedFile(int oldBatchNumber, int mergeIntoBatchNumber)
+			public void SwitchToConsolidatedFile(IEnumerable<int> mergedBatchNumbersForDeletion, int mergeIntoBatchNumber)
 			{
-				BatchData.Remove(oldBatchNumber);
 				BatchData[mergeIntoBatchNumber] = NewBatchData[mergeIntoBatchNumber];
 				NewBatchData.Remove(mergeIntoBatchNumber);
+				foreach (var mergedBatchNumber in mergedBatchNumbersForDeletion)
+					BatchData.Remove(mergedBatchNumber);
 			}
 		}
 
-		IAutoFaker CreateAutoFaker()
+		IAutoFaker CreateAutoFaker(Faker? fakerHub = null)
 		{
 			return AutoFaker.Create(
 				config =>
@@ -94,6 +100,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 					config.WithOverride(
 						(FileState fs) => fs.Checksum,
 						ctx => ctx.Faker.Random.Hash(length: 32));
+
+					if (fakerHub != null)
+						config.WithFakerHub(fakerHub);
 				});
 		}
 
@@ -476,211 +485,121 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
-			var uploads = new List<(string ServerPath, byte[] Content)>();
-
-			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
-				x =>
-				{
-					var serverPath = x.Arg<string>();
-					var content = x.Arg<Stream>();
-
-					byte[] contentBytes = new byte[content.Length];
-
-					content.Read(contentBytes, 0, contentBytes.Length);
-
-					uploads.Add((serverPath, contentBytes));
-				});
-
-			var sut = new RemoteFileStateCache(
-				parameters,
-				errorLogger,
-				timer,
-				dummyStorage,
-				cacheActionLog,
-				remoteStorage);
-
-			sut.Start();
-
-			foreach (var fileState in newFileStates)
-				sut.UpdateFileState(fileState.Path, fileState);
-
-			int batchNumber = sut.GetCurrentBatchNumberForTest();
-
-			// Act
-			sut.UploadCurrentBatchAndBeginNext();
-
-			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
-
-			sut.DrainActionQueue();
-
-			uploads.Should().HaveCount(1);
-
-			var upload = uploads.Single();
-
-			upload.ServerPath.Should().Be("/state/" + batchNumber);
-
-			var stream = new MemoryStream(upload.Content);
-
-			var uploadedFileStates = new List<FileState>();
-
-			using (var reader = new StreamReader(stream))
+			using (var temporaryFile = new TemporaryFile())
 			{
-				while (true)
+				cacheActionLog.CreateTemporaryCacheActionDataFile().Returns(_ => temporaryFile.Path);
+
+				var uploads = new List<(string ServerPath, byte[] Content)>();
+
+				remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+						var content = x.Arg<Stream>();
+
+						byte[] contentBytes = new byte[content.Length];
+
+						content.Read(contentBytes, 0, contentBytes.Length);
+
+						uploads.Add((serverPath, contentBytes));
+					});
+
+				var sut = new RemoteFileStateCache(
+					parameters,
+					errorLogger,
+					timer,
+					dummyStorage,
+					cacheActionLog,
+					remoteStorage);
+
+				sut.Start();
+
+				foreach (var fileState in newFileStates)
+					sut.UpdateFileState(fileState.Path, fileState);
+
+				int batchNumber = sut.GetCurrentBatchNumberForTest();
+
+				// Act
+				sut.UploadCurrentBatchAndBeginNext();
+
+				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
+
+				sut.DrainActionQueue();
+
+				cacheActionLog.Received(1).CreateTemporaryCacheActionDataFile();
+
+				uploads.Should().HaveCount(1);
+
+				var upload = uploads.Single();
+
+				upload.ServerPath.Should().Be("/state/" + batchNumber);
+
+				var stream = new MemoryStream(upload.Content);
+
+				var uploadedFileStates = new List<FileState>();
+
+				using (var reader = new StreamReader(stream))
 				{
-					string? line = reader.ReadLine();
+					while (true)
+					{
+						string? line = reader.ReadLine();
 
-					if (line == null)
-						break;
+						if (line == null)
+							break;
 
-					uploadedFileStates.Add(FileState.Parse(line));
+						uploadedFileStates.Add(FileState.Parse(line));
+					}
 				}
-			}
 
-			uploadedFileStates.Should().BeEquivalentTo(newFileStates);
+				uploadedFileStates.Should().BeEquivalentTo(newFileStates);
+			}
 		}
 
+		[Test]
 		public void UploadCurrentBatchAndBeginNext_should_consolidate_batches_when_threshold_is_hit()
 		{
 			// Arrange
-			var faker = CreateAutoFaker();
+			var faker = new Faker();
+
+			var autoFaker = CreateAutoFaker(fakerHub: faker);
 
 			var dummyStorage = new DummyStorage();
 
-			var batch1FileStates = new List<FileState>();
-			var batch2FileStates = new List<FileState>();
-			var batch3FileStates = new List<FileState>();
-			var newFileStates = new List<FileState>();
+			var batches = new List<List<FileState>>();
 
-			for (int i=0; i < 10; i++)
-				batch1FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 20; i++)
-				batch2FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 5; i++)
-				batch3FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 15; i++)
-				newFileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCount + 1; i++)
+			{
+				var batchFileStates = new List<FileState>();
 
-			// Ensure that some of the paths match.
-			for (int i=5; i < 10; i++)
-				batch2FileStates[i].Path = batch1FileStates[i].Path;
+				for (int j=0, l=faker.Random.Number(10, 20); j < l; j++)
+					batchFileStates.Add(autoFaker.Generate<FileState>());
 
-			dummyStorage.InitializeWithBatches(
-				batch1FileStates,
-				batch2FileStates,
-				batch3FileStates);
-
-			var parameters = new OperatingParameters();
-			var errorLogger = Substitute.For<IErrorLogger>();
-			var timer = Substitute.For<ITimer>();
-			var cacheActionLog = Substitute.For<ICacheActionLog>();
-			var remoteStorage = Substitute.For<IRemoteStorage>();
-
-			var uploads = new List<(string ServerPath, byte[] Content)>();
-			var deletions = new List<string>();
-
-			remoteStorage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<Action<UploadProgress>>(), Arg.Any<CancellationToken>())).Do(
-				x =>
-				{
-					var serverPath = x.Arg<string>();
-					var content = x.Arg<Stream>();
-
-					byte[] contentBytes = new byte[content.Length];
-
-					content.Read(contentBytes, 0, contentBytes.Length);
-
-					uploads.Add((serverPath, contentBytes));
-				});
-
-			remoteStorage.When(x => x.DeleteFile(Arg.Any<string>(), Arg.Any<CancellationToken>())).Do(
-				x =>
-				{
-					var serverPath = x.Arg<string>();
-
-					deletions.Add(serverPath);
-				});
-
-			var sut = new RemoteFileStateCache(
-				parameters,
-				errorLogger,
-				timer,
-				dummyStorage,
-				cacheActionLog,
-				remoteStorage);
-
-			foreach (var fileState in newFileStates)
-				sut.UpdateFileState(fileState.Path, fileState);
-
-			int batchNumber = sut.GetCurrentBatchNumberForTest();
-
-			// Act
-			sut.UploadCurrentBatchAndBeginNext();
-
-			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
-
-			uploads.Should().HaveCount(2);
-			deletions.Should().HaveCount(1);
-
-			uploads.Should().Contain(upload => upload.ServerPath == "/state/" + batchNumber);
-			uploads.Should().Contain(upload => upload.ServerPath == "/state/2");
-			deletions.Should().Contain("/state/1");
-		}
-
-		public void ConsolidateOldestBatch_should_merge_oldest_batch_into_next_oldest()
-		{
-			// Arrange
-			var faker = CreateAutoFaker();
-
-			var dummyStorage = new DummyStorage();
-
-			var batch1FileStates = new List<FileState>();
-			var batch2FileStates = new List<FileState>();
-			var batch3FileStates = new List<FileState>();
-
-			for (int i=0; i < 10; i++)
-				batch1FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 20; i++)
-				batch2FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 5; i++)
-				batch3FileStates.Add(faker.Generate<FileState>());
+				batches.Add(batchFileStates);
+			}
 
 			// Ensure that, as a starting point, none of the paths match.
 			var pathUsed = new HashSet<string>();
 
-			foreach (var state in batch1FileStates.Concat(batch2FileStates.Concat(batch3FileStates)))
+			foreach (var state in batches.SelectMany(batch => batch))
 				while (!pathUsed.Add(state.Path))
-					state.Path = faker.Generate<FileState>().Path; // forgive me, I'm tired
+					state.Path = faker.System.FilePath();
 
 			// Now ensure that some of the paths match.
-			for (int i=5; i < 10; i++)
-				batch2FileStates[i].Path = batch1FileStates[i].Path;
-
-			var expectedMergedFileStates = new List<FileState>(batch1FileStates);
-
-			// Overlay batch 2 onto batch 1, preserving order
-			foreach (var fileState in batch2FileStates)
+			for (int i = 1; i < batches.Count; i++)
 			{
-				bool found = false;
+				var pathsToCopy = faker.PickRandom(batches[i - 1], amountToPick: 5).ToList();
 
-				for (int i=0; i < expectedMergedFileStates.Count; i++)
-				{
-					if (expectedMergedFileStates[i].Path == fileState.Path)
-					{
-						expectedMergedFileStates[i] = fileState;
-						found = true;
-						break;
-					}
-				}
-
-				if (!found)
-					expectedMergedFileStates.Add(fileState);
+				for (int j = 0; j < 5; j++)
+					faker.PickRandom(batches[i]).Path = pathsToCopy[j].Path;
 			}
 
-			dummyStorage.InitializeWithBatches(
-				batch1FileStates,
-				batch2FileStates,
-				batch3FileStates);
+			var newFileStates = new List<FileState>();
+
+			for (int i=0; i < 15; i++)
+				newFileStates.Add(autoFaker.Generate<FileState>());
+
+			dummyStorage.InitializeWithBatches(batches);
 
 			var parameters = new OperatingParameters();
 			var errorLogger = Substitute.For<IErrorLogger>();
@@ -688,142 +607,310 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
-			var uploads = new List<(string ServerPath, byte[] Content)>();
+			parameters.RemoteFileStateCacheDebugLogPath = "/tmp/rfsc.test.debuglog";
 
-			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
-				x =>
-				{
-					var serverPath = x.Arg<string>();
-					var content = x.Arg<Stream>();
+			File.Delete(parameters.RemoteFileStateCacheDebugLogPath);
 
-					byte[] contentBytes = new byte[content.Length];
-
-					content.Read(contentBytes, 0, contentBytes.Length);
-
-					uploads.Add((serverPath, contentBytes));
-				});
-
-			var sut = new RemoteFileStateCache(
-				parameters,
-				errorLogger,
-				timer,
-				dummyStorage,
-				cacheActionLog,
-				remoteStorage);
-
-			// Act
-			int deletedBatchNumber = sut.ConsolidateOldestBatch();
-
-			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
-
-			deletedBatchNumber.Should().Be(1);
-
-			int mergedBatchNumber = deletedBatchNumber + 1;
-
-			uploads.Should().HaveCount(1);
-
-			var upload = uploads.Single();
-
-			upload.ServerPath.Should().Be("/state/" + mergedBatchNumber);
-
-			var stream = new MemoryStream(upload.Content);
-
-			var uploadedFileStates = new List<FileState>();
-
-			using (var reader = new StreamReader(stream))
+			using (var temporaryFile1 = new TemporaryFile())
+			using (var temporaryFile2 = new TemporaryFile())
 			{
-				while (true)
+				var temporaryFilePaths = new Queue<string>(new[] { temporaryFile1.Path, temporaryFile2.Path });
+
+				cacheActionLog.CreateTemporaryCacheActionDataFile().Returns(_ => temporaryFilePaths.Dequeue());
+
+				var uploads = new List<(string ServerPath, byte[] Content)>();
+				var deletions = new List<string>();
+
+				remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+						var content = x.Arg<Stream>();
+
+						byte[] contentBytes = new byte[content.Length];
+
+						content.Read(contentBytes, 0, contentBytes.Length);
+
+						uploads.Add((serverPath, contentBytes));
+					});
+
+				remoteStorage.When(x => x.DeleteFileDirect(Arg.Any<string>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+
+						deletions.Add(serverPath);
+					});
+
+				var sut = new RemoteFileStateCache(
+					parameters,
+					errorLogger,
+					timer,
+					dummyStorage,
+					cacheActionLog,
+					remoteStorage);
+
+				sut.Start();
+
+				foreach (var fileState in newFileStates)
+					sut.UpdateFileState(fileState.Path, fileState);
+
+				int batchNumber = sut.GetCurrentBatchNumberForTest();
+
+				// Act
+				sut.UploadCurrentBatchAndBeginNext();
+
+				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
+
+				cacheActionLog.Received(2).CreateTemporaryCacheActionDataFile();
+
+				sut.DrainActionQueue();
+
+				uploads.Should().HaveCount(2);
+				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCount - 1);
+
+				uploads.Should().Contain(upload => upload.ServerPath == "/state/" + batchNumber);
+				uploads.Should().Contain(upload => upload.ServerPath == "/state/" + RemoteFileStateCache.ConsolidationBatchCount);
+
+				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCount; i++)
+					deletions.Should().Contain("/state/" + i);
+			}
+		}
+
+		[Test]
+		public void ConsolidateOldestBatch_should_merge_oldest_batches_into_next_oldest()
+		{
+			// Arrange
+			var faker = new Faker();
+
+			var autoFaker = CreateAutoFaker(faker);
+
+			var dummyStorage = new DummyStorage();
+
+			var batches = new List<List<FileState>>();
+
+			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCount + 1; i++)
+			{
+				var batchFileStates = new List<FileState>();
+
+				for (int j=0, l=faker.Random.Number(10, 20); j < l; j++)
+					batchFileStates.Add(autoFaker.Generate<FileState>());
+
+				batches.Add(batchFileStates);
+			}
+
+			// Ensure that, as a starting point, none of the paths match.
+			var pathUsed = new HashSet<string>();
+
+			foreach (var state in batches.SelectMany(batch => batch))
+				while (!pathUsed.Add(state.Path))
+					state.Path = faker.System.FilePath();
+
+			// Now ensure that some of the paths match.
+			for (int i = 1; i < batches.Count; i++)
+			{
+				var pathsToCopy = faker.PickRandom(batches[i - 1], amountToPick: 5).ToList();
+
+				for (int j = 0; j < 5; j++)
+					faker.PickRandom(batches[i]).Path = pathsToCopy[j].Path;
+			}
+
+			var expectedMergedFileStates = new List<FileState>(batches.First());
+
+			// Overlay batches in sequence, preserving the order.
+			foreach (var batch in batches.Skip(1).Take(RemoteFileStateCache.ConsolidationBatchCount - 1))
+			{
+				foreach (var fileState in batch)
 				{
-					string? line = reader.ReadLine();
+					bool found = false;
 
-					if (line == null)
-						break;
+					for (int i=0; i < expectedMergedFileStates.Count; i++)
+					{
+						if (expectedMergedFileStates[i].Path == fileState.Path)
+						{
+							expectedMergedFileStates[i] = fileState;
+							found = true;
+							break;
+						}
+					}
 
-					uploadedFileStates.Add(FileState.Parse(line));
+					if (!found)
+						expectedMergedFileStates.Add(fileState);
 				}
 			}
 
-			uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
+			dummyStorage.InitializeWithBatches(batches);
+
+			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			using (var temporaryFile = new TemporaryFile())
+			{
+				cacheActionLog.CreateTemporaryCacheActionDataFile().Returns(temporaryFile.Path);
+
+				var uploads = new List<(string ServerPath, byte[] Content)>();
+				var deletions = new List<string>();
+
+				remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+						var content = x.Arg<Stream>();
+
+						byte[] contentBytes = new byte[content.Length];
+
+						content.Read(contentBytes, 0, contentBytes.Length);
+
+						uploads.Add((serverPath, contentBytes));
+					});
+
+				remoteStorage.When(x => x.DeleteFileDirect(Arg.Any<string>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+
+						deletions.Add(serverPath);
+					});
+
+				var sut = new RemoteFileStateCache(
+					parameters,
+					errorLogger,
+					timer,
+					dummyStorage,
+					cacheActionLog,
+					remoteStorage);
+
+				sut.Start();
+
+				// Act
+				sut.ConsolidateBatches();
+
+				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
+
+				int mergedBatchNumber = RemoteFileStateCache.ConsolidationBatchCount;
+
+				cacheActionLog.Received(1).CreateTemporaryCacheActionDataFile();
+
+				sut.DrainActionQueue();
+
+				uploads.Should().HaveCount(1);
+
+				var upload = uploads.Single();
+
+				upload.ServerPath.Should().Be("/state/" + mergedBatchNumber);
+
+				var stream = new MemoryStream(upload.Content);
+
+				var uploadedFileStates = new List<FileState>();
+
+				using (var reader = new StreamReader(stream))
+				{
+					while (true)
+					{
+						string? line = reader.ReadLine();
+
+						if (line == null)
+							break;
+
+						uploadedFileStates.Add(FileState.Parse(line));
+					}
+				}
+
+				uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
+
+				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCount - 1);
+
+				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCount; i++)
+					deletions.Should().Contain("/state/" + i);
+			}
 		}
 
 		[Test]
 		public void ConsolidateOldestBatch_should_omit_deleted_paths()
 		{
 			// Arrange
-			var faker = CreateAutoFaker();
+			var faker = new Faker();
+
+			var autoFaker = CreateAutoFaker(faker);
 
 			var dummyStorage = new DummyStorage();
 
-			var batch1FileStates = new List<FileState>();
-			var batch2FileStates = new List<FileState>();
-			var batch3FileStates = new List<FileState>();
+			var batches = new List<List<FileState>>();
 
-			for (int i=0; i < 15; i++)
-				batch1FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 20; i++)
-				batch2FileStates.Add(faker.Generate<FileState>());
-			for (int i=0; i < 5; i++)
-				batch3FileStates.Add(faker.Generate<FileState>());
+			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCount + 1; i++)
+			{
+				var batchFileStates = new List<FileState>();
+
+				for (int j=0, l=faker.Random.Number(10, 20); j < l; j++)
+					batchFileStates.Add(autoFaker.Generate<FileState>());
+
+				batches.Add(batchFileStates);
+			}
 
 			// Ensure that, as a starting point, none of the paths match.
 			var pathUsed = new HashSet<string>();
 
-			foreach (var state in batch1FileStates.Concat(batch2FileStates.Concat(batch3FileStates)))
+			foreach (var state in batches.SelectMany(batch => batch))
 				while (!pathUsed.Add(state.Path))
-					state.Path = faker.Generate<FileState>().Path; // forgive me, I'm tired
+					state.Path = faker.System.FilePath();
 
 			// Select paths to delete.
-			var pathsToDelete = batch1FileStates.Skip(5).Take(5).Select(s => s.Path).ToList();
+			var entriesToDelete = batches
+				.Skip(1)
+				.Take(RemoteFileStateCache.ConsolidationBatchCount - 1)
+				.SelectMany(batch => faker.PickRandom(batch, 5))
+				.ToList();
 
-			// Ensure that they have corresponding update entries in batch 2.
-			for (int i=5; i < 10; i++)
+			foreach (var entry in entriesToDelete)
 			{
-				batch2FileStates[i].Path = batch1FileStates[i].Path;
+				entry.FileSize = RemoteFileStateCache.DeletedFileSize;
+				entry.Checksum = RemoteFileStateCache.DeletedChecksum;
 			}
 
-			// Ensure that they have corresponding deletion entries in batch 2.
-			for (int i=10; i < 15; i++)
+			// Ensure that some of the deleted files get recreated in future batches.
+			foreach (var entry in faker.PickRandom(entriesToDelete, entriesToDelete.Count / 5))
 			{
-				batch2FileStates[i].Path = batch1FileStates[i].Path;
-				batch2FileStates[i].FileSize = RemoteFileStateCache.DeletedFileSize;
-				batch2FileStates[i].Checksum = RemoteFileStateCache.DeletedChecksum;
+				var indexOfBatchContainingDeletion = batches.FindIndex(batch => batch.Contains(entry));
+
+				var candidates = batches.Skip(indexOfBatchContainingDeletion + 1).SelectMany(item => item).Except(entriesToDelete);
+
+				faker.PickRandom(candidates).Path = entry.Path;
 			}
 
-			var expectedMergedFileStates = new List<FileState>(batch1FileStates);
+			var expectedMergedFileStates = new List<FileState>();
 
-			// Overlay batch 2 onto batch 1, preserving order
-			foreach (var fileState in batch2FileStates)
+			// Overlay batches in sequence, preserving the order.
+			foreach (var batch in batches.Take(RemoteFileStateCache.ConsolidationBatchCount))
 			{
-				bool found = false;
-
-				for (int i=0; i < expectedMergedFileStates.Count; i++)
+				foreach (var fileState in batch)
 				{
-					if (expectedMergedFileStates[i].Path == fileState.Path)
+					bool found = false;
+
+					for (int i=0; i < expectedMergedFileStates.Count; i++)
 					{
-						if (fileState.FileSize == RemoteFileStateCache.DeletedFileSize)
-							expectedMergedFileStates.RemoveAt(i);
-						else
-							expectedMergedFileStates[i] = fileState;
+						if (expectedMergedFileStates[i].Path == fileState.Path)
+						{
+							if (fileState.FileSize == RemoteFileStateCache.DeletedFileSize)
+								expectedMergedFileStates.RemoveAt(i);
+							else
+								expectedMergedFileStates[i] = fileState;
 
-						found = true;
-						break;
+							found = true;
+							break;
+						}
 					}
-				}
 
-				if (!found)
-				{
-					if (fileState.FileSize == RemoteFileStateCache.DeletedFileSize)
-						throw new Exception("Test consistency error: batch 2 contains a deletion entry with no matching path in batch 1");
-
-					expectedMergedFileStates.Add(fileState);
+					if (!found && (fileState.FileSize != RemoteFileStateCache.DeletedFileSize))
+						expectedMergedFileStates.Add(fileState);
 				}
 			}
 
-			dummyStorage.InitializeWithBatches(
-				batch1FileStates,
-				batch2FileStates,
-				batch3FileStates);
+			dummyStorage.InitializeWithBatches(batches);
 
 			var parameters = new OperatingParameters();
 			var errorLogger = Substitute.For<IErrorLogger>();
@@ -831,67 +918,84 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
-			var uploads = new List<(string ServerPath, byte[] Content)>();
-
-			remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
-				x =>
-				{
-					var serverPath = x.Arg<string>();
-					var content = x.Arg<Stream>();
-
-					byte[] contentBytes = new byte[content.Length];
-
-					content.Read(contentBytes, 0, contentBytes.Length);
-
-					uploads.Add((serverPath, contentBytes));
-				});
-
-			var sut = new RemoteFileStateCache(
-				parameters,
-				errorLogger,
-				timer,
-				dummyStorage,
-				cacheActionLog,
-				remoteStorage);
-
-			sut.Start();
-
-			// Act
-			int deletedBatchNumber = sut.ConsolidateOldestBatch();
-
-			// Assert
-			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
-
-			sut.DrainActionQueue();
-
-			deletedBatchNumber.Should().Be(1);
-
-			int mergedBatchNumber = deletedBatchNumber + 1;
-
-			uploads.Should().HaveCount(1);
-
-			var upload = uploads.Single();
-
-			upload.ServerPath.Should().Be("/state/" + mergedBatchNumber);
-
-			var stream = new MemoryStream(upload.Content);
-
-			var uploadedFileStates = new List<FileState>();
-
-			using (var reader = new StreamReader(stream))
+			using (var temporaryFile = new TemporaryFile())
 			{
-				while (true)
+				cacheActionLog.CreateTemporaryCacheActionDataFile().Returns(temporaryFile.Path);
+
+				var uploads = new List<(string ServerPath, byte[] Content)>();
+				var deletions = new List<string>();
+
+				remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+						var content = x.Arg<Stream>();
+
+						byte[] contentBytes = new byte[content.Length];
+
+						content.Read(contentBytes, 0, contentBytes.Length);
+
+						uploads.Add((serverPath, contentBytes));
+					});
+
+				remoteStorage.When(x => x.DeleteFileDirect(Arg.Any<string>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+
+						deletions.Add(serverPath);
+					});
+
+				var sut = new RemoteFileStateCache(
+					parameters,
+					errorLogger,
+					timer,
+					dummyStorage,
+					cacheActionLog,
+					remoteStorage);
+
+				sut.Start();
+
+				// Act
+				sut.ConsolidateBatches();
+
+				// Assert
+				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
+
+				sut.DrainActionQueue();
+
+				int mergedBatchNumber = RemoteFileStateCache.ConsolidationBatchCount;
+
+				uploads.Should().HaveCount(1);
+
+				var upload = uploads.Single();
+
+				upload.ServerPath.Should().Be("/state/" + mergedBatchNumber);
+
+				var stream = new MemoryStream(upload.Content);
+
+				var uploadedFileStates = new List<FileState>();
+
+				using (var reader = new StreamReader(stream))
 				{
-					string? line = reader.ReadLine();
+					while (true)
+					{
+						string? line = reader.ReadLine();
 
-					if (line == null)
-						break;
+						if (line == null)
+							break;
 
-					uploadedFileStates.Add(FileState.Parse(line));
+						uploadedFileStates.Add(FileState.Parse(line));
+					}
 				}
-			}
 
-			uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
+				uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
+
+				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCount - 1);
+
+				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCount; i++)
+					deletions.Should().Contain("/state/" + i);
+			}
 		}
 	}
 }

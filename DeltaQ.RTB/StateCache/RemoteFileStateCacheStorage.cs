@@ -59,13 +59,18 @@ namespace DeltaQ.RTB.StateCache
 					batchNumber + ".new"));
 		}
 
-		public void SwitchToConsolidatedFile(int oldBatchNumber, int mergeIntoBatchNumber)
+		public void SwitchToConsolidatedFile(IEnumerable<int> mergedBatchNumbersForDeletion, int mergeIntoBatchNumber)
 		{
-			string oldestBatchPath = Path.Combine(_parameters.RemoteFileStateCachePath, oldBatchNumber.ToString());
 			string mergeIntoBatchPath = Path.Combine(_parameters.RemoteFileStateCachePath, mergeIntoBatchNumber.ToString());
 			
 			File.Move(mergeIntoBatchPath + ".new", mergeIntoBatchPath, overwrite: true);
-			File.Delete(oldestBatchPath);
+
+			foreach (int batchNumberToDelete in mergedBatchNumbersForDeletion)
+			{
+				string batchToDeletePath = Path.Combine(_parameters.RemoteFileStateCachePath, batchNumberToDelete.ToString());
+
+				File.Delete(batchToDeletePath);
+			}
 		}
 	}
 }

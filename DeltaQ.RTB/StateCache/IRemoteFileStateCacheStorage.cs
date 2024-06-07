@@ -13,6 +13,6 @@ namespace DeltaQ.RTB.StateCache
 		StreamReader OpenBatchFileReader(int batchNumber);
 		Stream OpenBatchFileStream(int batchNumber);
 		StreamWriter OpenNewBatchFileWriter(int batchNumber);
-		void SwitchToConsolidatedFile(int oldBatchNumber, int mergeIntoBatchNumber);
+		void SwitchToConsolidatedFile(IEnumerable<int> mergedBatchNumbersForDeletion, int mergeIntoBatchNumber);
 	}
 }

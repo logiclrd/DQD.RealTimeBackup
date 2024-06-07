@@ -186,6 +186,9 @@ namespace DeltaQ.RTB.StateCache
 			_cacheStorage = cacheStorage;
 			_cacheActionLog = cacheActionLog;
 			_remoteStorage = remoteStorage;
+
+			// This only needs to be set when we start the action thread.
+			_cancellationTokenSource = default!;
 		}
 
 		public bool ContainsPath(string path)
@@ -420,51 +423,25 @@ namespace DeltaQ.RTB.StateCache
 
 			if (shouldConsolidate && !deferConsolidation)
 			{
-				bool consolidated;
+				DebugLog("checking if consolidation is already happening");
 
-				// Consolidate at most 5 batches per call
-				for (int i=0; i < 5; i++)
+				if (!Monitor.TryEnter(_consolidationSync))
+					DebugLog("=> consolidation mutex is already held");
+				else
 				{
-					consolidated = false;
-
-					lock (_consolidationSync)
+					try
 					{
-						lock (_sync)
-						{
-							int count = _cacheStorage.EnumerateBatches().Count();
-
-							if (count <= 3)
-							{
-								DebugLog("actually cancelling consolidation because after synchronizing, there are only {0} batches", count);
-								shouldConsolidate = false;
-							}
-						}
-
-						if (shouldConsolidate)
-						{
-							int removedBatchNumber = ConsolidateOldestBatch();
-
-							DebugLog("ConsolidateOldestBatch says it removed batch number {0}", removedBatchNumber);
-
-							if (removedBatchNumber >= 0)
-							{
-								consolidated = true;
-
-								string remoteBatchPath = "/state/" + removedBatchNumber;
-
-								DebugLog("=> queuing deletion of {0}", remoteBatchPath);
-
-								QueueAction(CacheAction.DeleteFile(remoteBatchPath));
-							}
-						}
+						DebugLog("considering consolidation");
+						ConsolidateBatches();
 					}
-
-					if (!consolidated)
-						break;
+					finally
+					{
+						Monitor.Exit(_consolidationSync);
+					}
 				}
-
-				WakeActionThread(hardCancel: false);
 			}
+
+			WakeActionThread(hardCancel: false);
 		}
 
 		internal void QueueUploadBatch(int batchNumberToUpload)
@@ -490,107 +467,101 @@ namespace DeltaQ.RTB.StateCache
 			}
 		}
 
-		internal int ConsolidateOldestBatch()
+		internal const int ConsolidationBatchCount = 5;
+
+		internal void ConsolidateBatches()
 		{
 			DebugLog("ConsolidateOldestBatch starting");
 
 			try
 			{
-				// Find the two oldest batches.
-				// If there is only one batch, nothing to do.
+				// Find the oldest batches. There need to be enough batches that we won't
+				// be touching the current batch that's in progress.
 				var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
 
 				DebugLog("=> found {0} batch numbers", batchNumbers.Count);
 
-				if (batchNumbers.Count < 2)
+				if (batchNumbers.Count < ConsolidationBatchCount + 1)
 				{
-					DebugLog("=> returning");
-					return -1;
+					DebugLog("=> not enough batches, returning");
+					return;
 				}
 
 				batchNumbers.Sort();
 
-				var oldestBatchNumber = batchNumbers[0];
-				var mergeIntoBatchNumber = batchNumbers[1];
+				while (batchNumbers.Count > ConsolidationBatchCount)
+					batchNumbers.RemoveAt(batchNumbers.Count - 1);
 
-				DebugLog("oldest batch number: {0}", oldestBatchNumber);
-				DebugLog("merge into batch number: {0}", mergeIntoBatchNumber);
-
-				// Load in the merge-into batch. If it contains any deletions of file states from the previous batch, we
-				// need to make sure we don't merge those deleted entries in. But, we don't need to keep them because
-				// after the consolidation, there won't be any older state that needs to be deleted in the first place.
-				var mergeIntoBatch = new Dictionary<string, FileState>();
-
-				var deletedPaths = new HashSet<string>();
-
-				DebugLog("reading merge into batch number");
-
-				using (var reader = _cacheStorage.OpenBatchFileReader(mergeIntoBatchNumber))
+				for (int i=0; i < batchNumbers.Count; i++)
 				{
-					while (true)
-					{
-						string? line = reader.ReadLine();
-
-						if (line == null)
-							break;
-
-						var fileState = FileState.Parse(line);
-
-						if (fileState.FileSize == DeletedFileSize)
-							deletedPaths.Add(fileState.Path);
-						else
-							mergeIntoBatch[fileState.Path] = fileState;
-					}
+					if (i + 1 < batchNumbers.Count)
+						DebugLog("will merge batch number: {0}", batchNumbers[i]);
+					else
+						DebugLog(".. into batch number: {0}", batchNumbers[i]);
 				}
 
-				DebugLog("underlaying oldest batch number");
+				var batchDeletionActions = new List<Action>();
 
-				// Merge the oldest batch into the merge-into batch. Only entries that aren't superseded in the merge-into
-				// batch are used. When the merge-into branch already has a newer FileState, the older one is discarded.
-				// If we encounter a path that the merge-into branch had a deletion for, we don't want to merge it in --
-				// otherwise we'd be effectively undoing the deletion.
-				using (var reader = _cacheStorage.OpenBatchFileReader(oldestBatchNumber))
+				// Apply the batches in order.
+				var mergedBatch = new Dictionary<string, FileState>();
+
+				foreach (var mergeFromBatchNumber in batchNumbers)
 				{
-					while (true)
+					DebugLog("merging batch number {0}", mergeFromBatchNumber);
+
+					using (var reader = _cacheStorage.OpenBatchFileReader(mergeFromBatchNumber))
 					{
-						string? line = reader.ReadLine();
+						while (true)
+						{
+							string? line = reader.ReadLine();
 
-						if (line == null)
-							break;
+							if (line == null)
+								break;
 
-						var fileState = FileState.Parse(line);
+							var fileState = FileState.Parse(line);
 
-						if (!deletedPaths.Contains(fileState.Path)
-						&& !mergeIntoBatch.ContainsKey(fileState.Path))
-							mergeIntoBatch[fileState.Path] = fileState;
+							if (fileState.FileSize == DeletedFileSize)
+								mergedBatch.Remove(fileState.Path);
+							else
+								mergedBatch[fileState.Path] = fileState;
+						}
 					}
 				}
 
 				DebugLog("writing out merged batch");
 
+				var mergeIntoBatchNumber = batchNumbers.Last();
+
 				// Write out the merged batch. It is written to a ".new" file first, so that the update to the actual
 				// batch file path is atomic and cannot possibly contain an incomplete file in the event of an error
 				// or power loss or whatnot.
 				using (var writer = _cacheStorage.OpenNewBatchFileWriter(mergeIntoBatchNumber))
-					foreach (var fileState in mergeIntoBatch.Values)
+					foreach (var fileState in mergedBatch.Values)
 						writer.WriteLine(fileState);
 
 				DebugLog("switching to consolidated file");
 
 				_cacheStorage.SwitchToConsolidatedFile(
-					oldestBatchNumber,
+					batchNumbers.Where(batchNumber => batchNumber != mergeIntoBatchNumber),
 					mergeIntoBatchNumber);
 
-				DebugLog("queuing deletion of old version of {0}", mergeIntoBatchNumber);
-
-				QueueAction(CacheAction.DeleteFile("/state/" + mergeIntoBatchNumber));
-
-				DebugLog("calling UploadBatch on {0}", mergeIntoBatchNumber);
+				DebugLog("queuidng upload of batch {0} to remote storage", mergeIntoBatchNumber);
 
 				QueueUploadBatch(mergeIntoBatchNumber);
 
-				// Return the batch number that no longer exists so that the caller can remove it from remote storage.
-				return oldestBatchNumber;
+				for (int i = 0; i < batchNumbers.Count; i++)
+				{
+					int mergeFromBatchNumber = batchNumbers[i];
+
+					if (mergeFromBatchNumber != mergeIntoBatchNumber)
+					{
+						DebugLog("queuing deletion of batch {0} from remote storage", mergeFromBatchNumber);
+
+						QueueAction(CacheAction.DeleteFile("/state/" + mergeFromBatchNumber));
+					}
+				}
+
+				WakeActionThread(hardCancel: false);
 			}
 			catch (Exception exception)
 			{
@@ -766,6 +737,7 @@ namespace DeltaQ.RTB.StateCache
 							try
 							{
 								_remoteStorage.DeleteFileDirect(action.Path!, CancellationToken.None);
+								break;
 							}
 							catch (Exception e) when (retry < 4)
 							{

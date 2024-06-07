@@ -67,7 +67,7 @@ namespace DeltaQ.RTB.StateCache
 			throw new NotSupportedException();
 		}
 
-		public void SwitchToConsolidatedFile(int oldBatchNumber, int mergeIntoBatchNumber)
+		public void SwitchToConsolidatedFile(IEnumerable<int> mergedBatchNumbersForDeletion, int mergeIntoBatchNumber)
 		{
 			throw new NotSupportedException();
 		}
