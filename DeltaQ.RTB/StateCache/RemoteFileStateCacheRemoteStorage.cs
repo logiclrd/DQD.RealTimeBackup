@@ -39,6 +39,11 @@ namespace DeltaQ.RTB.StateCache
 			return batchNumbers;
 		}
 
+		public int GetBatchFileSize(int batchNumber)
+		{
+			throw new NotSupportedException();
+		}
+
 		public StreamWriter OpenBatchFileWriter(int batchNumber)
 		{
 			throw new NotSupportedException();

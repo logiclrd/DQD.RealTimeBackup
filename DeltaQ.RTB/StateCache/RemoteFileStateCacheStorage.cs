@@ -24,6 +24,22 @@ namespace DeltaQ.RTB.StateCache
 					yield return batchNumber;
 		}
 
+		public int GetBatchFileSize(int batchNumber)
+		{
+			var path = Path.Combine(
+				_parameters.RemoteFileStateCachePath,
+				batchNumber.ToString());
+
+			try
+			{
+				return (int)new FileInfo(path).Length;
+			}
+			catch
+			{
+				return -1;
+			}
+		}
+
 		public StreamWriter OpenBatchFileWriter(int batchNumber)
 		{
 			var path = Path.Combine(

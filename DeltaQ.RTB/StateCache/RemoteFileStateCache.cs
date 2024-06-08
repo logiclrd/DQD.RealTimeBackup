@@ -467,7 +467,8 @@ namespace DeltaQ.RTB.StateCache
 			}
 		}
 
-		internal const int ConsolidationBatchCount = 5;
+		internal static int ConsolidationBatchCountMinimum = 5;
+		internal static int ConsolidationBatchBytesPerAdditionalBatch = 1048576;
 
 		internal void ConsolidateBatches()
 		{
@@ -481,7 +482,28 @@ namespace DeltaQ.RTB.StateCache
 
 				DebugLog("=> found {0} batch numbers", batchNumbers.Count);
 
-				if (batchNumbers.Count < ConsolidationBatchCount + 1)
+				int requiredConsolidationBatchCount = ConsolidationBatchCountMinimum;
+				int consolidationBatchCount = 0;
+				int totalBatchSizes = 0;
+
+				foreach (int batchNumber in batchNumbers)
+				{
+					int batchSize = _cacheStorage.GetBatchFileSize(batchNumber);
+
+					totalBatchSizes += batchSize;
+
+					requiredConsolidationBatchCount = ConsolidationBatchCountMinimum + (totalBatchSizes + ConsolidationBatchBytesPerAdditionalBatch / 2) / ConsolidationBatchBytesPerAdditionalBatch;
+
+					if (consolidationBatchCount + 1 >= batchNumbers.Count)
+						break;
+
+					consolidationBatchCount++;
+
+					if (consolidationBatchCount >= requiredConsolidationBatchCount)
+						break;
+				}
+
+				if (consolidationBatchCount < requiredConsolidationBatchCount)
 				{
 					DebugLog("=> not enough batches, returning");
 					return;
@@ -489,8 +511,8 @@ namespace DeltaQ.RTB.StateCache
 
 				batchNumbers.Sort();
 
-				while (batchNumbers.Count > ConsolidationBatchCount)
-					batchNumbers.RemoveAt(batchNumbers.Count - 1);
+				if (batchNumbers.Count > consolidationBatchCount)
+					batchNumbers.RemoveRange(consolidationBatchCount, batchNumbers.Count - consolidationBatchCount);
 
 				for (int i=0; i < batchNumbers.Count; i++)
 				{

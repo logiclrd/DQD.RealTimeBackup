@@ -56,11 +56,19 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				return BatchData.Keys;
 			}
 
+			public int GetBatchFileSize(int batchNumber)
+			{
+				if (BatchData.TryGetValue(batchNumber, out var batchStream))
+					return (int)batchStream.Length;
+				else
+					return -1;
+			}
+
 			public StreamWriter OpenBatchFileWriter(int batchNumber)
 			{
-				var stream = BatchData[batchNumber]= new MemoryStream();
+				var stream = BatchData[batchNumber] = new MemoryStream();
 
-				return new StreamWriter(stream) { AutoFlush = true };
+				return new StreamWriter(stream, leaveOpen: true) { AutoFlush = true };
 			}
 
 			public StreamReader OpenBatchFileReader(int batchNumber)
@@ -80,7 +88,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				if (!NewBatchData.TryGetValue(batchNumber, out var stream))
 					NewBatchData[batchNumber] = stream = new MemoryStream();
 
-				return new StreamWriter(stream);
+				return new StreamWriter(stream, leaveOpen: true);
 			}
 
 			public void SwitchToConsolidatedFile(IEnumerable<int> mergedBatchNumbersForDeletion, int mergeIntoBatchNumber)
@@ -560,6 +568,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 		public void UploadCurrentBatchAndBeginNext_should_consolidate_batches_when_threshold_is_hit()
 		{
 			// Arrange
+			RemoteFileStateCache.ConsolidationBatchCountMinimum = 5;
+			RemoteFileStateCache.ConsolidationBatchBytesPerAdditionalBatch = int.MaxValue;
+
 			var faker = new Faker();
 
 			var autoFaker = CreateAutoFaker(fakerHub: faker);
@@ -568,7 +579,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var batches = new List<List<FileState>>();
 
-			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCount + 1; i++)
+			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCountMinimum + 1; i++)
 			{
 				var batchFileStates = new List<FileState>();
 
@@ -668,20 +679,23 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				sut.DrainActionQueue();
 
 				uploads.Should().HaveCount(2);
-				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCount - 1);
+				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCountMinimum - 1);
 
 				uploads.Should().Contain(upload => upload.ServerPath == "/state/" + batchNumber);
-				uploads.Should().Contain(upload => upload.ServerPath == "/state/" + RemoteFileStateCache.ConsolidationBatchCount);
+				uploads.Should().Contain(upload => upload.ServerPath == "/state/" + RemoteFileStateCache.ConsolidationBatchCountMinimum);
 
-				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCount; i++)
+				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCountMinimum; i++)
 					deletions.Should().Contain("/state/" + i);
 			}
 		}
 
 		[Test]
-		public void ConsolidateOldestBatch_should_merge_oldest_batches_into_next_oldest()
+		public void ConsolidateBatches_should_merge_oldest_batches_into_next_oldest()
 		{
 			// Arrange
+			RemoteFileStateCache.ConsolidationBatchCountMinimum = 5;
+			RemoteFileStateCache.ConsolidationBatchBytesPerAdditionalBatch = int.MaxValue;
+
 			var faker = new Faker();
 
 			var autoFaker = CreateAutoFaker(faker);
@@ -690,7 +704,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var batches = new List<List<FileState>>();
 
-			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCount + 1; i++)
+			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCountMinimum + 1; i++)
 			{
 				var batchFileStates = new List<FileState>();
 
@@ -719,7 +733,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var expectedMergedFileStates = new List<FileState>(batches.First());
 
 			// Overlay batches in sequence, preserving the order.
-			foreach (var batch in batches.Skip(1).Take(RemoteFileStateCache.ConsolidationBatchCount - 1))
+			foreach (var batch in batches.Skip(1).Take(RemoteFileStateCache.ConsolidationBatchCountMinimum - 1))
 			{
 				foreach (var fileState in batch)
 				{
@@ -792,7 +806,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 				// Assert
 				errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
-				int mergedBatchNumber = RemoteFileStateCache.ConsolidationBatchCount;
+				int mergedBatchNumber = RemoteFileStateCache.ConsolidationBatchCountMinimum;
 
 				cacheActionLog.Received(1).CreateTemporaryCacheActionDataFile();
 
@@ -823,17 +837,20 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 				uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
 
-				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCount - 1);
+				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCountMinimum - 1);
 
-				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCount; i++)
+				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCountMinimum; i++)
 					deletions.Should().Contain("/state/" + i);
 			}
 		}
 
 		[Test]
-		public void ConsolidateOldestBatch_should_omit_deleted_paths()
+		public void ConsolidateBatches_should_omit_deleted_paths()
 		{
 			// Arrange
+			RemoteFileStateCache.ConsolidationBatchCountMinimum = 5;
+			RemoteFileStateCache.ConsolidationBatchBytesPerAdditionalBatch = int.MaxValue;
+
 			var faker = new Faker();
 
 			var autoFaker = CreateAutoFaker(faker);
@@ -842,7 +859,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 			var batches = new List<List<FileState>>();
 
-			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCount + 1; i++)
+			for (int i=0; i < RemoteFileStateCache.ConsolidationBatchCountMinimum + 1; i++)
 			{
 				var batchFileStates = new List<FileState>();
 
@@ -862,7 +879,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			// Select paths to delete.
 			var entriesToDelete = batches
 				.Skip(1)
-				.Take(RemoteFileStateCache.ConsolidationBatchCount - 1)
+				.Take(RemoteFileStateCache.ConsolidationBatchCountMinimum - 1)
 				.SelectMany(batch => faker.PickRandom(batch, 5))
 				.ToList();
 
@@ -885,7 +902,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 			var expectedMergedFileStates = new List<FileState>();
 
 			// Overlay batches in sequence, preserving the order.
-			foreach (var batch in batches.Take(RemoteFileStateCache.ConsolidationBatchCount))
+			foreach (var batch in batches.Take(RemoteFileStateCache.ConsolidationBatchCountMinimum))
 			{
 				foreach (var fileState in batch)
 				{
@@ -964,7 +981,7 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 				sut.DrainActionQueue();
 
-				int mergedBatchNumber = RemoteFileStateCache.ConsolidationBatchCount;
+				int mergedBatchNumber = RemoteFileStateCache.ConsolidationBatchCountMinimum;
 
 				uploads.Should().HaveCount(1);
 
@@ -991,10 +1008,146 @@ namespace DeltaQ.RTB.Tests.Fixtures.StateCache
 
 				uploadedFileStates.Should().BeEquivalentTo(expectedMergedFileStates);
 
-				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCount - 1);
+				deletions.Should().HaveCount(RemoteFileStateCache.ConsolidationBatchCountMinimum - 1);
 
-				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCount; i++)
+				for (int i = 1; i < RemoteFileStateCache.ConsolidationBatchCountMinimum; i++)
 					deletions.Should().Contain("/state/" + i);
+			}
+		}
+
+		[TestCase(2, int.MaxValue)]
+		[TestCase(2, 5000)]
+		[TestCase(5, int.MaxValue)]
+		[TestCase(5, 10000)]
+		[TestCase(5, 5000)]
+		[TestCase(5, 2500)]
+		public void ConsolidateBatches_should_consolidate_more_batches_when_files_are_larger(int batchCountMinimum, int bytesPerAdditionalBatch)
+		{
+			// Arrange
+			RemoteFileStateCache.ConsolidationBatchCountMinimum = batchCountMinimum;
+			RemoteFileStateCache.ConsolidationBatchBytesPerAdditionalBatch = bytesPerAdditionalBatch;
+
+			var faker = new Faker();
+
+			var autoFaker = CreateAutoFaker(faker);
+
+			var batches = new List<List<FileState>>();
+
+			var usedPaths = new HashSet<string>();
+
+			int batchSizeGoal = bytesPerAdditionalBatch;
+
+			if (batchSizeGoal > 4096)
+				batchSizeGoal = 4096;
+
+			for (int i = 0; i < batchCountMinimum * 10; i++)
+			{
+				var batch = new List<FileState>();
+				var batchStream = new MemoryStream();
+				var batchStreamWriter = new StreamWriter(batchStream) { AutoFlush = true };
+				int targetBatchSize = faker.Random.Number(batchSizeGoal / 2, batchSizeGoal);
+
+				while (true)
+				{
+					var item = autoFaker.Generate<FileState>();
+
+					while (!usedPaths.Add(item.Path))
+						item.Path = faker.System.FilePath();
+
+					batch.Add(item);
+					batchStreamWriter.WriteLine(item);
+
+					if (batchStream.Length >= targetBatchSize)
+						break;
+				}
+
+				batches.Add(batch);
+			}
+
+			var dummyStorage = new DummyStorage();
+
+			dummyStorage.InitializeWithBatches(batches);
+
+			var parameters = new OperatingParameters();
+			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
+			var cacheActionLog = Substitute.For<ICacheActionLog>();
+			var remoteStorage = Substitute.For<IRemoteStorage>();
+
+			using (var temporaryFile = new TemporaryFile())
+			{
+				cacheActionLog.CreateTemporaryCacheActionDataFile().Returns(temporaryFile.Path);
+
+				var uploads = new List<(string ServerPath, byte[] Content)>();
+				var deletions = new List<string>();
+
+				remoteStorage.When(x => x.UploadFileDirect(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+						var content = x.Arg<Stream>();
+
+						byte[] contentBytes = new byte[content.Length];
+
+						content.Read(contentBytes, 0, contentBytes.Length);
+
+						uploads.Add((serverPath, contentBytes));
+					});
+
+				remoteStorage.When(x => x.DeleteFileDirect(Arg.Any<string>(), Arg.Any<CancellationToken>())).Do(
+					x =>
+					{
+						var serverPath = x.Arg<string>();
+
+						deletions.Add(serverPath);
+					});
+
+				var sut = new RemoteFileStateCache(
+					parameters,
+					errorLogger,
+					timer,
+					dummyStorage,
+					cacheActionLog,
+					remoteStorage);
+
+				sut.Start();
+
+				int minimumBatchesToConsolidate = RemoteFileStateCache.ConsolidationBatchCountMinimum;
+
+				int expectedBatchesConsolidated = 0;
+
+				int totalBatchSizes = 0;
+
+				for (int i=0; i < batches.Count; i++)
+				{
+					int batchSize = dummyStorage.GetBatchFileSize(i + 1);
+
+					totalBatchSizes += batchSize;
+
+					minimumBatchesToConsolidate = RemoteFileStateCache.ConsolidationBatchCountMinimum + (totalBatchSizes + RemoteFileStateCache.ConsolidationBatchBytesPerAdditionalBatch / 2) / RemoteFileStateCache.ConsolidationBatchBytesPerAdditionalBatch;
+
+					expectedBatchesConsolidated++;
+
+					if (expectedBatchesConsolidated >= minimumBatchesToConsolidate)
+						break;
+				}
+
+				// Act
+				sut.ConsolidateBatches();
+
+				// Assert
+				sut.DrainActionQueue();
+
+				cacheActionLog.Received(1).CreateTemporaryCacheActionDataFile();
+
+				uploads.Should().HaveCount(1);
+				uploads[0].ServerPath.Should().Be("/state/" + expectedBatchesConsolidated);
+				uploads[0].Content.Length.Should().BeCloseTo(
+					Enumerable.Range(1, expectedBatchesConsolidated).Sum(batchNumber => dummyStorage.GetBatchFileSize(batchNumber)),
+					delta: (uint)(expectedBatchesConsolidated + 1));
+
+				deletions.Should().HaveCount(expectedBatchesConsolidated - 1);
+				deletions.Should().BeEquivalentTo(Enumerable.Range(1, expectedBatchesConsolidated - 1).Select(batchNumber => "/state/" + batchNumber));
 			}
 		}
 	}
