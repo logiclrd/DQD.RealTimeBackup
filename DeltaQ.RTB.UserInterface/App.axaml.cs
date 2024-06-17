@@ -67,7 +67,11 @@ namespace DeltaQ.RTB.UserInterface
 		void ShowWindow()
 		{
 			MainWindow ??= new MainWindow();
-			MainWindow.Show();
+
+			if (MainWindow.IsVisible)
+				MainWindow.Activate();
+			else
+				MainWindow.Show();
 		}
 
 		void PauseMonitoring()

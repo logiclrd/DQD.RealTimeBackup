@@ -16,11 +16,12 @@ namespace DeltaQ.RTB.Restore
 				EmitFile(new RemoteFileInfo(
 					filePath,
 					fileInfo.Length,
-					fileInfo.LastWriteTimeUtc));
+					fileInfo.LastWriteTimeUtc,
+					remoteFileID: ""));
 			}
 			catch
 			{
-				EmitFile(new RemoteFileInfo(filePath, default, default));
+				EmitFile(new RemoteFileInfo(filePath, default, default, ""));
 			}
 		}
 

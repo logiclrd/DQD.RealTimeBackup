@@ -15,6 +15,11 @@ namespace DeltaQ.RTB.Tweaker
 			"utility, they might actually still be in-progress. This parameter can be set to 0.")]
 		public int MinimumUnfinishedFileAgeHours = DefaultMinimumUnfinishedFileAgeHours;
 
+		[Switch("/LISTGHOSTSTATEFILES", Description =
+			"Enumerates Remote File State Cache files in remote storage and lists any that no " +
+			"longer exist locally.")]
+		public bool ListGhostStateFiles;
+
 		[Switch("/DELETEGHOSTSTATEFILES", Description =
 			"Enumerates Remote File State Cache files in remote storage and deletes any that no " +
 			"longer exist locally.")]
@@ -26,11 +31,29 @@ namespace DeltaQ.RTB.Tweaker
 			"delete, unblocking the queue.")]
 		public string? UploadEmptyFileToPath;
 
+		[Switch("/LISTFILESWITHMULTIPLEVERSIONS", Description =
+			"Scans Remote Storage for files that have been uploaded multiple times. Normally, " +
+			"when a file is uploaded, any previous version should be removed. But, Remote Storage " +
+			"can hold multiple versions of the exact same path, so if the same path is uploaded " +
+			"multiple times, both versions will be stored. Only one of them is meaningful for a " +
+			"backup.")]
+		public bool ListFilesWithMultipleVersions;
+
+		[Switch("/REMOVEFILESNOTINCACHE", Description =
+			"Automatically deletes versions of files that don't match what's in the Remote File State Cache.")]
+		public bool RemoveIncorrectFiles;
+
 		const int DefaultMinimumUnfinishedFileAgeHours = 36;
 
 		[Switch("/?")]
 		public bool ShowUsage;
 
-		public bool NoAction => !CleanUpUnfinishedFiles && !DeleteGhostStateFiles && (UploadEmptyFileToPath == null);
+		public bool NoAction =>
+			!CleanUpUnfinishedFiles &&
+			!ListGhostStateFiles &&
+			!DeleteGhostStateFiles &&
+			(UploadEmptyFileToPath == null) &&
+			!ListFilesWithMultipleVersions &&
+			!RemoveIncorrectFiles;
 	}
 }

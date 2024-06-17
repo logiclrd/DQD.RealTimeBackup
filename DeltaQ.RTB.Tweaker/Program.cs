@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Xml.Serialization;
 
 using CancellationToken = System.Threading.CancellationToken;
@@ -8,7 +10,8 @@ using Autofac;
 
 using Bytewizer.Backblaze.Client;
 
-using DeltaQ.RTB;
+using DeltaQ.RTB.Bridge.Notifications;
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.StateCache;
 using DeltaQ.RTB.Storage;
 using DeltaQ.RTB.Utility;
@@ -34,6 +37,8 @@ namespace DeltaQ.RTB.Tweaker
 
 			builder.AddBackblazeAgent(backblazeAgentOptions);
 
+			builder.RegisterType<ErrorLogger>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<NotificationBus>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCacheRemoteStorage>().AsImplementedInterfaces().SingleInstance();
@@ -79,7 +84,7 @@ namespace DeltaQ.RTB.Tweaker
 					System.Threading.CancellationToken.None);
 			}
 
-			if (arguments.DeleteGhostStateFiles)
+			if (arguments.ListGhostStateFiles || arguments.DeleteGhostStateFiles)
 			{
 				Console.WriteLine("Enumerating remote file state cache files on the server...");
 
@@ -95,8 +100,13 @@ namespace DeltaQ.RTB.Tweaker
 						Console.WriteLine("Exists locally, leaving untouched");
 					else
 					{
-						Console.WriteLine("Does not exist locally, sending a deletion to the server");
-						remoteStorage.DeleteFileDirect(serverPath, System.Threading.CancellationToken.None);
+						if (arguments.DeleteGhostStateFiles)
+						{
+							Console.WriteLine("Does not exist locally, sending a deletion to the server");
+							remoteStorage.DeleteFileDirect(serverPath, System.Threading.CancellationToken.None);
+						}
+						else
+							Console.WriteLine("File does not exist locally and should have been deleted from remote storage.");
 					}
 				}
 			}
@@ -120,6 +130,118 @@ namespace DeltaQ.RTB.Tweaker
 						Console.WriteLine("    Cancelling large file");
 
 						remoteStorage.CancelUnfinishedFile(unfinishedFile.Path, CancellationToken.None);
+					}
+				}
+			}
+
+			if (arguments.ListFilesWithMultipleVersions)
+			{
+				Console.WriteLine("Enumerating files...");
+
+				var paths = new HashSet<string>();
+				var duplicatePaths = new HashSet<string>();
+
+				foreach (var file in remoteStorage.EnumerateFiles("/content/", recursive: true))
+				{
+					string filePath = file.Path;
+
+					if (!filePath.StartsWith("/"))
+						filePath = '/' + filePath;
+
+					if (!paths.Add(filePath))
+					{
+						if (duplicatePaths.Add(filePath))
+						{
+							if (duplicatePaths.Count == 1)
+								Console.WriteLine("Files with multiple versions in remote storage:");
+
+							Console.WriteLine("- {0}", filePath);
+						}
+					}
+
+					if ((paths.Count & 1023) == 0)
+					{
+						Console.Write(paths.Count);
+
+						if (Console.IsOutputRedirected)
+							Console.WriteLine();
+						else
+							Console.CursorLeft = 0;
+					}
+				}
+			}
+
+			if (arguments.RemoveIncorrectFiles)
+			{
+				Console.WriteLine("Enumerating files...");
+
+				var fileInfoByContentKey = new Dictionary<string, RemoteFileInfo>();
+				var pathByContentKey = new Dictionary<string, string>();
+
+				foreach (var file in remoteStorage.EnumerateFiles("", recursive: true))
+				{
+					string filePath = file.Path;
+
+					if (filePath.StartsWith("/state/"))
+						continue;
+
+					if (filePath.StartsWith("/content/"))
+					{
+						var buffer = new MemoryStream();
+
+						remoteStorage.DownloadFileDirect(filePath, buffer, CancellationToken.None);
+
+						string contentKey = Encoding.UTF8.GetString(buffer.ToArray());
+
+						pathByContentKey[contentKey] = filePath;
+					}
+					else
+						fileInfoByContentKey[filePath] = file;
+
+					if ((pathByContentKey.Count & 31) == 0)
+					{
+						Console.Write(pathByContentKey.Count + fileInfoByContentKey.Count);
+
+						if (Console.IsOutputRedirected)
+							Console.WriteLine();
+						else
+							Console.CursorLeft = 0;
+					}
+				}
+
+				Console.WriteLine("Enumerated {0} files", pathByContentKey.Count + fileInfoByContentKey.Count);
+				Console.WriteLine("Loading the Remote File State Cache...");
+
+				var remoteFileStateCache = container.Resolve<IRemoteFileStateCache>();
+
+				remoteFileStateCache.LoadCache();
+
+				foreach (var pathMapping in pathByContentKey)
+				{
+					string contentKey = pathMapping.Key;
+					string path = pathMapping.Value;
+
+					if (!fileInfoByContentKey.TryGetValue(contentKey, out var fileInfo))
+					{
+						Console.WriteLine("File pointer: {0}", path);
+						Console.WriteLine("... points at content key: {0}", contentKey);
+						Console.WriteLine("... but no content by that content key exists.");
+					}
+					else
+					{
+						var fileState = remoteFileStateCache.GetFileState(path);
+
+						if (fileState == null)
+						{
+							Console.WriteLine("File pointer: {0}", path);
+							Console.WriteLine("... is not in the Remote File State Cache");
+						}
+						else if (fileInfo.FileSize != fileState.FileSize)
+						{
+							Console.WriteLine("File pointer: {0}", path);
+							Console.WriteLine("... points at content with size {0:#,##0}", fileInfo.FileSize);
+							Console.WriteLine("... but the Remote File State Cache expects size {0:#,##0}", fileState.FileSize);
+						}
 					}
 				}
 			}

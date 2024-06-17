@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
+
+using DeltaQ.RTB.Diagnostics;
 
 namespace DeltaQ.RTB.FileSystem
 {
@@ -12,8 +15,8 @@ namespace DeltaQ.RTB.FileSystem
 
 		public string SnapshotName => _snapshotName;
 
-		public ZFSSnapshot(OperatingParameters parameters, string deviceName, string snapshotName, IZFS? rootInstance)
-			: base(parameters, deviceName, rootInstance)
+		public ZFSSnapshot(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName, string snapshotName, IZFS? rootInstance)
+			: base(parameters, errorLogger, deviceName, rootInstance)
 		{
 			_snapshotName = snapshotName;
 
@@ -22,9 +25,33 @@ namespace DeltaQ.RTB.FileSystem
 
 		public void Dispose()
 		{
+			DisposeRetry(0);
+		}
+
+		const int MaximumDisposeRetries = 5;
+		const int RetryIntervalSeconds = 10;
+
+		void DisposeRetry(int failedAttempts)
+		{
 			if (!_disposed)
 			{
-				ExecuteZFSCommand($"destroy {_deviceName}@{_snapshotName}");
+				int exitCode = ExecuteZFSCommand($"destroy {_deviceName}@{_snapshotName}");
+
+				if (exitCode != 0)
+				{
+					failedAttempts++;
+
+					if (failedAttempts < MaximumDisposeRetries)
+					{
+						Task
+							.Delay(TimeSpan.FromSeconds(RetryIntervalSeconds))
+							.ContinueWith(t => DisposeRetry(failedAttempts));
+					}
+					else
+					{
+					}
+				}
+
 				Disposed?.Invoke(this, EventArgs.Empty);
 				_disposed = true;
 			}

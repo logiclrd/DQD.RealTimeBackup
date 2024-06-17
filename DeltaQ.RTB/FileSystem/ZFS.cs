@@ -2,11 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
+using DeltaQ.RTB.Diagnostics;
+
 namespace DeltaQ.RTB.FileSystem
 {
 	public class ZFS : IZFS
 	{
 		OperatingParameters _parameters;
+
+		IErrorLogger _errorLogger;
 
 		protected string _deviceName;
 		protected string _mountPoint;
@@ -41,47 +45,53 @@ namespace DeltaQ.RTB.FileSystem
 
 		const string Dummy = "dummy";
 
-		public ZFS(OperatingParameters parameters)
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger)
 		{
 			_parameters = parameters;
+
+			_errorLogger = errorLogger;
 
 			_deviceName = Dummy;
 			_mountPoint = Dummy;
 		}
 
-		public ZFS(OperatingParameters parameters, string deviceName, IZFS? rootInstance)
-			: this(parameters, new ZFS(parameters).FindVolume(deviceName))
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName, IZFS? rootInstance)
+			: this(parameters, errorLogger, new ZFS(parameters, errorLogger).FindVolume(deviceName))
 		{
 			_rootInstance = rootInstance;
 		}
 
-		public ZFS(OperatingParameters parameters, string deviceName)
-			: this(parameters, new ZFS(parameters).FindVolume(deviceName))
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName)
+			: this(parameters, errorLogger, new ZFS(parameters, errorLogger).FindVolume(deviceName))
 		{
 		}
 
-		public ZFS(OperatingParameters parameters, ZFSVolume volume, IZFS? rootInstance)
-			: this(parameters, volume)
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ZFSVolume volume, IZFS? rootInstance)
+			: this(parameters, errorLogger, volume)
 		{
 			_rootInstance = rootInstance;
 		}
 
-		public ZFS(OperatingParameters parameters, ZFSVolume volume)
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ZFSVolume volume)
 			: this(
 					parameters,
+					errorLogger,
 					volume.DeviceName ?? throw new ArgumentNullException("volume.DeviceName"),
 					volume.MountPoint ?? throw new ArgumentNullException("volume.MountPoint"))
 		{
 		}
 
-		ZFS(OperatingParameters parameters, string deviceName, string mountPoint)
+		ZFS(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName, string mountPoint)
 		{
 			_parameters = parameters;
+
+			_errorLogger = errorLogger;
+
 			_deviceName = deviceName;
 			_mountPoint = mountPoint;
 		}
 
-		protected internal void ExecuteZFSCommand(string command)
+		protected internal int ExecuteZFSCommand(string command)
 		{
 			ZFSDebugLog.WriteLine("Running: zfs {0}", command);
 
@@ -93,6 +103,8 @@ namespace DeltaQ.RTB.FileSystem
 			using (var process = Process.Start(psi)!)
 			{
 				process.WaitForExit();
+
+				return process.ExitCode;
 			}
 		}
 
@@ -159,7 +171,7 @@ namespace DeltaQ.RTB.FileSystem
 
 			ZFSDebugLog.WriteLine("Creating new snapshot of device {0}", _deviceName);
 
-			var snapshot = new ZFSSnapshot(_parameters, _deviceName, snapshotName, _rootInstance);
+			var snapshot = new ZFSSnapshot(_parameters, _errorLogger, _deviceName, snapshotName, _rootInstance);
 
 			AddSnapshot(snapshot);
 

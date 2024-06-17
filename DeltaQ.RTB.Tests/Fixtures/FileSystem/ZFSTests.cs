@@ -5,13 +5,14 @@ using System.Linq;
 
 using NUnit.Framework;
 
+using NSubstitute;
 
 using Bogus;
 
 using FluentAssertions;
 
+using DeltaQ.RTB.Diagnostics;
 using DeltaQ.RTB.FileSystem;
-//using DeltaQ.RTB.Interop;
 
 using DeltaQ.RTB.Tests.Support;
 
@@ -27,13 +28,17 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			// Arrange
 			var parameters = new OperatingParameters();
 
-			var sut = new ZFS(parameters);
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			var sut = new ZFS(parameters, errorLogger);
 
 			// Act
 			var output = sut.ExecuteZFSCommandOutput(command).ToList();
 
 			// Assert
 			output.Should().NotBeEmpty();
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
 
 			bool found = false;
 
@@ -59,7 +64,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 
 			var parameters = new OperatingParameters();
 
-			var zfs = new ZFS(parameters);
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			var zfs = new ZFS(parameters, errorLogger);
 
 			string? testDeviceName = null;
 			string? snapshotContainerPath = null;
@@ -75,19 +82,21 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			if ((testDeviceName == null) || (snapshotContainerPath == null))
 				Assert.Inconclusive();
 
-			var sut = new ZFS(parameters, testDeviceName);
+			var sut = new ZFS(parameters, errorLogger, testDeviceName);
 
 			string testSnapshotName = faker.Random.Hash();
 
 			string fullSnapshotPath = Path.Combine(snapshotContainerPath, testSnapshotName);
 
-			// Act
+			// Act & Assert
 			using (var snapshot = sut.CreateSnapshot(testSnapshotName))
 			{
 				Directory.GetDirectories(snapshotContainerPath).Should().Contain(fullSnapshotPath);
 			}
 
 			Directory.GetDirectories(snapshotContainerPath).Should().NotContain(fullSnapshotPath);
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
 		}
 
 		[Test]
@@ -96,7 +105,9 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			// Arrange
 			var parameters = new OperatingParameters();
 
-			var sut = new ZFS(parameters);
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			var sut = new ZFS(parameters, errorLogger);
 
 			var allVolumes = sut.EnumerateVolumes().ToList();
 
@@ -107,6 +118,8 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 					options => options
 						.Using<long>(ctx => ctx.Subject.Should().BeCloseTo(ctx.Expectation, 1048576))
 						.When(info => info.Path.EndsWith("Bytes")));
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
 		}
 
 		[Test]
@@ -115,13 +128,17 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			// Arrange
 			var parameters = new OperatingParameters();
 
-			var sut = new ZFS(parameters);
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			var sut = new ZFS(parameters, errorLogger);
 
 			// Act
 			var action = () => sut.FindVolume("There is no device by this name.");
 
 			// Assert
 			action.Should().Throw<KeyNotFoundException>();
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
 		}
 		
 		[Test]
@@ -130,13 +147,17 @@ namespace DeltaQ.RTB.Tests.Fixtures.FileSystem
 			// Arrange
 			var parameters = new OperatingParameters();
 
-			var sut = new ZFS(parameters);
+			var errorLogger = Substitute.For<IErrorLogger>();
+
+			var sut = new ZFS(parameters, errorLogger);
 
 			// Act
 			var results = sut.EnumerateVolumes().ToList();
 
 			// Assert
 			results.Should().NotBeEmpty();
+
+			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
 		}
 	}
 }

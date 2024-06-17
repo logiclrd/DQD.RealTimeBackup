@@ -74,6 +74,7 @@ namespace DeltaQ.RTB.Storage
 				var result = await action();
 
 				if ((result.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+				 && (result.HttpResponse != null)
 				 && (result.HttpResponse.ReasonPhrase != null)
 				 && result.HttpResponse.ReasonPhrase.Contains("no tomes available"))
 				{
@@ -155,7 +156,7 @@ namespace DeltaQ.RTB.Storage
 			//   request routing)"
 			//
 			// A workaround has been identified: These files work just file with the b2_list_file_versions
-			// endpoint, which is what underlies GetFileIdByName, and downloading the files by ID bypasses
+			// endpoint, which is what underlies GetFileIDByName, and downloading the files by ID bypasses
 			// any nonsense about the filenames. However, this is less efficient because two requests are
 			// needed. As such, we want to use DownloadFileByNameRequest where we can.
 			//
@@ -181,7 +182,7 @@ namespace DeltaQ.RTB.Storage
 			else
 			{
 				// Workaround: b2_list_file_versions -> b2_download_file_by_id
-				var fileID = GetFileIdByName(serverPath);
+				var fileID = GetFileIDByName(serverPath);
 
 				var request = new DownloadFileByIdRequest(fileID);
 
@@ -214,7 +215,7 @@ namespace DeltaQ.RTB.Storage
 			else
 			{
 				// Workaround: b2_list_file_versions -> b2_download_file_by_id
-				var fileID = GetFileIdByName(serverPath, throwIfNotFound: false);
+				var fileID = GetFileIDByName(serverPath, throwIfNotFound: false);
 
 				if (fileID == null)
 					return null;
@@ -249,7 +250,7 @@ namespace DeltaQ.RTB.Storage
 		}
 
 		// This method is intended for small resources.
-		byte[] DownloadFileBytes(string bucketId, string serverPath, CancellationToken cancellationToken)
+		byte[] DownloadFileBytes(string serverPath, CancellationToken cancellationToken)
 		{
 			// BUGS IN BACKBLAZE B2 API: See discussion at top of DownloadFileString.
 
@@ -267,7 +268,7 @@ namespace DeltaQ.RTB.Storage
 			else
 			{
 				// Workaround: b2_list_file_versions -> b2_download_file_by_id
-				var fileID = GetFileIdByName(serverPath);
+				var fileID = GetFileIDByName(serverPath);
 
 				var request = new DownloadFileByIdRequest(fileID);
 
@@ -424,7 +425,7 @@ namespace DeltaQ.RTB.Storage
 			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
-		string? GetFileIdByName(string serverPath, bool throwIfNotFound = true)
+		string? GetFileIDByName(string serverPath, bool throwIfNotFound = true)
 		{
 			VerboseDiagnosticOutput("[B2] Resolving file id for name: {0}", serverPath);
 
@@ -452,17 +453,22 @@ namespace DeltaQ.RTB.Storage
 					return null;
 			}
 
-			var fileId = file.FileId;
+			var fileID = file.FileId;
 
-			VerboseDiagnosticOutput("[B2] => file id: {0}", fileId);
+			VerboseDiagnosticOutput("[B2] => file id: {0}", fileID);
 
-			return fileId;
+			return fileID;
 		}
 
 		public void DeleteFileDirect(string serverPath, CancellationToken cancellationToken)
 		{
-			if (GetFileIdByName(serverPath, throwIfNotFound: false) is string fileId)
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileId, serverPath)));
+			if (GetFileIDByName(serverPath, throwIfNotFound: false) is string fileID)
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileID, serverPath)));
+		}
+
+		public void DeleteFileByID(string remoteFileID, string serverPath, CancellationToken cancellationToken)
+		{
+			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(remoteFileID, serverPath)));
 		}
 
 		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
@@ -539,7 +545,7 @@ namespace DeltaQ.RTB.Storage
 			else
 			{
 				// Workaround: b2_list_file_versions -> b2_download_file_by_id
-				var fileID = GetFileIdByName(serverPath);
+				var fileID = GetFileIDByName(serverPath);
 
 				var request = new DownloadFileByIdRequest(fileID);
 
@@ -547,6 +553,13 @@ namespace DeltaQ.RTB.Storage
 			}
 
 			Wait(task);
+		}
+
+		public void DownloadFileByID(string remoteFileID, Stream contentStream, CancellationToken cancellationToken)
+		{
+			var request = new DownloadFileByIdRequest(remoteFileID);
+
+			Wait(_b2Client.DownloadByIdAsync(request, contentStream, default, cancellationToken));
 		}
 
 		public void DownloadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
@@ -558,7 +571,7 @@ namespace DeltaQ.RTB.Storage
 
 		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken)
 		{
-			var contentKey = DownloadFileBytes(_parameters.RemoteStorageBucketID, serverPathFrom, cancellationToken);
+			var contentKey = DownloadFileBytes(serverPathFrom, cancellationToken);
 
 			UploadFileImplementation(
 				serverPathTo,
@@ -579,17 +592,17 @@ namespace DeltaQ.RTB.Storage
 
 		public IEnumerable<RemoteFileInfo> EnumerateFiles(string pathPrefix, bool recursive)
 		{
-			if (!pathPrefix.EndsWith('/'))
+			if ((pathPrefix.Length > 0) && !pathPrefix.EndsWith('/'))
 				pathPrefix += '/';
 
-			var request = new ListFileNamesRequest(_parameters.RemoteStorageBucketID);
+			var request = new ListFileVersionRequest(_parameters.RemoteStorageBucketID);
 
 			request.Prefix = pathPrefix;
 			request.MaxFileCount = 1000;
 
 			while (true)
 			{
-				var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListNamesAsync(request, TimeSpan.Zero))); 
+				var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListVersionsAsync(request, TimeSpan.Zero)));
 
 				foreach (var fileItem in response.Response.Files)
 				{
@@ -606,7 +619,8 @@ namespace DeltaQ.RTB.Storage
 					var fileInfo = new RemoteFileInfo(
 						fileName,
 						fileItem.ContentLength,
-						fileItem.UploadTimestamp);
+						fileItem.UploadTimestamp,
+						fileItem.FileId);
 
 					yield return fileInfo;
 				}
@@ -636,7 +650,8 @@ namespace DeltaQ.RTB.Storage
 					var fileInfo = new RemoteFileInfo(
 						fileItem.FileName,
 						fileItem.ContentLength,
-						fileItem.UploadTimestamp);
+						fileItem.UploadTimestamp,
+						fileItem.FileId);
 
 					yield return fileInfo;
 				}
@@ -650,8 +665,8 @@ namespace DeltaQ.RTB.Storage
 
 		public void CancelUnfinishedFile(string serverPath, CancellationToken cancellationToken)
 		{
-			if (GetFileIdByName(serverPath, throwIfNotFound: false) is string fileId)
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.CancelLargeFileAsync(fileId)));
+			if (GetFileIDByName(serverPath, throwIfNotFound: false) is string fileID)
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.CancelLargeFileAsync(fileID)));
 		}
 	}
 }

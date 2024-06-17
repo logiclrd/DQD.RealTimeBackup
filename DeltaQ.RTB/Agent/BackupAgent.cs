@@ -1446,7 +1446,7 @@ namespace DeltaQ.RTB.Agent
 					continue;
 				}
 
-				var volumeZFS = new ZFS(_parameters, volume, _zfs);
+				var volumeZFS = new ZFS(_parameters, _errorLogger, volume, _zfs);
 
 				_zfsInstanceByMountPoint.Add((volume.MountPoint!, volumeZFS));
 			}
