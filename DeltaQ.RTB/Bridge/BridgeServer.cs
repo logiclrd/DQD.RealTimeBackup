@@ -1,6 +1,8 @@
+// #define DEBUGLOG
+
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -33,17 +35,20 @@ namespace DeltaQ.RTB.Bridge
 			_messageProcessor = messageProcessor;
 		}
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(string line)
 		{
 			using (var writer = new StreamWriter("/tmp/DeltaQ.RTB.bridge.server.log", append: true))
 				writer.WriteLine("[{0:HH:mm:ss.fffffff}] {1}", DateTime.Now, line);
 		}
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(string format, params object?[] args)
 		{
 			DebugLog(string.Format(format, args));
 		}
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(object? value)
 		{
 			if (value != null)
@@ -207,6 +212,8 @@ namespace DeltaQ.RTB.Bridge
 
 			while (!_shuttingDown)
 			{
+				DebugLog("Top of ClientThreadProc loop");
+
 				checkRead.Clear();
 				checkWrite.Clear();
 
@@ -240,6 +247,8 @@ namespace DeltaQ.RTB.Bridge
 
 				try
 				{
+					DebugLog("Selecting on {0} sockets for read, {1} sockets for write", checkRead.Count, checkWrite.Count);
+
 					Socket.Select(checkRead, checkWrite, checkError: null, TimeSpan.FromSeconds(10));
 				}
 				catch
@@ -252,6 +261,8 @@ namespace DeltaQ.RTB.Bridge
 
 				if (checkWrite.Count > 0)
 				{
+					DebugLog("Have {0} sockets for writing", checkWrite.Count);
+
 					activeClients.Clear();
 
 					lock (_clientSync)
@@ -277,6 +288,19 @@ namespace DeltaQ.RTB.Bridge
 
 				if (checkRead.Count > 0)
 				{
+					DebugLog("Have {0} sockets for reading", checkRead.Count);
+
+					if (checkRead.Contains(wakeListener))
+					{
+						DebugLog("One of them is the wake listener");
+
+						wakeListener.Receive(receiveBuffer);
+
+						checkRead.Remove(wakeListener);
+					}
+
+					DebugLog("Have {0} sockets for reading", checkRead.Count);
+
 					activeClients.Clear();
 					clientsWithBufferedData.Clear();
 
@@ -292,11 +316,17 @@ namespace DeltaQ.RTB.Bridge
 						}
 					}
 
+					DebugLog("Will read from {0} sockets", activeClients.Count);
+
 					foreach (var client in activeClients)
 					{
 						try
 						{
+							DebugLog("Performing Receive");
+
 							int bytesRead = client.Socket.Receive(receiveBuffer, 0, receiveBuffer.Length, SocketFlags.None);
+
+							DebugLog("Bytes read: {0}", bytesRead);
 
 							if (bytesRead == 0)
 							{

@@ -268,7 +268,8 @@ namespace DeltaQ.RTB.UserInterface
 			}
 			finally
 			{
-				_refreshTimer.Enabled = true;
+				if (IsConnected)
+					_refreshTimer.Enabled = true;
 			}
 		}
 	}
