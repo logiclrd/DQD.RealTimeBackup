@@ -31,6 +31,7 @@ namespace DeltaQ.RTB.UserInterface
 			_refreshTimer.Elapsed += refreshTimer_Elapsed;
 
 			this.Loaded += MainWindow_Loaded;
+			this.Activated += MainWindow_Activated;
 
 			var app = (App)Application.Current!;
 
@@ -50,6 +51,15 @@ namespace DeltaQ.RTB.UserInterface
 			slcRescan.ConfigureForRescanStatus(includeBackupAgentQueueSizes: false);
 
 			BeginConnectToBackupService();
+		}
+
+		void MainWindow_Activated(object? sender, EventArgs e)
+		{
+			// As a work-around for Window.Activate doing nothing, clicking the tray icon
+			// sets the window to be Topmost. Activating the window then clears this and
+			// returns things to normal.
+			if (Topmost)
+				Topmost = false;
 		}
 
 		void cmdPerformRescan_Click(object? sender, RoutedEventArgs e)

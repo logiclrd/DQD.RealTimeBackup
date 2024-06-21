@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -48,8 +49,6 @@ namespace DeltaQ.RTB.UserInterface
 				desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnExplicitShutdown;
 
 			base.OnFrameworkInitializationCompleted();
-
-			ShowWindow();
 		}
 
 		public ICommand ShowWindowCommand { get; }
@@ -69,7 +68,16 @@ namespace DeltaQ.RTB.UserInterface
 			MainWindow ??= new MainWindow();
 
 			if (MainWindow.IsVisible)
+			{
 				MainWindow.Activate();
+
+				// Activate doesn't seem to always (or ever?) work with KDE Plasma. Maybe it's
+				// trying to be helpful by preventing applications from forcing their way to
+				// attention. In any event, this is the workaround I have identified at this
+				// point: Make the window Topmost until the user activates it, at which point
+				// it is returned to normal.
+				MainWindow.Topmost = true;
+			}
 			else
 				MainWindow.Show();
 		}

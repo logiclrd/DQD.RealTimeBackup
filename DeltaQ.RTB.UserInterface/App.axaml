@@ -10,7 +10,7 @@
 
     <TrayIcon.Icons>
         <TrayIcons>
-            <TrayIcon Icon="DeltaQ.RTB.ico" ToolTipText="DeltaQ Real-Time Backup">
+            <TrayIcon Icon="DeltaQ.RTB.ico" ToolTipText="DeltaQ Real-Time Backup" Command="{Binding ShowWindowCommand}">
                 <TrayIcon.Menu>
                     <NativeMenu>
                         <NativeMenuItem Header="_Show Status Window" Command="{Binding ShowWindowCommand}" />
