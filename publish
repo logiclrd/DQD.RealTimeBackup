@@ -2,6 +2,12 @@
 
 systemctl stop DeltaQ.RTB.service
 
+sleep 5
+
 dotnet build && dotnet publish -o /srv/DeltaQ.RTB
 
 diff DeltaQ.RTB.service /etc/systemd/system/DeltaQ.RTB.service || (cp DeltaQ.RTB.service /etc/systemd/system/DeltaQ.RTB.service && systemctl daemon-reload)
+
+chown -R logiclrd:logiclrd /code/DeltaQ.RTB
+
+systemctl start DeltaQ.RTB.service

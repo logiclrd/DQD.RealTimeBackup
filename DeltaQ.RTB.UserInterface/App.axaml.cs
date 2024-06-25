@@ -41,6 +41,8 @@ namespace DeltaQ.RTB.UserInterface
 			_notifications.Connect();
 
 			BeginConnectToBackupService();
+
+			MainWindow = default!;
 		}
 
 		public override void OnFrameworkInitializationCompleted()
@@ -49,6 +51,18 @@ namespace DeltaQ.RTB.UserInterface
 				desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnExplicitShutdown;
 
 			base.OnFrameworkInitializationCompleted();
+
+			lock (_queuedNotificationsSync)
+			{
+				var mainWindow = new MainWindow();
+
+				MainWindow = mainWindow;
+
+				foreach (var notification in _queuedNotifications)
+					AddNotificationToMainWindow(notification);
+
+				_queuedNotifications.Clear();
+			}
 		}
 
 		public ICommand ShowWindowCommand { get; }
@@ -57,7 +71,10 @@ namespace DeltaQ.RTB.UserInterface
 		public ICommand ResumeMonitoring_DiscardBufferedEvents_Command { get; }
 		public ICommand ExitCommand { get; }
 
-		public MainWindow? MainWindow { get; set; }
+		public MainWindow MainWindow { get; set; }
+
+		object _queuedNotificationsSync = new object();
+		List<Notification> _queuedNotifications = new List<Notification>();
 
 		bool _shuttingDown;
 		BridgeClient? _bridgeClient;
@@ -164,22 +181,20 @@ namespace DeltaQ.RTB.UserInterface
 
 						if (messages != null)
 						{
-							foreach (var notification in messages)
+							lock (_queuedNotificationsSync)
 							{
-								switch (notification.Event)
+								foreach (var notification in messages)
 								{
-									case StateEvent.RescanStarted:
-										MainWindow?.NotifyRescanStarted();
-										break;
-									case StateEvent.RescanCompleted:
-										MainWindow?.NotifyRescanCompleted();
-										break;
+									ShowNotificationToast(notification);
+
+									if (MainWindow != null)
+										AddNotificationToMainWindow(notification);
+									else
+										_queuedNotifications.Add(notification);
+
+									if (notification.MessageID > lastMessageID)
+										lastMessageID = notification.MessageID;
 								}
-
-								ShowNotificationToast(notification);
-
-								if (notification.MessageID > lastMessageID)
-									lastMessageID = notification.MessageID;
 							}
 						}
 					}
@@ -203,43 +218,30 @@ namespace DeltaQ.RTB.UserInterface
 			}
 		}
 
+		void AddNotificationToMainWindow(Notification notification)
+		{
+			if (MainWindow is MainWindow mainWindow)
+			{
+				switch (notification.Event)
+				{
+					case StateEvent.RescanStarted:
+						mainWindow.NotifyRescanStarted();
+						break;
+					case StateEvent.RescanCompleted:
+						mainWindow.NotifyRescanCompleted();
+						break;
+				}
+
+				mainWindow.AddNotification(notification);
+			}
+		}
+
 		void ShowNotificationToast(Notification notification)
 		{
 			var notifications = _notifications;
 
 			if (notifications != null)
-				notifications.PostNotification(notification.ErrorMessage ?? "", notification.Summary ?? GetEventText(notification.Event), notification.Error);
-		}
-
-		object _eventTextSync = new object();
-		Dictionary<StateEvent, string> _eventTextCache = new Dictionary<StateEvent, string>();
-
-		string GetEventText(StateEvent notificationEvent)
-		{
-			lock (_eventTextSync)
-			{
-				if (!_eventTextCache.TryGetValue(notificationEvent, out var text))
-				{
-					text = _eventTextCache[notificationEvent] = SpaceWords(notificationEvent.ToString());
-				}
-
-				return text ?? "(internal error: unknown notification event)";
-			}
-		}
-
-		string SpaceWords(string text)
-		{
-			var buffer = new StringBuilder();
-
-			for (int i=0; i < text.Length; i++)
-			{
-				if ((i > 0) && char.IsUpper(text[i]))
-					buffer.Append(' ');
-
-				buffer.Append(text[i]);
-			}
-
-			return buffer.ToString();
+				notifications.PostNotification(notification.ErrorMessage ?? "", notification.Summary ?? EventText.GetEventText(notification.Event), notification.Error);
 		}
 	}
 }

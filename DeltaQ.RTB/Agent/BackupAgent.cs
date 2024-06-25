@@ -1395,7 +1395,7 @@ namespace DeltaQ.RTB.Agent
 						}
 						catch (Exception exception)
 						{
-							_errorLogger.LogError("Upload task failed, returning file to the intake queue", ErrorLogger.Summary.ImportantBackupError, exception);
+							_errorLogger.LogError("Upload task failed, returning file to the intake queue\n\nPath: " + fileToUpload.Path, ErrorLogger.Summary.ImportantBackupError, exception);
 
 							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 

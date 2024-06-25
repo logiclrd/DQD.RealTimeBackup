@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.Bridge;
 using DeltaQ.RTB.Bridge.Messages;
+using DeltaQ.RTB.Bridge.Notifications;
 using DeltaQ.RTB.Scan;
 using DeltaQ.RTB.UserInterface.Controls;
 
@@ -60,6 +61,60 @@ namespace DeltaQ.RTB.UserInterface
 			// returns things to normal.
 			if (Topmost)
 				Topmost = false;
+		}
+
+		void tbNotifications_IsCheckedChanged(object? sender, RoutedEventArgs e)
+		{
+			var statsRow = grdRoot.RowDefinitions[1];
+			var notificationsRow = grdRoot.RowDefinitions[2];
+
+			Height -= svNotifications.Bounds.Height;
+
+			if (tbNotifications.IsChecked ?? false)
+			{
+				statsRow.Height = GridLength.Auto;
+				notificationsRow.Height = GridLength.Star;
+			}
+			else
+			{
+				statsRow.Height = GridLength.Star;
+				notificationsRow.Height = new GridLength(0);
+			}
+
+			UpdateLayout();
+			Dispatcher.UIThread.Post(() => { });
+
+			Height += svNotifications.Bounds.Height;
+		}
+
+		public void AddNotification(Notification notification)
+		{
+			var view = new NotificationView();
+
+			spNotifications.Children.Add(view);
+
+			view.SetNotificationContent(notification);
+
+			view.Resized +=
+				(sender, e) =>
+				{
+					double actualNotificationBottom = view.Bounds.Bottom - svNotifications.Offset.Y;
+
+					double excessHeight = actualNotificationBottom - svNotifications.Bounds.Height;
+
+					if (excessHeight > 0.0)
+						svNotifications.Offset = svNotifications.Offset + new Vector(0, excessHeight);
+				};
+
+			lblNoNotifications.IsVisible = false;
+			cmdClearNotifications.IsVisible = true;
+		}
+
+		void cmdClearNotifications_Click(object? sender, RoutedEventArgs e)
+		{
+			lblNoNotifications.IsVisible = true;
+			spNotifications.Children.Clear();
+			cmdClearNotifications.IsVisible = false;
 		}
 
 		void cmdPerformRescan_Click(object? sender, RoutedEventArgs e)

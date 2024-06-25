@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="using:DeltaQ.RTB.UserInterface.Converters"
+             x:Class="DeltaQ.RTB.UserInterface.Controls.NotificationView"
+             HorizontalAlignment="Stretch" MinHeight="60" MaxHeight="75">
+    <UserControl.Styles>
+        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Label > TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBox > ScrollViewer">
+            <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+        </Style>
+    </UserControl.Styles>
+    <DockPanel>
+        <Label Name="lblTimestamp" Content="{Binding TimestampFormatted}" PointerPressed="lblTimestamp_PointerPressed" DockPanel.Dock="Top" />
+        <StackPanel Name="spResize" PointerPressed="spResize_PointerPressed" PointerMoved="spResize_PointerMoved" PointerReleased="spResize_PointerReleased" PointerCaptureLost="spResize_PointerCaptureLost" DockPanel.Dock="Bottom" Cursor="SizeNorthSouth" Background="#11808080">
+            <Control Height="6" />
+            <Rectangle HorizontalAlignment="Stretch" Height="1" Margin="50 0 50 0" Fill="#808080" />
+            <Rectangle HorizontalAlignment="Stretch" Height="1" Margin="50 0 50 0" Fill="#EEEEEE" />
+            <Control Height="6" />
+        </StackPanel>
+        <Label Content="{Binding SummaryText}" FontWeight="Bold" DockPanel.Dock="Top" />
+        <Control Height="14" DockPanel.Dock="Top" IsVisible="{Binding NotificationText, Converter={converters:StringIsNotEmptyConverter}}" />
+        <SelectableTextBlock Name="stbNotification"
+                             Text="{Binding NotificationText}"
+                             TextWrapping="Wrap" />
+    </DockPanel>
+</UserControl>

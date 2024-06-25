@@ -5,7 +5,7 @@
         x:Class="DeltaQ.RTB.UserInterface.MainWindow"
         Title="DeltaQ Real-Time Backup"
         Width="800" Height="400" WindowState="Normal" WindowStartupLocation="CenterScreen">
-    <Grid>
+    <Grid Name="grdRoot">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="360" />
@@ -14,6 +14,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="0" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <StackPanel Orientation="Vertical" Margin="20">
@@ -47,5 +49,17 @@
         <Button Name="cmdCancelRescan" Grid.Row="1" Grid.ColumnSpan="2" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16" Click="cmdCancelRescan_Click" IsVisible="false">
             Cancel Rescan
         </Button>
+
+        <ScrollViewer Name="svNotifications" Grid.Row="2" Grid.ColumnSpan="2" Background="DarkBlue">
+            <StackPanel Orientation="Vertical">
+                <Label Name="lblNoNotifications">No notifications yet.</Label>
+                <StackPanel Name="spNotifications" Orientation="Vertical" />
+                <Button Name="cmdClearNotifications" IsVisible="false" HorizontalAlignment="Center" Margin="8" Click="cmdClearNotifications_Click">Clear</Button>
+            </StackPanel>
+        </ScrollViewer>
+
+        <ToggleButton Name="tbNotifications" Grid.Row="3" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" IsCheckedChanged="tbNotifications_IsCheckedChanged">
+            Notifications
+        </ToggleButton>
     </Grid>
 </Window>
