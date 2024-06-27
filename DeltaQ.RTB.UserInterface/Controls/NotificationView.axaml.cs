@@ -42,52 +42,10 @@ namespace DeltaQ.RTB.UserInterface.Controls
 			set => SetValue(NotificationTextProperty, value);
 		}
 
-		public event EventHandler? Resized;
-
 		void lblTimestamp_PointerPressed(object? sender, PointerPressedEventArgs e)
 		{
 			_useUTC = !_useUTC;
 			RenderTimestamp();
-		}
-
-		bool _resizing;
-		double _resizeStartY;
-		double _resizeStartHeight;
-		double _maximumHeight;
-
-		void spResize_PointerPressed(object? sender, PointerPressedEventArgs e)
-		{
-			e.Pointer.Capture(spResize);
-			_resizing = true;
-			_resizeStartY = e.GetPosition(this).Y;
-			_resizeStartHeight = this.MaxHeight;
-
-			stbNotification.Measure(new Size(stbNotification.Bounds.Width, double.MaxValue));
-
-			_maximumHeight = stbNotification.Bounds.Top + stbNotification.DesiredSize.Height;
-		}
-
-		void spResize_PointerMoved(object? sender, PointerEventArgs e)
-		{
-			if (_resizing)
-			{
-				double delta = e.GetPosition(this).Y - _resizeStartY;
-
-				this.MaxHeight = Math.Min(_resizeStartHeight + delta, _maximumHeight);
-			}
-		}
-
-		void spResize_PointerReleased(object? sender, PointerReleasedEventArgs e)
-		{
-			e.Pointer.Capture(null);
-			_resizing = false;
-
-			Resized?.Invoke(this, EventArgs.Empty);
-		}
-
-		void spResize_PointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
-		{
-			_resizing = false;
 		}
 
 		Notification? _notification;

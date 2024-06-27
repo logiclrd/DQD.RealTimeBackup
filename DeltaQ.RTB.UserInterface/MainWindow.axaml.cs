@@ -106,17 +106,6 @@ namespace DeltaQ.RTB.UserInterface
 
 			view.SetNotificationContent(notification);
 
-			view.Resized +=
-				(sender, e) =>
-				{
-					double actualNotificationBottom = view.Bounds.Bottom - svNotifications.Offset.Y;
-
-					double excessHeight = actualNotificationBottom - svNotifications.Bounds.Height;
-
-					if (excessHeight > 0.0)
-						svNotifications.Offset = svNotifications.Offset + new Vector(0, excessHeight);
-				};
-
 			lblNoNotifications.IsVisible = false;
 			cmdClearNotifications.IsVisible = true;
 		}
@@ -248,7 +237,6 @@ namespace DeltaQ.RTB.UserInterface
 			grdRescan.IsVisible = false;
 			cmdCancelRescan.IsVisible = false;
 			cmdPerformRescan.IsVisible = true;
-			grdRescan.IsVisible = true;
 		}
 
 		void refreshTimer_Elapsed(object? sender, EventArgs e)
