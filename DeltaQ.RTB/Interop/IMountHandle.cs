@@ -1,5 +1,3 @@
-using System;
-
 namespace DeltaQ.RTB.Interop
 {
 	public interface IMountHandle

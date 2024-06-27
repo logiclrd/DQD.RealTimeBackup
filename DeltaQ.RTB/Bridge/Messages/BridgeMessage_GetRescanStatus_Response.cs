@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using DeltaQ.RTB.Bridge.Serialization;
 using DeltaQ.RTB.Scan;
 

@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace DeltaQ.RTB.Interop
+﻿namespace DeltaQ.RTB.Interop
 {
 	public class OpenByHandleAt : IOpenByHandleAt
 	{

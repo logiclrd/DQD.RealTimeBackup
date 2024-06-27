@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+
 using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Bridge.Serialization

@@ -1,15 +1,18 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
 using NUnit.Framework;
+
+using Bogus;
+
+using FluentAssertions;
 
 using DeltaQ.RTB.Tests.Support;
 
 using DeltaQ.RTB.Utility;
-using Bogus;
-using System.IO;
-using FluentAssertions;
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace DeltaQ.RTB.Tests.Fixtures.Utility
 {

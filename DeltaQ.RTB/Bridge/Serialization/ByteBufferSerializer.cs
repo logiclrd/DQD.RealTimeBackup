@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+
 using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Bridge.Serialization

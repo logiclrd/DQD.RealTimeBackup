@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+
 using DeltaQ.RTB.Bridge.Notifications;
 
 namespace DeltaQ.RTB.Scan

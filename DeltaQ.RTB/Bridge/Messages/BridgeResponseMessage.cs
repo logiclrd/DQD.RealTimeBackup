@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using DeltaQ.RTB.Bridge.Serialization;
-using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Bridge.Messages
 {

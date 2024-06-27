@@ -1,7 +1,6 @@
 using System.IO;
 
 using DeltaQ.RTB.Storage;
-using DeltaQ.RTB.Utility;
 
 namespace DeltaQ.RTB.Restore
 {

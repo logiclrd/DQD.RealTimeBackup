@@ -1,6 +1,5 @@
 using System;
 using System.Xml;
-using Microsoft.VisualBasic;
 
 namespace DeltaQ.RTB.Restore
 {

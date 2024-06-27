@@ -1,10 +1,8 @@
-using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.VisualTree;
+
 using DeltaQ.RTB.Bridge.Notifications;
-using ReactiveUI;
 
 namespace DeltaQ.RTB.UserInterface.Controls
 {

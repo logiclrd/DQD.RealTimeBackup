@@ -1,3 +1,4 @@
+using System;
 using System.Xml;
 
 using DeltaQ.RTB.Storage;

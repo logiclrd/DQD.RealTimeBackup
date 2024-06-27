@@ -6,9 +6,6 @@ using System.Xml.Serialization;
 
 using CancellationToken = System.Threading.CancellationToken;
 
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
-
 using Autofac;
 
 using Bytewizer.Backblaze.Client;

@@ -1,7 +1,8 @@
 using System;
-using System.Net.Cache;
-using DeltaQ.RTB.Bridge.Messages;
+
 using DeltaQ.RTB.Scan;
+
+using DeltaQ.RTB.Bridge.Messages;
 
 namespace DeltaQ.RTB.Bridge.Processors
 {

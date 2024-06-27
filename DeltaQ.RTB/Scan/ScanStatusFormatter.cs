@@ -1,4 +1,5 @@
 using System.Text;
+
 using DeltaQ.RTB.Agent;
 
 namespace DeltaQ.RTB.Scan

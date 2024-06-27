@@ -1,8 +1,9 @@
+using System;
+
 using DeltaQ.RTB.Agent;
 using DeltaQ.RTB.FileSystem;
 
 using DeltaQ.RTB.Bridge.Messages;
-using System;
 
 namespace DeltaQ.RTB.Bridge.Processors
 {

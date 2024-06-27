@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,8 +12,6 @@ using NSubstitute;
 using Bogus;
 
 using FluentAssertions;
-
-using NativeMethodsUnderTest = DeltaQ.RTB.Interop.NativeMethods;
 
 using DeltaQ.RTB.ActivityMonitor;
 using DeltaQ.RTB.Diagnostics;

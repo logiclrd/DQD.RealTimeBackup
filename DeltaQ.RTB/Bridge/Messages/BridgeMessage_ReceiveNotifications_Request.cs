@@ -1,4 +1,5 @@
 using System;
+
 using DeltaQ.RTB.Bridge.Serialization;
 
 namespace DeltaQ.RTB.Bridge.Messages

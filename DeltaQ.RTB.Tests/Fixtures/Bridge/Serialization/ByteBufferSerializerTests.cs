@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 using NUnit.Framework;
@@ -8,7 +9,6 @@ using FluentAssertions;
 
 using DeltaQ.RTB.Bridge.Serialization;
 using DeltaQ.RTB.Utility;
-using System.IO;
 
 namespace DeltaQ.RTB.Tests.Fixtures.Bridge.Serialization
 {

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Text;
 
 using NUnit.Framework;
@@ -9,8 +8,6 @@ using Bogus;
 using FluentAssertions;
 
 using DeltaQ.RTB.Interop;
-
-using DeltaQ.RTB.Tests.Support;
 
 namespace DeltaQ.RTB.Tests.Fixtures.Interop
 {
