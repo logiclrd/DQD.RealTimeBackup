@@ -89,6 +89,17 @@ namespace DeltaQ.RTB.UserInterface
 
 		public void AddNotification(Notification notification)
 		{
+			if (!Dispatcher.UIThread.CheckAccess())
+			{
+				Dispatcher.UIThread.Invoke(
+					() =>
+					{
+						AddNotification(notification);
+					});
+
+				return;
+			}
+
 			var view = new NotificationView();
 
 			spNotifications.Children.Add(view);
