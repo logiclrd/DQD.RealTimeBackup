@@ -4,7 +4,9 @@
         xmlns:controls="clr-namespace:DeltaQ.RTB.UserInterface.Controls"
         x:Class="DeltaQ.RTB.UserInterface.MainWindow"
         Title="DeltaQ Real-Time Backup"
-        Width="800" Height="400" WindowState="Normal" WindowStartupLocation="CenterScreen">
+        Width="800" Height="400"
+        MinWidth="800" MinHeight="400"
+        WindowState="Normal" WindowStartupLocation="CenterScreen">
     <Grid Name="grdRoot">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
