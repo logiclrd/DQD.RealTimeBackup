@@ -6,7 +6,7 @@ then
 else
   echo $0: deleting the file state cache -- will need to restart initial backup!
 
-  CACHEPATH=/var/DeltaQ.RTB/FileStateCache
+  CACHEPATH=/var/DQD.RealTimeBackup/FileStateCache
 
   if [ -d $CACHEPATH ]
   then

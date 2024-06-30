@@ -1,12 +1,12 @@
-# DeltaQ.RTB
+# DQD.RealTimeBackup
 
 ## Introduction
 
-DeltaQ.RTB is a real-time backup solution for Linux systems using ZFS specifically. It uses `fanotify` to monitor for changes in the filesystem and ZFS snapshots to improve consistency in its operations, and it stores files in Backblaze B2 cloud storage. It was written to provide functionality akin to Backblaze back-up, which is available for Windows and OS X but not for Linux. It can be configured to run as a system service using `systemd`.
+DQD.RealTimeBackup is a real-time backup solution for Linux systems using ZFS specifically. It uses `fanotify` to monitor for changes in the filesystem and ZFS snapshots to improve consistency in its operations, and it stores files in Backblaze B2 cloud storage. It was written to provide functionality akin to Backblaze back-up, which is available for Windows and OS X but not for Linux. It can be configured to run as a system service using `systemd`.
 
 ## How To Use
 
-By default, DeltaQ.RTB reads its configuration from an XML file with the path `/etc/DeltaQ.RTB.xml`. At a bare minimum, you need to populate this file with credentials for your B2 account and the identifier for a B2 bucket in which files will be stored. This bucket should not be shared with anything else. A minimal configuration file looks like this:
+By default, DQD.RealTimeBackup reads its configuration from an XML file with the path `/etc/DQD.RealTimeBackup.xml`. At a bare minimum, you need to populate this file with credentials for your B2 account and the identifier for a B2 bucket in which files will be stored. This bucket should not be shared with anything else. A minimal configuration file looks like this:
 ```
 <?xml version="1.0" encoding="utf-8"?>
 <OperatingParameters xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -19,18 +19,18 @@ Check out the "Configuration" section for more detailed configuration options.
 
 Before engaging the real-time backup functionality, you will need to complete an initial back-up. This is intended to be run in an interactive terminal, so that you can observe its progress.
 
-DeltaQ.RTB is written in C# against .NET 8.0. When compiled, it produces output with files named `*.dll` which are executed using a binary called `dotnet`. (It is possible to set up stubs to automate this process and give the program a "friendly" command name, but as of this writing this hasn't been done for the DeltaQ.RTB project.)
+DQD.RealTimeBackup is written in C# against .NET 8.0. When compiled, it produces output with files named `*.dll` which are executed using a binary called `dotnet`. (It is possible to set up stubs to automate this process and give the program a "friendly" command name, but as of this writing this hasn't been done for the DQD.RealTimeBackup project.)
 
-In order to run DeltaQ.RTB and perform an initial backup, you can use one of these two command-line options:
+In order to run DQD.RealTimeBackup and perform an initial backup, you can use one of these two command-line options:
 ```
-  dotnet DeltaQ.RTB.dll /INITIALBACKUPTHENEXIT
-  dotnet DeltaQ.RTB.dll /INITIALBACKUPTHENMONITOR
+  dotnet DQD.RealTimeBackup.dll /INITIALBACKUPTHENEXIT
+  dotnet DQD.RealTimeBackup.dll /INITIALBACKUPTHENMONITOR
 ```
 You may also wish to supply the `/VERBOSE` command-line option to get more detailed output. The volume of output will be utterly overwhelming, but if problems arise there will be more detail to inspect and diagnose.
 
-Once the initial backup is complete, you can run DeltaQ.RTB in monitoring mode. In this mode, it registers with the kernel to receive notifications about files being changed, and will immediately propagate such changes from your computer up to the B2 bucket storing the files. You can run it in monitoring mode in a terminal window, but you will probably ultimately want it to be running as a system service so that it is always operating in the background even after restarting.
+Once the initial backup is complete, you can run DQD.RealTimeBackup in monitoring mode. In this mode, it registers with the kernel to receive notifications about files being changed, and will immediately propagate such changes from your computer up to the B2 bucket storing the files. You can run it in monitoring mode in a terminal window, but you will probably ultimately want it to be running as a system service so that it is always operating in the background even after restarting.
 
-To register DeltaQ.RTB.dll as a system service, inspect the file `DeltaQ.RTB.service` that ships with the release. Ensure that the paths in it make sense and modify the command-line as needed. (It is not recommended to configure the system service to engage Initial Backup mode.) Then, copy the file to the path:
+To register DQD.RealTimeBackup.dll as a system service, inspect the file `DQD.RealTimeBackup.service` that ships with the release. Ensure that the paths in it make sense and modify the command-line as needed. (It is not recommended to configure the system service to engage Initial Backup mode.) Then, copy the file to the path:
 
 * `/etc/systemd/system`
 
@@ -40,23 +40,23 @@ Reload the `systemd` daemon with the command:
 ```
 Then you can start the service:
 ```
-  systemctl start DeltaQ.RTB
+  systemctl start DQD.RealTimeBackup
 ```
 It is recommended that you briefly monitor the log file to ensure that it is in fact operating.
 
 ## Monitoring
 
-There is a command-line tool DeltaQ.RTB.Console that can connect to a running Backup Agent and retrieve its current operating state and statistics. This tool can also submit paths to be processed and pause/unpause filesystem monitoring.
+There is a command-line tool DQD.RealTimeBackup.Console that can connect to a running Backup Agent and retrieve its current operating state and statistics. This tool can also submit paths to be processed and pause/unpause filesystem monitoring.
 ```
-logiclrd@visor:/code/DeltaQ.RTB/DeltaQ.RTB.Console$ dotnet run
-usage: /code/DeltaQ.RTB/DeltaQ.RTB.Console/bin/Debug/net8.0/DeltaQ.RTB.Console.dll [/CONNECT <value>] [/GETSTATS] 
-    [/GETSTATSINCLUDEUPLOADS] [/GETSTATSREPEAT] [/CHECKPATH <value> [/CHECKPATH <value> [..]]] [/PAUSEMONITOR] 
-    [/UNPAUSEMONITOR] [/DISCARDBUFFEREDNOTIFICATIONS] [/XML] [/?]
-logiclrd@visor:/code/DeltaQ.RTB/DeltaQ.RTB.Console$ 
+logiclrd@visor:/code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console$ dotnet run
+usage: /code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console/bin/Debug/net8.0/DQD.RealTimeBackup.Console.dll
+    [/CONNECT <value>] [/GETSTATS] [/GETSTATSINCLUDEUPLOADS] [/GETSTATSREPEAT]
+    [/CHECKPATH [/CHECKPATH <value> [..]]] [/PAUSEMONITOR] [/UNPAUSEMONITOR] [/DISCARDBUFFEREDNOTIFICATIONS] [/XML] [/?]
+logiclrd@visor:/code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console$ 
 ```
 This utility provides the following options:
 
-* `/CONNECT` <value>: Specifies the endpoint to which to connect. Can be a UNIX socket (e.g. /run/DeltaQ.RTB/bridge.socket) or a TCP/IP endpoint (e.g. 127.0.0.1:12345 -- check /run/DeltaQ.RTB/bridge-tcp-port for the port number, which may be dynamically-assigned).
+* `/CONNECT` <value>: Specifies the endpoint to which to connect. Can be a UNIX socket (e.g. /run/DQD.RealTimeBackup/bridge.socket) or a TCP/IP endpoint (e.g. 127.0.0.1:12345 -- check /run/DQD.RealTimeBackup/bridge-tcp-port for the port number, which may be dynamically-assigned).
 * `/GETSTATS`: Requests operating statistics from the Backup Agent.
     * `/GETSTATSINCLUDEUPLOADS`: If `false`, then detailed information about the upload threads is suppressed. Defaults to `true`.
     * `/GETSTATSREPEAT`: Gets operating statistics repeatedly in a loop until the process is terminated.
@@ -68,12 +68,12 @@ This utility provides the following options:
 
 ## Configuration
 
-Configuration of the core Backup Agent within DeltaQ.RTB is done by means of a collection of properties called `OperatingParameters`. This collection is read from an XML file in `/etc`. The full list of properties is:
+Configuration of the core Backup Agent within DQD.RealTimeBackup is done by means of a collection of properties called `OperatingParameters`. This collection is read from an XML file in `/etc`. The full list of properties is:
 ```
 <?xml version="1.0" encoding="utf-8"?>
 <OperatingParameters xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Verbosity>Normal</Verbosity>
-  <ErrorLogFilePath>/var/log/DeltaQ.RTB.error.log</ErrorLogFilePath>
+  <ErrorLogFilePath>/var/log/DQD.RealTimeBackup.error.log</ErrorLogFilePath>
   <EnableFileAccessNotify>true</EnableFileAccessNotify>
   <PathFilters>
     <PathFilter Type="..." Value="..." Action="Exclude" />
@@ -92,7 +92,7 @@ Configuration of the core Backup Agent within DeltaQ.RTB is done by means of a c
   <MaximumLongPollingTime>PT10M</MaximumLongPollingTime>
   <ZFSBinaryPath>/usr/sbin/zfs</ZFSBinaryPath>
   <SnapshotSharingWindow>PT5S</SnapshotSharingWindow>
-  <RemoteFileStateCachePath>/var/DeltaQ.RTB/FileStateCache</RemoteFileStateCachePath>
+  <RemoteFileStateCachePath>/var/DQD.RealTimeBackup/FileStateCache</RemoteFileStateCachePath>
   <BatchUploadConsolidationDelay>PT30S</BatchUploadConsolidationDelay>
   <UploadThreadCount>4</UploadThreadCount>
   <PeriodicRescanInterval>PT6H</PeriodicRescanInterval>
@@ -106,14 +106,14 @@ Configuration of the core Backup Agent within DeltaQ.RTB is done by means of a c
 
 The options are:
 
-* `Verbosity`: Determines how much output DeltaQ.RTB will write to its console and the main log file. Options are `Verbose`, `Normal` and `Quiet`.
+* `Verbosity`: Determines how much output DQD.RealTimeBackup will write to its console and the main log file. Options are `Verbose`, `Normal` and `Quiet`.
     * `Verbose` displays extended information about most things the service does. This can be useful when diagnostic problems and debugging.
     * `Normal` displays basic information about ongoing operations.
     * `Quiet` suppresses most output. Only messages that are important to the state of the service or consistency of the data are displayed.
-* `ErrorLogFilePath`: Specifies where _important_ errors are written. Default: `/var/log/DeltaQ.RTB.error.log`
-* `IPCPath`: Specifies where details needed for inter-process communication are written. Default: `/run/DeltaQ.RTB`
-* `IPCUseUNIXSocket`: Specifies whether DeltaQ.RTB should listen for bridge connections on UNIX domain sockets. The socket will be named `bridge.socket` in the folder identified by `IPCPath`. Defaults to true.
-* `IPCUseTCPSocket`: Specifiec whether DeltaQ.RTB should listen for bridge connections on a TCP endpoint. The TCP port number will be written to a file named `bridge-tcp-port` in the folder identified by `IPCPath`. Defaults to false.
+* `ErrorLogFilePath`: Specifies where _important_ errors are written. Default: `/var/log/DQD.RealTimeBackup.error.log`
+* `IPCPath`: Specifies where details needed for inter-process communication are written. Default: `/run/DQD.RealTimeBackup`
+* `IPCUseUNIXSocket`: Specifies whether DQD.RealTimeBackup should listen for bridge connections on UNIX domain sockets. The socket will be named `bridge.socket` in the folder identified by `IPCPath`. Defaults to true.
+* `IPCUseTCPSocket`: Specifiec whether DQD.RealTimeBackup should listen for bridge connections on a TCP endpoint. The TCP port number will be written to a file named `bridge-tcp-port` in the folder identified by `IPCPath`. Defaults to false.
 * `IPCBindTCPAddress`: Allows the TCP endpoint for IPC to be bound to an address other than localhost. This can allow a remote user interface. Consider security implications before doing this. This parameter has no effect when `IPCUseTCPSocket` is not `true`.
 * `IPCBindTCPPortNumber`: Allows the port number for the TCP endpoint to be fixed. By default it is dynamically-assigned. This parameter has no effect when `IPCUseTCPSocket` is not `true`.
 * `EnableFileAccessNotify`: Master switch that turns realtime monitoring of the filesystem on/off.
@@ -152,28 +152,28 @@ The format is defined in the XML Schema specification here:
 
 ## Restoring Files
 
-A backup system is only useful if there is a way to get the files back. For this purpose, DeltaQ.RTB supplies a utility called DeltaQ.RTB.Restore.
+A backup system is only useful if there is a way to get the files back. For this purpose, DQD.RealTimeBackup supplies a utility called DQD.RealTimeBackup.Restore.
 ```
-root@visor:/srv/DeltaQ.RTB# dotnet DeltaQ.RTB.Restore.dll /?
-usage: dotnet DeltaQ.RTB.Restore.dll [/CONFIG <value>] [/LISTALLFILES] [/RECURSIVE] 
+root@visor:/srv/DQD.RealTimeBackup# dotnet DQD.RealTimeBackup.Restore.dll /?
+usage: dotnet DQD.RealTimeBackup.Restore.dll [/CONFIG <value>] [/LISTALLFILES] [/RECURSIVE] 
     [/LISTDIRECTORY <value> [/LISTDIRECTORY <value> [..]]] [/RESTOREFILE <value> [/RESTOREFILE <value> [..]]] 
     [/RESTOREDIRECTORY <value> [/RESTOREDIRECTORY <value> [..]]] [/RESTORETO <value>] [/CATFILE <value>] [/XML] [/?]
-root@visor:/srv/DeltaQ.RTB# 
+root@visor:/srv/DQD.RealTimeBackup# 
 ```
 This utility provides the following options:
 
-* `/CONFIG <path>`: Allows you to specify a non-default path for the XML configuration file that sets up `OperatingParameters` for the DeltaQ.RTB system. If not specified, this defaults to: `/etc/DeltaQ.RTB.xml`
+* `/CONFIG <path>`: Allows you to specify a non-default path for the XML configuration file that sets up `OperatingParameters` for the DQD.RealTimeBackup system. If not specified, this defaults to: `/etc/DQD.RealTimeBackup.xml`
 * `/LISTALLFILES`: Communicates with the Backblaze B2 endpoint to retrieve the list of content pointer files (whose names match the source files on your computer). This identifies every file that could potentially be restored.
 * `/LISTDIRECTORY <path>`: Communicates with the Backblaze B2 endpoint to retrieve a subset of the list of content pointer files. This subset is all of the files contained within the supplied directly (i.e., whose paths start with the specified path). By default, only files directly in the directory are returned. In order to list files in subdirectories, specify the `/RECURSIVE` option. The `/LISTDIRECTORY` argument can be supplied multiple times. If `/RECURSIVE` is supplied, it applies to all `/LISTDIRECTORY` arguments.
 * `/RESTOREFILE <path>`: Restores the specified file. By default, the file is written to a subdirectory of the current working directory. For instance, if you restore the file `/Projects/Video/Cabana/Cabana.kdenlive` and you run the command from `/home/username`, then the restored file will be written as `/home/username/Projects/Video/Cabana/Cabana.kdenlive`. You can control this with the `/RESTORETO` argument. The `/RESTOREFILE` argument can be specified multiple times.
 * `/RESTOREDIRECTORY <path>`: Restores all files in the specified directory. The path for each restored file is determined in the same way as for the `/RESTOREFILE` argument. By default, only files directly in the specified directory are returned. In order to restore an entire subtree, specify the `/RECURSIVE` option. The `/RESTOREDIRECTORY` argument can be specified multiple times.
 * `/RESTORETO <path>`: Specifies the base path for restored files. File paths are built relative to the specified path. For instance, if you specify `/RESTORETO /Restores` and you are restoring a file called `/Documents/Taxes/2023.ods`, then the restored file will be written to `/Restores/Documents/Taxes/2023.ods`.
 * `/CATFILE <path>`: Restores the specified file and writes its content directly to standard output. This could allow it to be piped into another command.
-* `/XML`: Makes the output from DeltaQ.RTB.Restore machine-readable. The output from commands (other than `/CATFILE`) is streamed an XML that can be read in realtime with an XML reader in another process.
+* `/XML`: Makes the output from DQD.RealTimeBackup.Restore machine-readable. The output from commands (other than `/CATFILE`) is streamed an XML that can be read in realtime with an XML reader in another process.
 
 ## Operating Principles
 
-The Backup Agent that drives the operation of DeltaQ.RTB has a sequence of stages through which a file passes as the appropriate operation is determined.
+The Backup Agent that drives the operation of DQD.RealTimeBackup has a sequence of stages through which a file passes as the appropriate operation is determined.
 
 * `Intake`: Files are gathered in batches to be passed off for open file handles checks.
 * `Poll Open Files`: The first stage of checking for eligibility involves creating a ZFS snapshot (which may apply to multiple files simultaneously), and then querying the system for open file handles. Files that have no handles open for writing are considered stable and are promoted to the next stage. Files that continue to have writers for too long eventually get shunted to the `Poll File Content` stage.
@@ -185,9 +185,9 @@ The B2 API does not support renaming or moving files. In order to efficiently su
 
 ## Contributing
 
-If you want to contribute to the DeltaQ.RTB project, you can engage the development effort with GitHub Issues on the project at the following path:
+If you want to contribute to the DQD.RealTimeBackup project, you can engage the development effort with GitHub Issues on the project at the following path:
 
-https://github.com/logiclrd/DeltaQ.RTB/
+https://github.com/logiclrd/DQD.RealTimeBackup/
 
 If you have an actual change that could be useful, you can create a Pull Request. Make sure your code is clean, consistent, follows the file's formatting standards and is well-tested.
 
@@ -195,7 +195,7 @@ If you have an actual change that could be useful, you can create a Pull Request
 
 This library uses a couple of external libraries in its implementation:
 
-* `DeltaQ.CommandLineParser`: Command-line parsing the way it _should_ be. [https://github.com/logiclrd/DeltaQ.CommandLineParser/](https://github.com/logiclrd/DeltaQ.CommandLineParser/)
+* `DQD.CommandLineParser`: Command-line parsing the way it _should_ be. [https://github.com/logiclrd/DQD.CommandLineParser/](https://github.com/logiclrd/DQD.CommandLineParser/)
 * `Autofac`: Inversion of Control / Dependency Injection. I like the way this particular library works.
 * `Backblaze.Client`: A C# wrapper of the Backblaze B2 API.
 * Testing stack:
@@ -207,6 +207,6 @@ This library uses a couple of external libraries in its implementation:
 
 ## Icon
 
-The icon image used by DeltaQ.RTB.UserInterface is based on the following free icon:
+The icon image used by DQD.RealTimeBackup.UserInterface is based on the following free icon:
 
 <a href="https://www.flaticon.com/free-icons/backup" title="backup icons">Backup icons created by Freepik - Flaticon</a>

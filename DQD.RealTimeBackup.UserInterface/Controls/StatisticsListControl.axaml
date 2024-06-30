@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:DQD.RealTimeBackup.UserInterface.Converters"
+             x:Class="DQD.RealTimeBackup.UserInterface.Controls.StatisticsListControl"
+             HorizontalAlignment="Stretch"
+             MinHeight="24">
+    <Grid Name="grdTable">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+    </Grid>
+</UserControl>

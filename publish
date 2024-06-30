@@ -1,13 +1,13 @@
 #!/bin/bash
 
-systemctl stop DeltaQ.RTB.service
+systemctl stop DQD.RealTimeBackup.service
 
 sleep 5
 
-dotnet build && dotnet publish -o /srv/DeltaQ.RTB
+dotnet build && dotnet publish -o /srv/DQD.RealTimeBackup
 
-diff DeltaQ.RTB.service /etc/systemd/system/DeltaQ.RTB.service || (cp DeltaQ.RTB.service /etc/systemd/system/DeltaQ.RTB.service && systemctl daemon-reload)
+diff DQD.RealTimeBackup.service /etc/systemd/system/DQD.RealTimeBackup.service || (cp DQD.RealTimeBackup.service /etc/systemd/system/DQD.RealTimeBackup.service && systemctl daemon-reload)
 
-chown -R logiclrd:logiclrd /code/DeltaQ.RTB
+chown -R logiclrd:logiclrd /code/DQD.RealTimeBackup
 
-systemctl start DeltaQ.RTB.service
+systemctl start DQD.RealTimeBackup.service

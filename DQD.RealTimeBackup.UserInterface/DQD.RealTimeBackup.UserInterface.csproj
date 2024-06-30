@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>App.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DQD.RealTimeBackup/DQD.RealTimeBackup.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.999-cibuild0049017-alpha" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.999-cibuild0049017-alpha" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.999-cibuild0049017-alpha" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.999-cibuild0049017-alpha" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.2.999-cibuild0049017-alpha" />
+    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+    <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.2.999-cibuild0049017-alpha" />
+
+    <PackageReference Include="Tmds.DBus" Version="0.18.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="DQD.RealTimeBackup.ico" />
+    <None Update="Icon.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

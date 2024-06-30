@@ -1,0 +1,11 @@
+[Unit]
+Description=DeltaQ Real-Time Backup
+
+[Service]
+ExecStart=/usr/bin/dotnet /srv/DQD.RealTimeBackup/DQD.RealTimeBackup.dll /LOGFILE /var/log/DQD.RealTimeBackup.log
+SyslogIdentifier=DQD.RealTimeBackup
+User=root
+
+[Install]
+WantedBy=multi-user.target
+
