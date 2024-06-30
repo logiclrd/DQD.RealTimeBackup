@@ -2,7 +2,7 @@
 
 ## Introduction
 
-<img style="float: right" src="Logo.png" />
+<img style="float: right; width: 6em; height: 6em" src="Logo.png" />
 DQD.RealTimeBackup is a real-time backup solution for Linux systems using ZFS specifically. It uses `fanotify` to monitor for changes in the filesystem and ZFS snapshots to improve consistency in its operations, and it stores files in Backblaze B2 cloud storage. It was written to provide functionality akin to Backblaze back-up, which is available for Windows and OS X but not for Linux. It can be configured to run as a system service using `systemd`.
 
 ## How To Use
