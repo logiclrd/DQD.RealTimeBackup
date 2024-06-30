@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 
 using DeltaQ.RTB.Bridge.Notifications;
+using DeltaQ.RTB.Diagnostics;
 
 namespace DeltaQ.RTB.Scan
 {
@@ -9,6 +10,7 @@ namespace DeltaQ.RTB.Scan
 	{
 		OperatingParameters _parameters;
 
+		IErrorLogger _errorLogger;
 		IPeriodicRescanOrchestrator _orchestrator;
 		INotificationBus _notificationBus;
 
@@ -22,10 +24,11 @@ namespace DeltaQ.RTB.Scan
 		RescanStatus? _rescanStatus;
 		CancellationTokenSource? _currentRescanCancellationTokenSource = null;
 
-		public PeriodicRescanScheduler(OperatingParameters parameters, IPeriodicRescanOrchestrator orchestrator, INotificationBus notificationBus)
+		public PeriodicRescanScheduler(OperatingParameters parameters, IErrorLogger errorLogger, IPeriodicRescanOrchestrator orchestrator, INotificationBus notificationBus)
 		{
 			_parameters = parameters;
 
+			_errorLogger = errorLogger;
 			_orchestrator = orchestrator;
 			_notificationBus = notificationBus;
 		}
@@ -138,6 +141,10 @@ namespace DeltaQ.RTB.Scan
 						}
 					},
 					input.CancellationToken);
+			}
+			catch (Exception e)
+			{
+				_errorLogger.LogError("Unhandled exception during PerformPeriodicRescan call", exception: e);
 			}
 			finally
 			{
