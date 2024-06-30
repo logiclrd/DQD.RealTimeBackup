@@ -571,6 +571,7 @@ namespace DeltaQ.RTB
 				errorLogger.DisconnectDiagnosticOutput();
 				errorLogger.LogError(
 					"An error was caught by the exception handler in Main. This is a terminating error.",
+					ErrorLogger.Summary.InternalError,
 					exception: e);
 
 				bool quiet = false;

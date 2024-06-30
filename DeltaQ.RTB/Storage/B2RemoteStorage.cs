@@ -13,6 +13,8 @@ using Bytewizer.Backblaze;
 using Bytewizer.Backblaze.Client;
 using Bytewizer.Backblaze.Models;
 
+using HttpStatusCode = System.Net.HttpStatusCode;
+
 namespace DeltaQ.RTB.Storage
 {
 	public class B2RemoteStorage : DiagnosticOutputBase, IRemoteStorage
@@ -471,6 +473,30 @@ namespace DeltaQ.RTB.Storage
 			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(remoteFileID, serverPath)));
 		}
 
+		bool IsNotFoundException(Exception e)
+		{
+			if (e is FileNotFoundException)
+				return true;
+
+			if (e is ApiException apiException)
+			{
+				if (apiException.StatusCode == HttpStatusCode.NotFound)
+					return true;
+
+				if ((apiException.StatusCode == HttpStatusCode.BadRequest)
+				 && (apiException.Error.Code == "file_not_present"))
+				  return true;
+			}
+
+			if (e is AggregateException aggregateException)
+				return aggregateException.InnerExceptions.Any(IsNotFoundException);
+
+			if (e.InnerException != null)
+				return IsNotFoundException(e.InnerException);
+
+			return false;
+		}
+
 		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
 		{
 			VerboseDiagnosticOutput("[B2] Checking for existing file: {0}", serverPath);
@@ -486,7 +512,8 @@ namespace DeltaQ.RTB.Storage
 				}
 				catch (Exception e)
 				{
-					_errorLogger.LogError("Error while deleting path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+					if (!IsNotFoundException(e))
+						_errorLogger.LogError("Error while deleting path from which a content key was just retrieved: " + serverPath, ErrorLogger.Summary.SystemError, e);
 				}
 
 				try
@@ -495,7 +522,8 @@ namespace DeltaQ.RTB.Storage
 				}
 				catch (Exception e)
 				{
-					_errorLogger.LogError("Error while deleting path: " + contentKey, ErrorLogger.Summary.SystemError, e);
+					if (!IsNotFoundException(e))
+						_errorLogger.LogError("Error while deleting path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
 				}
 			}
 
@@ -579,15 +607,39 @@ namespace DeltaQ.RTB.Storage
 				progressCallback: null,
 				cancellationToken);
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPathFrom)));
+			try
+			{
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPathFrom)));
+			}
+			catch (Exception e)
+			{
+				_errorLogger.LogError("Error while deleting path from which we just retrieved a content key: " + serverPathFrom, ErrorLogger.Summary.SystemError, exception: e);
+			}
 		}
 
 		public void DeleteFile(string serverPath, CancellationToken cancellationToken)
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
-			DeleteFileDirect(serverPath, cancellationToken);
-			DeleteFileDirect(contentKey, cancellationToken);
+			try
+			{
+				DeleteFileDirect(serverPath, cancellationToken);
+			}
+			catch (Exception e)
+			{
+				if (!IsNotFoundException(e))
+					_errorLogger.LogError("Error while deleting path from which a content key was just retrieved: " + serverPath, ErrorLogger.Summary.SystemError, e);
+			}
+
+			try
+			{
+				DeleteFileDirect(contentKey, cancellationToken);
+			}
+			catch (Exception e)
+			{
+				if (!IsNotFoundException(e))
+					_errorLogger.LogError("Error while deleting path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+			}
 		}
 
 		public IEnumerable<RemoteFileInfo> EnumerateFiles(string pathPrefix, bool recursive)

@@ -144,7 +144,7 @@ namespace DeltaQ.RTB.Scan
 			}
 			catch (Exception e)
 			{
-				_errorLogger.LogError("Unhandled exception during PerformPeriodicRescan call", exception: e);
+				_errorLogger.LogError("Unhandled exception during PerformPeriodicRescan call", ErrorLogger.Summary.InternalError, exception: e);
 			}
 			finally
 			{
