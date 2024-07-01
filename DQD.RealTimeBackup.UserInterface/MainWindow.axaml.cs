@@ -106,6 +106,13 @@ namespace DQD.RealTimeBackup.UserInterface
 
 			view.SetNotificationContent(notification);
 
+			view.CopyToClipboard +=
+				(sender, text) =>
+				{
+					if (Clipboard != null)
+						Clipboard.SetTextAsync(text).Wait();
+				};
+
 			lblNoNotifications.IsVisible = false;
 			cmdClearNotifications.IsVisible = true;
 		}
