@@ -21,13 +21,8 @@
         </Grid.RowDefinitions>
 
         <StackPanel Orientation="Vertical" Margin="20">
-            <Label>
-                <TextBlock Name="tbConnectedStatus">
-                    <Run>Currently </Run>
-                    <Run Name="rConnectedStatus">not connected</Run>
-                    <Run> to the backup service.</Run>
-                </TextBlock>
-            </Label>
+            <Label Name="lblNotConnected">Currently not connected to the backup service.</Label>
+            <Label Name="lblConnected" Foreground="{DynamicResource ConnectedBrush}" IsVisible="false">Currently connected to the backup service.</Label>
             <Label Margin="0 10 0 0">Current status:</Label>
             <controls:StatisticsListControl Name="slcStatistics" Margin="20 0 0 0" />
         </StackPanel>

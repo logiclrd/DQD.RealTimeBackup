@@ -8,6 +8,20 @@
         <FluentTheme />
     </Application.Styles>
 
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="ConnectedBrush">Green</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="SystemRegionBrush">#222</SolidColorBrush>
+                    <SolidColorBrush x:Key="ConnectedBrush">#2F3</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <TrayIcon.Icons>
         <TrayIcons>
             <TrayIcon Icon="DQD.RealTimeBackup.ico" ToolTipText="DeltaQ Real-Time Backup" Command="{Binding ShowWindowCommand}">

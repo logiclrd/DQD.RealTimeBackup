@@ -174,13 +174,13 @@ namespace DQD.RealTimeBackup.UserInterface
 
 				if (!_isConnected)
 				{
-					rConnectedStatus.Text = "not connected";
-					tbConnectedStatus.Foreground = Brushes.Black;
+					lblConnected.IsVisible = false;
+					lblNotConnected.IsVisible = true;
 				}
 				else
 				{
-					rConnectedStatus.Text = "connected";
-					tbConnectedStatus.Foreground = Brushes.Green;
+					lblNotConnected.IsVisible = false;
+					lblConnected.IsVisible = true;
 				}
 			}
 		}
