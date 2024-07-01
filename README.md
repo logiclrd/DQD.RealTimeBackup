@@ -47,7 +47,12 @@ It is recommended that you briefly monitor the log file to ensure that it is in 
 
 ## Monitoring
 
-There is a command-line tool DQD.RealTimeBackup.Console that can connect to a running Backup Agent and retrieve its current operating state and statistics. This tool can also submit paths to be processed and pause/unpause filesystem monitoring.
+<img align="left" style="float: right; width: 12em" src="DQD.RealTimeBackup.UserInterface.png" />
+An applet called DQD.RealTimeBackup.UserInterface adds a system tray icon and can display ongoing statistics about the operation of DQD.RealTimeBackup. This application uses the Avalonia library to present its user interface.
+
+<br clear="left" />
+
+There is also a command-line tool DQD.RealTimeBackup.Console that can connect to a running Backup Agent and retrieve its current operating state and statistics. This tool can also submit paths to be processed and pause/unpause filesystem monitoring.
 ```
 logiclrd@visor:/code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console$ dotnet run
 usage: /code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console/bin/Debug/net8.0/DQD.RealTimeBackup.Console.dll
