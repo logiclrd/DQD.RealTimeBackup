@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 
 using DQD.RealTimeBackup.Bridge.Messages;
 using DQD.RealTimeBackup.Bridge.Notifications;
@@ -86,7 +87,16 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 
 			RenderTimestamp();
 
-			ToolTip.SetTip(this, FormatNotification());
+			var toolTipView = new TextBlock();
+
+			toolTipView.FontSize = 12;
+			toolTipView.FontFamily = "DejaVu Sans Mono";
+			toolTipView.Width = 1600;
+			toolTipView.Background = new SolidColorBrush(Color.FromRgb(246, 246, 185));
+			toolTipView.Foreground = Brushes.Black;
+			toolTipView.Text = FormatNotification();
+
+			ToolTip.SetTip(this, toolTipView);
 
 			return this;
 		}

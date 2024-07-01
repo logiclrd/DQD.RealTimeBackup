@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:system="using:System"
              xmlns:converters="using:DQD.RealTimeBackup.UserInterface.Converters"
              x:Class="DQD.RealTimeBackup.UserInterface.Controls.NotificationView"
              HorizontalAlignment="Stretch"
@@ -9,6 +10,9 @@
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </UserControl.Styles>
+    <UserControl.Resources>
+        <system:Double x:Key="ToolTipContentMaxWidth">1600</system:Double>
+    </UserControl.Resources>
     <UserControl.ContextMenu>
         <ContextMenu>
             <MenuItem Header="Copy Notification" HotKey="Ctrl+C" Name="mnuCopyNotification" Click="mnuCopyNotification_Click" />
