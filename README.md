@@ -204,6 +204,7 @@ This library uses a couple of external libraries in its implementation:
 * `DQD.CommandLineParser`: Command-line parsing the way it _should_ be. [https://github.com/logiclrd/DQD.CommandLineParser/](https://github.com/logiclrd/DQD.CommandLineParser/)
 * `Autofac`: Inversion of Control / Dependency Injection. I like the way this particular library works.
 * `Backblaze.Client`: A C# wrapper of the Backblaze B2 API.
+* `Avalonia`: Cross-platform user interface library with the same general feel as WPF. [https://avaloniaui.net/](https://avaloniaui.net/)
 * Testing stack:
     * `NUnit` version 4.1.0
     * `NSubstitute`
