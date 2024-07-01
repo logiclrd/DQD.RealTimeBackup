@@ -412,7 +412,7 @@ namespace DQD.RealTimeBackup.Storage
 
 			try
 			{
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPath)));
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(GetFileIDByName(serverPath), serverPath)));
 			}
 			catch { }
 
@@ -607,13 +607,27 @@ namespace DQD.RealTimeBackup.Storage
 				progressCallback: null,
 				cancellationToken);
 
+			string? fileID = null;
+
 			try
 			{
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(_parameters.RemoteStorageBucketID, serverPathFrom)));
+				fileID = GetFileIDByName(serverPathFrom);
 			}
 			catch (Exception e)
 			{
-				_errorLogger.LogError("Error while deleting path from which we just retrieved a content key: " + serverPathFrom, ErrorLogger.Summary.SystemError, exception: e);
+				_errorLogger.LogError("Error obtaining file ID for the 'move from' path: " + serverPathFrom, ErrorLogger.Summary.SystemError, exception: e);
+			}
+
+			if (fileID != null)
+			{
+				try
+				{
+					Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileID, serverPathFrom)));
+				}
+				catch (Exception e)
+				{
+					_errorLogger.LogError("Error while deleting the 'move from' path: " + serverPathFrom + "\nContent key may now be crosslinked: " + contentKey, ErrorLogger.Summary.SystemError, exception: e);
+				}
 			}
 		}
 
