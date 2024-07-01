@@ -172,11 +172,14 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 			{
 				for (int i=0; i < errorInfo.InnerErrors.Count; i++)
 				{
-					writer.WriteLine();
-					writer.Write(indent);
-					writer.WriteLine("Inner exception #{0}:", i + 1);
+					if (errorInfo.InnerErrors[i] is ErrorInfo innerError)
+					{
+						writer.WriteLine();
+						writer.Write(indent);
+						writer.WriteLine("Inner exception #{0}:", i + 1);
 
-					FormatError(errorInfo.InnerErrors[i], indent + "  ", writer);
+						FormatError(innerError, indent + "  ", writer);
+					}
 				}
 			}
 			else if (errorInfo.InnerError != null)
