@@ -15,6 +15,7 @@ namespace DQD.RealTimeBackup.SurfaceArea
 		string _value;
 		bool _shouldExclude;
 
+		public PathFilterType Type => _type;
 		public string Value => _value;
 		public bool ShouldExclude => _shouldExclude;
 
