@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -64,6 +65,16 @@ namespace DQD.RealTimeBackup.Agent
 			_monitor.PathUpdate += monitor_PathUpdate;
 			_monitor.PathMove += monitor_PathMove;
 			_monitor.PathDelete += monitor_PathDelete;
+
+			NetworkChange.NetworkAvailabilityChanged += NetworkChange_NetworkAvailabilityChanged;
+		}
+
+		void NetworkChange_NetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e)
+		{
+			if (!e.IsAvailable)
+				PauseNetworkThreads();
+			else
+				UnpauseNetworkThreads();
 		}
 
 		static internal string PlaceInContentPath(string path)
@@ -927,6 +938,20 @@ namespace DQD.RealTimeBackup.Agent
 			}
 		}
 
+		bool _networkThreadsPaused;
+
+		void PauseNetworkThreads()
+		{
+			_networkThreadsPaused = true;
+		}
+
+		void UnpauseNetworkThreads()
+		{
+			_networkThreadsPaused = false;
+			WakeProcessBackupQueueThread();
+			WakeUploadThreads();
+		}
+
 		internal IEnumerable<BackupAction> BackupQueue => _backupQueue.Select(x => x);
 
 		void StartProcessBackupQueueThread()
@@ -976,7 +1001,7 @@ namespace DQD.RealTimeBackup.Agent
 
 					lock (_backupQueueSync)
 					{
-						while (_backupQueue.Count == 0)
+						while ((_backupQueue.Count == 0) || _networkThreadsPaused)
 						{
 							if (_stopping)
 								return;
@@ -1171,10 +1196,20 @@ namespace DQD.RealTimeBackup.Agent
 						catch (Exception ex)
 						{
 							OnDiagnosticOutput("Move task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
-							OnDiagnosticOutput("Sending file to the intake queue: {0}", moveAction.FromPath);
-							BeginQueuePathForOpenFilesCheck(moveAction.FromPath);
-							OnDiagnosticOutput("Sending file to the intake queue: {0}", moveAction.ToPath);
-							BeginQueuePathForOpenFilesCheck(moveAction.ToPath);
+
+							if (_networkThreadsPaused)
+							{
+								OnDiagnosticOutput("Network threads are now paused, re-queuing action");
+								AddActionToBackupQueue(moveAction);
+							}
+							else
+							{
+								OnDiagnosticOutput("Sending file to the intake queue: {0}", moveAction.FromPath);
+								BeginQueuePathForOpenFilesCheck(moveAction.FromPath);
+								OnDiagnosticOutput("Sending file to the intake queue: {0}", moveAction.ToPath);
+								BeginQueuePathForOpenFilesCheck(moveAction.ToPath);
+							}
+
 							break;
 						}
 
@@ -1205,10 +1240,18 @@ namespace DQD.RealTimeBackup.Agent
 					}
 					catch (Exception ex)
 					{
-						if (expectContentFileToExist)
-							_errorLogger.LogError("Failed to delete a content file that was expected to be present in remote storage: " + deleteAction.Path, ErrorLogger.Summary.InternalError, ex);
+						if (_networkThreadsPaused)
+						{
+							OnDiagnosticOutput("Network threads are now paused, re-queuing action");
+							AddActionToBackupQueue(deleteAction);
+						}
 						else
-							VerboseDiagnosticOutput("Delete task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
+						{
+							if (expectContentFileToExist)
+								_errorLogger.LogError("Failed to delete a content file that was expected to be present in remote storage: " + deleteAction.Path, ErrorLogger.Summary.InternalError, ex);
+							else
+								VerboseDiagnosticOutput("Delete task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
+						}
 					}
 
 					break;
@@ -1255,11 +1298,16 @@ namespace DQD.RealTimeBackup.Agent
 				new Thread(idx => UploadThreadProc((int)idx!, _cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start(i);
 		}
 
-		void InterruptUploadThreads()
+		void WakeUploadThreads()
 		{
 			// Idle Upload threads wait on _uploadQueueSync.
 			lock (_uploadQueueSync)
 				Monitor.PulseAll(_uploadQueueSync);
+		}
+
+		void InterruptUploadThreads()
+		{
+			WakeUploadThreads();
 
 			// Busy upload threads can be interrupted with the cancellation token.
 			_cancelUploadsCancellationTokenSource?.Cancel();
@@ -1306,7 +1354,7 @@ namespace DQD.RealTimeBackup.Agent
 
 				// Didn't already find the file in the upload queue.
 				_uploadQueue.Add(fileReference);
-				Monitor.PulseAll(_uploadQueueSync);
+				Monitor.Pulse(_uploadQueueSync);
 
 				return _uploadQueue.Count;
 			}
@@ -1334,7 +1382,7 @@ namespace DQD.RealTimeBackup.Agent
 
 					lock (_uploadQueueSync)
 					{
-						while (_uploadQueue.Count == 0)
+						while ((_uploadQueue.Count == 0) || _networkThreadsPaused)
 						{
 							Monitor.Wait(_uploadQueueSync);
 

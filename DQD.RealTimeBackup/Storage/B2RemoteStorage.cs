@@ -75,6 +75,9 @@ namespace DQD.RealTimeBackup.Storage
 			{
 				var result = await action();
 
+				if (result == null)
+					throw new Exception("Internal error: Received null response from action functor");
+
 				if ((result.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
 				 && (result.HttpResponse != null)
 				 && (result.HttpResponse.ReasonPhrase != null)
@@ -436,7 +439,26 @@ namespace DQD.RealTimeBackup.Storage
 			request.StartFileName = serverPath;
 			request.MaxFileCount = 1;
 
-			var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListVersionsAsync(request, cacheTTL: TimeSpan.FromSeconds(10))));
+			var response = Wait(AutomaticallyReauthenticateAsync(
+				() =>
+				{
+					const int MaxRetries = 3;
+
+					for (int retry = 1; retry <= MaxRetries; retry++)
+					{
+						var result = _b2Client.Files.ListVersionsAsync(request, cacheTTL: TimeSpan.FromSeconds(10));
+
+						if (result != null)
+							return result;
+
+						_errorLogger.LogError(
+							"B2 Client ListVersionsAsync returned null",
+							"The call to B2Client.Files.ListVersionsAsync returned null. This is not supposed to happen and probably " +
+							"indicates a bug in the B2 library. Retrying (" + retry + " / " + MaxRetries);
+					}
+
+					throw new Exception("ListVersionsAsync returns null for path " + serverPath);
+				}));
 
 			if (!response.IsSuccessStatusCode)
 				VerboseDiagnosticOutput("[B2] => response status: {0}", response.StatusCode);
