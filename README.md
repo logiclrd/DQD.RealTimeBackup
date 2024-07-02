@@ -47,8 +47,11 @@ It is recommended that you briefly monitor the log file to ensure that it is in 
 
 ## Monitoring
 
-<img align="left" style="float: right; width: 12em" src="DQD.RealTimeBackup.UserInterface.png" />
+<img align="left" style="width: 12em" src="DQD.RealTimeBackup.UserInterface.png" />
 An applet called DQD.RealTimeBackup.UserInterface adds a system tray icon and can display ongoing statistics about the operation of DQD.RealTimeBackup. This application uses the Avalonia library to present its user interface.
+
+<img align="right" style="width: 12em" src="DQD.RealTimeBackup.UserInterface-2.png" />
+DQD.RealTimeBackup.UserInterface handles light and dark themes automatically.
 
 <br clear="left" />
 
