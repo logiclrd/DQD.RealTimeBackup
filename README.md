@@ -53,7 +53,7 @@ An applet called DQD.RealTimeBackup.UserInterface adds a system tray icon and ca
 <br clear="both" />
 
 <img align="right" style="width: 12em" src="DQD.RealTimeBackup.UserInterface-2.png" />
-DQD.RealTimeBackup.UserInterface handles light and dark themes automatically.
+DQD.RealTimeBackup.UserInterface handles light and dark themes automatically. In this screenshot, an initial backup is underway.
 
 <br clear="both" />
 
