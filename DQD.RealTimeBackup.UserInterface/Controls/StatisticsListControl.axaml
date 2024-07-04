@@ -4,7 +4,7 @@
              x:Class="DQD.RealTimeBackup.UserInterface.Controls.StatisticsListControl"
              HorizontalAlignment="Stretch"
              MinHeight="24">
-    <Grid Name="grdTable">
+    <Grid Name="grdTable" HorizontalAlignment="Left">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
