@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 
 using DQD.RealTimeBackup.Diagnostics;
+using DQD.RealTimeBackup.Utility;
 
 namespace DQD.RealTimeBackup.FileSystem
 {
@@ -11,6 +12,7 @@ namespace DQD.RealTimeBackup.FileSystem
 		OperatingParameters _parameters;
 
 		IErrorLogger _errorLogger;
+		ITimer _timer;
 
 		protected string _deviceName;
 		protected string _mountPoint;
@@ -45,47 +47,50 @@ namespace DQD.RealTimeBackup.FileSystem
 
 		const string Dummy = "dummy";
 
-		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger)
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer)
 		{
 			_parameters = parameters;
 
 			_errorLogger = errorLogger;
+			_timer = timer;
 
 			_deviceName = Dummy;
 			_mountPoint = Dummy;
 		}
 
-		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName, IZFS? rootInstance)
-			: this(parameters, errorLogger, new ZFS(parameters, errorLogger).FindVolume(deviceName))
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, string deviceName, IZFS? rootInstance)
+			: this(parameters, errorLogger, timer, new ZFS(parameters, errorLogger, timer).FindVolume(deviceName))
 		{
 			_rootInstance = rootInstance;
 		}
 
-		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName)
-			: this(parameters, errorLogger, new ZFS(parameters, errorLogger).FindVolume(deviceName))
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, string deviceName)
+			: this(parameters, errorLogger, timer, new ZFS(parameters, errorLogger, timer).FindVolume(deviceName))
 		{
 		}
 
-		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ZFSVolume volume, IZFS? rootInstance)
-			: this(parameters, errorLogger, volume)
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, ZFSVolume volume, IZFS? rootInstance)
+			: this(parameters, errorLogger, timer, volume)
 		{
 			_rootInstance = rootInstance;
 		}
 
-		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ZFSVolume volume)
+		public ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, ZFSVolume volume)
 			: this(
 					parameters,
 					errorLogger,
+					timer,
 					volume.DeviceName ?? throw new ArgumentNullException("volume.DeviceName"),
 					volume.MountPoint ?? throw new ArgumentNullException("volume.MountPoint"))
 		{
 		}
 
-		ZFS(OperatingParameters parameters, IErrorLogger errorLogger, string deviceName, string mountPoint)
+		ZFS(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, string deviceName, string mountPoint)
 		{
 			_parameters = parameters;
 
 			_errorLogger = errorLogger;
+			_timer = timer;
 
 			_deviceName = deviceName;
 			_mountPoint = mountPoint;
@@ -144,7 +149,8 @@ namespace DQD.RealTimeBackup.FileSystem
 				if (_rootInstance == null)
 				{
 					ZFSDebugLog.WriteLine("Tracking new snapshot, now tracking {0} snapshot{1}", _currentSnapshots.Count, _currentSnapshots.Count == 1 ? "" : "s");
-					ZFSDebugLog.WriteLine("=> {0}", snapshot.SnapshotName);
+					foreach (var trackedSnapshot in _currentSnapshots)
+						ZFSDebugLog.WriteLine("=> {0}", trackedSnapshot.SnapshotName);
 				}
 			}
 
@@ -159,8 +165,9 @@ namespace DQD.RealTimeBackup.FileSystem
 
 				if (_rootInstance == null)
 				{
-					ZFSDebugLog.WriteLine("No longer tracking snapshot, now tracking {0} snapshot{1}", _currentSnapshots.Count, _currentSnapshots.Count == 1 ? "" : "s");
-					ZFSDebugLog.WriteLine("=> {0}", snapshot.SnapshotName);
+					ZFSDebugLog.WriteLine("No longer tracking snapshot {0}, now tracking {1} snapshot{2}", snapshot.SnapshotName, _currentSnapshots.Count, _currentSnapshots.Count == 1 ? "" : "s");
+					foreach (var trackedSnapshot in _currentSnapshots)
+						ZFSDebugLog.WriteLine("=> {0}", trackedSnapshot.SnapshotName);
 				}
 			}
 
@@ -172,9 +179,9 @@ namespace DQD.RealTimeBackup.FileSystem
 			if (_deviceName == Dummy)
 				throw new InvalidOperationException("This ZFS instance is not attached to a specific device name.");
 
-			ZFSDebugLog.WriteLine("Creating new snapshot of device {0}", _deviceName);
+			ZFSDebugLog.WriteLine("Creating new snapshot {0} of device {1}", snapshotName, _deviceName);
 
-			var snapshot = new ZFSSnapshot(_parameters, _errorLogger, _deviceName, snapshotName, _rootInstance);
+			var snapshot = new ZFSSnapshot(_parameters, _errorLogger, _timer, _deviceName, snapshotName, _rootInstance);
 
 			AddSnapshot(snapshot);
 

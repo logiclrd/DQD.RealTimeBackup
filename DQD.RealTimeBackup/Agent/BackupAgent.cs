@@ -1556,7 +1556,7 @@ namespace DQD.RealTimeBackup.Agent
 					continue;
 				}
 
-				var volumeZFS = new ZFS(_parameters, _errorLogger, volume, _zfs);
+				var volumeZFS = new ZFS(_parameters, _errorLogger, _timer, volume, _zfs);
 
 				_zfsInstanceByMountPoint.Add((volume.MountPoint!, volumeZFS));
 			}
