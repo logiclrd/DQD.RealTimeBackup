@@ -431,7 +431,7 @@ namespace DQD.RealTimeBackup
 													if (i > 0)
 														Console.WriteLine();
 
-													string statusLine = scanStatusFormatter.ToString(statusUpdate.BackupAgentQueueSizes.UploadThreads[i], Console.WindowWidth - 1);
+													string statusLine = scanStatusFormatter.ToString(statusUpdate.BackupAgentQueueSizes.UploadThreads[i], Console.WindowWidth - 1, useANSIProgressBar: !Console.IsOutputRedirected);
 
 													Console.Write(statusLine);
 
@@ -513,7 +513,7 @@ namespace DQD.RealTimeBackup
 											if (i > 0)
 												Console.WriteLine();
 
-											string statusLine = scanStatusFormatter.ToString(uploadThreads[i], Console.WindowWidth - 1);
+											string statusLine = scanStatusFormatter.ToString(uploadThreads[i], Console.WindowWidth - 1, useANSIProgressBar: !Console.IsOutputRedirected);
 
 											Console.Write(statusLine);
 

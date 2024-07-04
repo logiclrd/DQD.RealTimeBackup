@@ -92,7 +92,7 @@ namespace DQD.RealTimeBackup.Scan
 				status.ZFSSnapshotCount);
 		}
 
-		public string ToString(UploadStatus? status, int maxChars)
+		public string ToString(UploadStatus? status, int maxChars, bool useANSIProgressBar)
 		{
 			if ((status == null) || (status.Progress == null))
 				return "";
@@ -151,10 +151,44 @@ namespace DQD.RealTimeBackup.Scan
 
 			string bytes = bytesTransferred + "/" + fileSize + byteUnit;
 
+			const string TurnOnReverse = "\x1B[7m";
+			const string ResetAttributes = "\x1B[0m";
+
+			if (useANSIProgressBar)
+			{
+				speed = ResetAttributes + speed;
+
+				int charactersOfBytesRepresentingCompletedTransfer = (int)(bytes.Length * status.Progress.BytesTransferred / status.FileSize);
+
+				if (charactersOfBytesRepresentingCompletedTransfer > 0)
+				{
+					if (charactersOfBytesRepresentingCompletedTransfer > bytes.Length)
+						charactersOfBytesRepresentingCompletedTransfer = bytes.Length;
+
+					bytes =
+						TurnOnReverse + bytes.Substring(0, charactersOfBytesRepresentingCompletedTransfer) +
+						ResetAttributes + bytes.Substring(charactersOfBytesRepresentingCompletedTransfer);
+				}
+			}
+
 			string formattedLine = speed + " [" + bytes + "] " + status.Path;
 
 			if (formattedLine.Length > maxChars)
+			{
 				formattedLine = formattedLine.Substring(0, maxChars);
+
+				// If we've chopped an ANSI escape sequence in half, remove the broken sequence and
+				// replace it with a Reset Attributes sequence.
+				int escapeStart = formattedLine.LastIndexOf("\x1B[");
+
+				if (escapeStart > 0)
+				{
+					int escapeEnd = formattedLine.IndexOf('m', escapeStart);
+
+					if (escapeEnd < 0)
+						formattedLine = formattedLine.Substring(0, escapeStart) + ResetAttributes;
+				}
+			}
 
 			return formattedLine;
 		}
