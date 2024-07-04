@@ -22,12 +22,18 @@ Before engaging the real-time backup functionality, you will need to complete an
 
 DQD.RealTimeBackup is written in C# against .NET 8.0. When compiled, it produces output with files named `*.dll` which are executed using a binary called `dotnet`. (It is possible to set up stubs to automate this process and give the program a "friendly" command name, but as of this writing this hasn't been done for the DQD.RealTimeBackup project.)
 
+### Initial Backup
+
+<img src="InitialBackup.png" />
+
 In order to run DQD.RealTimeBackup and perform an initial backup, you can use one of these two command-line options:
 ```
   dotnet DQD.RealTimeBackup.dll /INITIALBACKUPTHENEXIT
   dotnet DQD.RealTimeBackup.dll /INITIALBACKUPTHENMONITOR
 ```
 You may also wish to supply the `/VERBOSE` command-line option to get more detailed output. The volume of output will be utterly overwhelming, but if problems arise there will be more detail to inspect and diagnose.
+
+### Running as Background Service
 
 Once the initial backup is complete, you can run DQD.RealTimeBackup in monitoring mode. In this mode, it registers with the kernel to receive notifications about files being changed, and will immediately propagate such changes from your computer up to the B2 bucket storing the files. You can run it in monitoring mode in a terminal window, but you will probably ultimately want it to be running as a system service so that it is always operating in the background even after restarting.
 
