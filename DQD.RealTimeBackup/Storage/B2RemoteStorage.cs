@@ -318,73 +318,86 @@ namespace DQD.RealTimeBackup.Storage
 
 			startResponse.EnsureSuccessStatusCode();
 
-			var getUploadPartURLResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.GetUploadUrlAsync(startResponse.Response.FileId)));
-
-			getUploadPartURLResponse.EnsureSuccessStatusCode();
-
-			var uploadAuthorizationToken = getUploadPartURLResponse.Response.AuthorizationToken;
-			var fileID = getUploadPartURLResponse.Response.FileId;
-			var uploadPartURL = getUploadPartURLResponse.Response.UploadUrl;
-
-			long offset = 0;
-			byte[] buffer = new byte[_parameters.B2LargeFileChunkSize];
-			int partNumber = 1;
-
-			var partChecksums = new List<string>();
-
-			while (offset < contentStream.Length)
+			try
 			{
-				long remainingBytes = contentStream.Length - offset;
+				var getUploadPartURLResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.GetUploadUrlAsync(startResponse.Response.FileId)));
 
-				int chunkLength = (int)Math.Min(remainingBytes, buffer.Length);
+				getUploadPartURLResponse.EnsureSuccessStatusCode();
 
-				FileUtility.ReadFully(contentStream, buffer, chunkLength, cancellationToken);
+				var uploadAuthorizationToken = getUploadPartURLResponse.Response.AuthorizationToken;
+				var fileID = getUploadPartURLResponse.Response.FileId;
+				var uploadPartURL = getUploadPartURLResponse.Response.UploadUrl;
 
-				var chunkBufferStream = new MemoryStream(buffer);
+				long offset = 0;
+				byte[] buffer = new byte[_parameters.B2LargeFileChunkSize];
+				int partNumber = 1;
 
-				if (chunkLength < chunkBufferStream.Length)
-					chunkBufferStream.SetLength(chunkLength);
+				var partChecksums = new List<string>();
 
-				// Chunks just sometimes randomly fail. Give 'em another go instead of giving up immediately.
-				IApiResults<UploadPartResponse>? partResponse = null;
-
-				for (int i = 0; i < 3; i++)
+				while (offset < contentStream.Length)
 				{
-					try
+					long remainingBytes = contentStream.Length - offset;
+
+					int chunkLength = (int)Math.Min(remainingBytes, buffer.Length);
+
+					FileUtility.ReadFully(contentStream, buffer, chunkLength, cancellationToken);
+
+					var chunkBufferStream = new MemoryStream(buffer);
+
+					if (chunkLength < chunkBufferStream.Length)
+						chunkBufferStream.SetLength(chunkLength);
+
+					// Chunks just sometimes randomly fail. Give 'em another go instead of giving up immediately.
+					IApiResults<UploadPartResponse>? partResponse = null;
+
+					for (int i = 0; i < 3; i++)
 					{
-						chunkBufferStream.Position = 0;
+						try
+						{
+							chunkBufferStream.Position = 0;
 
-						partResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.UploadAsync(
-							uploadPartURL,
-							partNumber,
-							uploadAuthorizationToken,
-							chunkBufferStream,
-							progress: progressCallback == null ? default : new UploadProgressProxy(
-								progress =>
-								{
-									progress.BytesTransferred += offset;
-									progressCallback(progress);
-								}))));
+							partResponse = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.UploadAsync(
+								uploadPartURL,
+								partNumber,
+								uploadAuthorizationToken,
+								chunkBufferStream,
+								progress: progressCallback == null ? default : new UploadProgressProxy(
+									progress =>
+									{
+										progress.BytesTransferred += offset;
+										progressCallback(progress);
+									}))));
 
-						if (partResponse.IsSuccessStatusCode)
-							break;
+							if (partResponse.IsSuccessStatusCode)
+								break;
+						}
+						catch {}
 					}
-					catch {}
+
+					// I don't think this ever actually happens, but it satisfies the compiler's static analysis.
+					if (partResponse == null)
+						throw new Exception("Error uploading chunk: did not get an UploadPartResponse");
+
+					partResponse.EnsureSuccessStatusCode();
+
+					partChecksums.Add(partResponse.Response.ContentSha1);
+
+					offset += chunkLength;
+					partNumber++;
 				}
 
-				// I don't think this ever actually happens, but it satisfies the compiler's static analysis.
-				if (partResponse == null)
-					throw new Exception("Error uploading chunk: did not get an UploadPartResponse");
-
-				partResponse.EnsureSuccessStatusCode();
-
-				partChecksums.Add(partResponse.Response.ContentSha1);
-
-				offset += chunkLength;
-				partNumber++;
+				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.FinishLargeFileAsync(startResponse.Response.FileId, partChecksums)));
 			}
+			catch
+			{
+				try
+				{
+					Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.CancelLargeFileAsync(startResponse.Response.FileId)));
+				}
+				catch {}
 
-			Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.FinishLargeFileAsync(startResponse.Response.FileId, partChecksums)));
+				throw;
+			}
 		}
 
 		void UploadFileImplementation(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
