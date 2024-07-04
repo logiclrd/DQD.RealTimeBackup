@@ -28,6 +28,7 @@ namespace DQD.RealTimeBackup.Interop
 			psi.FileName = _parameters.LSOFBinaryPath;
 			psi.Arguments = arguments;
 			psi.RedirectStandardOutput = true;
+			psi.RedirectStandardError = true;
 
 			using (var process = Process.Start(psi)!)
 			{

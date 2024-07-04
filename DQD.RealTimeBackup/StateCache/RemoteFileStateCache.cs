@@ -672,8 +672,15 @@ namespace DQD.RealTimeBackup.StateCache
 					else
 					{
 						DebugLog("[AT] processing action");
-						while (!action.IsComplete)
+
+						while (!action.IsComplete && !_stopping)
 							ProcessCacheAction(action);
+
+						if (_stopping && !action.IsComplete)
+						{
+							DebugLog("[AT] stopping, leaving incomplete action's file");
+							break;
+						}
 					}
 
 					try
@@ -787,7 +794,13 @@ namespace DQD.RealTimeBackup.StateCache
 				DebugLog("[PCA] failed");
 				DebugLog(e);
 
-				Thread.Sleep(TimeSpan.FromSeconds(5));
+				_errorLogger.LogError(
+					"Remote File State Cache action failed",
+					"An action related to synchronizing the Remote File State Cache with remote storage has failed. The action will be retried.",
+					e);
+
+				if (!_stopping)
+					Thread.Sleep(TimeSpan.FromSeconds(5));
 			}
 		}
 	}

@@ -99,6 +99,8 @@ namespace DQD.RealTimeBackup.FileSystem
 
 			psi.FileName = _parameters.ZFSBinaryPath;
 			psi.Arguments = command;
+			psi.RedirectStandardOutput = true;
+			psi.RedirectStandardError = true;
 
 			using (var process = Process.Start(psi)!)
 			{
@@ -117,6 +119,7 @@ namespace DQD.RealTimeBackup.FileSystem
 			psi.FileName = _parameters.ZFSBinaryPath;
 			psi.Arguments = command;
 			psi.RedirectStandardOutput = true;
+			psi.RedirectStandardError = true;
 
 			using (var process = Process.Start(psi)!)
 			{

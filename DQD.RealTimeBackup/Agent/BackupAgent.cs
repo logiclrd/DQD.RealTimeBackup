@@ -382,10 +382,29 @@ namespace DQD.RealTimeBackup.Agent
 			return null;
 		}
 
+		void CancelQueuePathForOpenFilesCheck()
+		{
+			var delay = _snapshotSharingDelay;
+
+			_snapshotSharingDelay = null;
+
+			if (delay != null)
+				delay.Dispose();
+		}
+
 		void EndQueuePathForOpenFilesCheck()
 		{
 			lock (_snapshotSharingDelaySync)
 			{
+				_snapshotSharingDelay?.Dispose();
+				_snapshotSharingDelay = null;
+
+				if (_stopping)
+				{
+					VerboseDiagnosticOutput("[IN] End queue path operation cancelled, stopping");
+					return;
+				}
+
 				VerboseDiagnosticOutput("[IN] End queue path operation, collecting batch");
 
 				_snapshotSharingDelay?.Dispose();
@@ -496,6 +515,15 @@ namespace DQD.RealTimeBackup.Agent
 				Monitor.PulseAll(_openFileHandlePollingSync);
 		}
 
+		void CleanUpPollOpenFilesThread()
+		{
+			lock (_openFilesSync)
+			{
+				_openFiles.ForEach(item => item.SnapshotReference.Dispose());
+				_openFiles.Clear();
+			}
+		}
+
 		void PollOpenFilesThreadProc()
 		{
 			VerboseDiagnosticOutput("[OF] Thread started");
@@ -531,14 +559,19 @@ namespace DQD.RealTimeBackup.Agent
 				// As long as we have open files, always wait for the interval between checks.
 				if (haveOpenFiles)
 				{
-					lock (_openFileHandlePollingSync)
-					{
-						VerboseDiagnosticOutput("[OF] Waiting until next check: {0}", _parameters.OpenFileHandlePollingInterval);
-						Monitor.Wait(_openFileHandlePollingSync, _parameters.OpenFileHandlePollingInterval);
-					}
+					var deadline = DateTime.UtcNow + _parameters.OpenFileHandlePollingInterval;
 
-					if (_stopping)
-						return;
+					while (DateTime.UtcNow < deadline)
+					{
+						lock (_openFileHandlePollingSync)
+						{
+							VerboseDiagnosticOutput("[OF] Waiting until next check: {0}", _parameters.OpenFileHandlePollingInterval);
+							Monitor.Wait(_openFileHandlePollingSync, _parameters.OpenFileHandlePollingInterval);
+						}
+
+						if (_stopping)
+							return;
+					}
 
 					openFilesCached.Clear();
 
@@ -694,6 +727,12 @@ namespace DQD.RealTimeBackup.Agent
 		{
 			_longPollingCancellationTokenSource?.Dispose();
 			_longPollingCancellationTokenSource = null;
+
+			lock (_longPollingSync)
+			{
+				_longPollingQueue.ForEach(item => item.CurrentSnapshotReference.Dispose());
+				_longPollingQueue.Clear();
+			}
 		}
 
 		void AddLongPollingItem(SnapshotReference snapshotReference)
@@ -799,6 +838,7 @@ namespace DQD.RealTimeBackup.Agent
 					{
 						Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
 						_errorLogger.LogError("The Backup Agent was asked to consider the path:\n\n" + item.CurrentSnapshotReference.Path + "\n\nThe Long Polling thread can't find the ZFS volume for this path.", ErrorLogger.Summary.InternalError);
+						item.CurrentSnapshotReference.Dispose();
 						removeFromQueue.Add(item);
 						continue;
 					}
@@ -816,12 +856,28 @@ namespace DQD.RealTimeBackup.Agent
 
 					var newSnapshotReference = snapshotReferenceTracker.AddReference(item.CurrentSnapshotReference.Path);
 
+					if (!File.Exists(newSnapshotReference.SnapshottedPath))
+					{
+						VerboseDiagnosticOutput("[LP]   File does not exist in new snapshot, removing from consideration");
+
+						// Looks like the file got deleted.
+						item.CurrentSnapshotReference.Dispose();
+						newSnapshotReference.Dispose();
+						removeFromQueue.Add(item);
+						continue;
+					}
+
 					bool promoteFile = false;
 
+					bool haveWriteHandles = openWriteFileHandleSet.Contains(newSnapshotReference.Path);
+
 					if ((item.DeadlineUTC < now)
-						|| !openWriteFileHandleSet.Contains(newSnapshotReference.Path))
+					 || !haveWriteHandles)
 					{
-						VerboseDiagnosticOutput("[LP]   File no longer has any writers, promoting");
+						if (!haveWriteHandles)
+							VerboseDiagnosticOutput("[LP]   File no longer has any writers, promoting");
+						else
+							VerboseDiagnosticOutput("[LP]   File has been busy for too long, promoting anyway");
 
 						item.CurrentSnapshotReference.Dispose();
 						item.CurrentSnapshotReference = newSnapshotReference;
@@ -830,17 +886,6 @@ namespace DQD.RealTimeBackup.Agent
 					}
 					else
 					{
-						if (!File.Exists(newSnapshotReference.SnapshottedPath))
-						{
-							VerboseDiagnosticOutput("[LP]   File does not exist in new snapshot, removing from consideration");
-
-							// Looks like the file got deleted.
-							item.CurrentSnapshotReference.Dispose();
-							newSnapshotReference.Dispose();
-							removeFromQueue.Add(item);
-							continue;
-						}
-
 						VerboseDiagnosticOutput("[LP]   Comparing file content between old and new snapshots");
 						VerboseDiagnosticOutput("[LP]   * {0}", item.CurrentSnapshotReference.SnapshottedPath);
 						VerboseDiagnosticOutput("[LP]   * {0}", newSnapshotReference.SnapshottedPath);
@@ -987,6 +1032,15 @@ namespace DQD.RealTimeBackup.Agent
 
 			_backupQueueExited?.Dispose();
 			_backupQueueExited = null;
+
+			lock (_backupQueueSync)
+			{
+				while (_backupQueue.Count > 0)
+				{
+					_backupQueue.First!.Value.Dispose();
+					_backupQueue.RemoveFirst();
+				}
+			}
 		}
 
 		bool _pauseQueuingUploads = false;
@@ -1110,6 +1164,8 @@ namespace DQD.RealTimeBackup.Agent
 							exception);
 
 						BeginQueuePathForOpenFilesCheck(uploadAction.Source.Path);
+
+						uploadAction.Source.Dispose();
 
 						break;
 					}
@@ -1329,6 +1385,12 @@ namespace DQD.RealTimeBackup.Agent
 
 			_uploadThreadsExited?.Dispose();
 			_uploadThreadsExited = null;
+
+			lock (_uploadQueueSync)
+			{
+				_uploadQueue.ForEach(action => action.Dispose());
+				_uploadQueue.Clear();
+			}
 		}
 
 		public IEnumerable<FileReference> PeekUploadQueue()
@@ -1534,6 +1596,9 @@ namespace DQD.RealTimeBackup.Agent
 		{
 			_stopping = true;
 
+			NonQuietDiagnosticOutput("Cancelling pending queue path operations");
+			CancelQueuePathForOpenFilesCheck();
+
 			NonQuietDiagnosticOutput("Stopping remote file state cache");
 			_remoteFileStateCache.Stop();
 
@@ -1579,6 +1644,7 @@ namespace DQD.RealTimeBackup.Agent
 
 			NonQuietDiagnosticOutput("Cleaning up resources");
 
+			CleanUpPollOpenFilesThread();
 			CleanUpLongPollingThread();
 			CleanUpProcessBackupQueueThread();
 			CleanUpUploadThreads();
