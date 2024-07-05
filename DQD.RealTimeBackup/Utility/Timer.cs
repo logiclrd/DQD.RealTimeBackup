@@ -7,18 +7,26 @@ namespace DQD.RealTimeBackup.Utility
 {
 	public class Timer : ITimer
 	{
-		public ITimerInstance ScheduleAction(TimeSpan delay, Action action)
-			=> ScheduleAction(DateTime.UtcNow + delay, action);
-
 		public ITimerInstance ScheduleAction(DateTime dueTimeUTC, Action action)
-		{
-			var provider = new TimerProvider(
-					(_) => action(),
-					state: default,
-					dueTimeUTC - DateTime.UtcNow,
-					Timeout.InfiniteTimeSpan);
+			=> ScheduleAction(dueTimeUTC - DateTime.UtcNow, action);
 
-			return new TimerInstance(dueTimeUTC, provider);
+		public ITimerInstance ScheduleAction(TimeSpan delay, Action action)
+		{
+			if (delay.TotalMilliseconds < 1)
+			{
+				ThreadPool.QueueUserWorkItem(_ => action());
+				return TimerInstance.Dummy;
+			}
+			else
+			{
+				var provider = new TimerProvider(
+						(_) => action(),
+						state: default,
+						delay,
+						Timeout.InfiniteTimeSpan);
+
+				return new TimerInstance(DateTime.UtcNow + delay, provider);
+			}
 		}
 	}
 }

@@ -17,9 +17,11 @@ namespace DQD.RealTimeBackup.Utility
 			_timer = timer;
 		}
 
+		public static TimerInstance Dummy => new TimerInstance(DateTime.UtcNow, default!);
+
 		public void Dispose()
 		{
-			_timer.Dispose();
+			_timer?.Dispose();
 		}
 	}
 }
