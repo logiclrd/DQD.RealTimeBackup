@@ -13,6 +13,7 @@ using FluentAssertions;
 
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.FileSystem;
+using DQD.RealTimeBackup.Utility;
 
 using DQD.RealTimeBackup.Tests.Support;
 
@@ -29,8 +30,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			var parameters = new OperatingParameters();
 
 			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
 
-			var sut = new ZFS(parameters, errorLogger);
+			var sut = new ZFS(parameters, errorLogger, timer);
 
 			// Act
 			var output = sut.ExecuteZFSCommandOutput(command).ToList();
@@ -39,6 +41,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			output.Should().NotBeEmpty();
 
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
 
 			bool found = false;
 
@@ -65,8 +69,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			var parameters = new OperatingParameters();
 
 			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
 
-			var zfs = new ZFS(parameters, errorLogger);
+			var zfs = new ZFS(parameters, errorLogger, timer);
 
 			string? testDeviceName = null;
 			string? snapshotContainerPath = null;
@@ -82,7 +87,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			if ((testDeviceName == null) || (snapshotContainerPath == null))
 				Assert.Inconclusive();
 
-			var sut = new ZFS(parameters, errorLogger, testDeviceName);
+			var sut = new ZFS(parameters, errorLogger, timer, testDeviceName);
 
 			string testSnapshotName = faker.Random.Hash();
 
@@ -97,6 +102,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			Directory.GetDirectories(snapshotContainerPath).Should().NotContain(fullSnapshotPath);
 
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
 		}
 
 		[Test]
@@ -106,8 +113,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			var parameters = new OperatingParameters();
 
 			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
 
-			var sut = new ZFS(parameters, errorLogger);
+			var sut = new ZFS(parameters, errorLogger, timer);
 
 			var allVolumes = sut.EnumerateVolumes().ToList();
 
@@ -120,6 +128,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 						.When(info => info.Path.EndsWith("Bytes")));
 
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
 		}
 
 		[Test]
@@ -129,8 +139,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			var parameters = new OperatingParameters();
 
 			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
 
-			var sut = new ZFS(parameters, errorLogger);
+			var sut = new ZFS(parameters, errorLogger, timer);
 
 			// Act
 			var action = () => sut.FindVolume("There is no device by this name.");
@@ -139,6 +150,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			action.Should().Throw<KeyNotFoundException>();
 
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
 		}
 		
 		[Test]
@@ -148,8 +161,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			var parameters = new OperatingParameters();
 
 			var errorLogger = Substitute.For<IErrorLogger>();
+			var timer = Substitute.For<ITimer>();
 
-			var sut = new ZFS(parameters, errorLogger);
+			var sut = new ZFS(parameters, errorLogger, timer);
 
 			// Act
 			var results = sut.EnumerateVolumes().ToList();
@@ -158,6 +172,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			results.Should().NotBeEmpty();
 
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
+			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
 		}
 	}
 }

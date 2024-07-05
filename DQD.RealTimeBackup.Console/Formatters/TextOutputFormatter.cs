@@ -110,7 +110,7 @@ namespace DQD.RealTimeBackup.Console.Formatters
 			for (int i=0; i < uploadThreads.Length; i++)
 			{
 				if (uploadThreads[i] is UploadStatus uploadThreadStatus)
-					Konsole.WriteLine("[{0}] {1}", i, _scanStatusFormatter.ToString(uploadThreadStatus, int.MaxValue));
+					Konsole.WriteLine("[{0}] {1}", i, _scanStatusFormatter.ToString(uploadThreadStatus, int.MaxValue, useANSIProgressBar : !Konsole.IsOutputRedirected));
 				else
 					Konsole.WriteLine("[{0}] idle", i);
 			}
