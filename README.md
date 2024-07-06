@@ -208,6 +208,16 @@ https://github.com/logiclrd/DQD.RealTimeBackup/
 
 If you have an actual change that could be useful, you can create a Pull Request. Make sure your code is clean, consistent, follows the file's formatting standards and is well-tested.
 
+### Donations
+
+As of the start of July, this project and related development that it triggered sum up to approximately 27K lines of source code, and that development work took me approximately 70 hours to do. I am currently starting a business and do not have a reliable income. If you think this work is valuable and you are in a position to throw a few bars of gold-pressed latinum my way, donations are gratefully accepted.
+
+[![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=Z975BCMGRLY5Y)
+
+Bitcoin: 35JLznP5VQtksnuiudnxg18cXL7kqHopxo
+
+Anything helps!
+
 ### Dependencies
 
 This library uses a couple of external libraries in its implementation:
