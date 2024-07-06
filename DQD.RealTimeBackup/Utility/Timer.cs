@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 using TimerProvider = System.Threading.Timer;
@@ -7,6 +8,8 @@ namespace DQD.RealTimeBackup.Utility
 {
 	public class Timer : ITimer
 	{
+		HashSet<TimerInstance> _scheduledTimers = new HashSet<TimerInstance>();
+
 		public ITimerInstance ScheduleAction(DateTime dueTimeUTC, Action action)
 			=> ScheduleAction(dueTimeUTC - DateTime.UtcNow, action);
 
@@ -25,7 +28,17 @@ namespace DQD.RealTimeBackup.Utility
 						delay,
 						Timeout.InfiniteTimeSpan);
 
-				return new TimerInstance(DateTime.UtcNow + delay, provider);
+				var timerInstance = new TimerInstance(DateTime.UtcNow + delay, provider);
+
+				_scheduledTimers.Add(timerInstance);
+
+				timerInstance.Disposed +=
+					(_, _) =>
+					{
+						_scheduledTimers.Remove(timerInstance);
+					};
+
+				return timerInstance;
 			}
 		}
 	}
