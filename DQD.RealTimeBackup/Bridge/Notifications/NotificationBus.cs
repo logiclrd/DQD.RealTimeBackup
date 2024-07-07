@@ -1,5 +1,8 @@
+// #define DEBUGLOG
+
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
@@ -15,6 +18,7 @@ namespace DQD.RealTimeBackup.Bridge.Notifications
 
 		object _ds = new object();
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(string message)
 		{
 			lock (_ds)

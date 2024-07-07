@@ -618,9 +618,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			var cacheActionLog = Substitute.For<ICacheActionLog>();
 			var remoteStorage = Substitute.For<IRemoteStorage>();
 
-			parameters.RemoteFileStateCacheDebugLogPath = "/tmp/rfsc.test.debuglog";
-
-			File.Delete(parameters.RemoteFileStateCacheDebugLogPath);
+			//parameters.RemoteFileStateCacheDebugLogPath = "/tmp/rfsc.test.debuglog";
+			//
+			//File.Delete(parameters.RemoteFileStateCacheDebugLogPath);
 
 			using (var temporaryFile1 = new TemporaryFile())
 			using (var temporaryFile2 = new TemporaryFile())

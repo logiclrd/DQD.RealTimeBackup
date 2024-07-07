@@ -1,4 +1,7 @@
+// #define DEBUGLOG
+
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -44,6 +47,7 @@ namespace DQD.RealTimeBackup.Bridge
 
 		object _dls = new object();
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(string line)
 		{
 			lock (_dls)
@@ -51,11 +55,13 @@ namespace DQD.RealTimeBackup.Bridge
 					writer.WriteLine("[{0:HH:mm:ss.fffffff}] [{1}] {2}", DateTime.Now, System.Threading.Thread.CurrentThread.ManagedThreadId, line);
 		}
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(string format, params object?[] args)
 		{
 			DebugLog(string.Format(format, args));
 		}
 
+		[Conditional("DEBUGLOG")]
 		void DebugLog(object? value)
 		{
 			if (value != null)
