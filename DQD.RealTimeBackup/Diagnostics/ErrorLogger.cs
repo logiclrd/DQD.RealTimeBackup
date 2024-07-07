@@ -25,10 +25,15 @@ namespace DQD.RealTimeBackup.Diagnostics
 		string? _errorLogFilePath;
 		bool _diagnosticOutputDisconnected = false;
 
+		public ErrorLogger(OperatingParameters parameters)
+		{
+			_parameters = parameters;
+		}
+
 		public ErrorLogger(OperatingParameters parameters, INotificationBus notificationBus)
 		{
-			_notificationBus = notificationBus;
 			_parameters = parameters;
+			_notificationBus = notificationBus;
 		}
 
 		public ErrorLogger(string errorLogFilePath)

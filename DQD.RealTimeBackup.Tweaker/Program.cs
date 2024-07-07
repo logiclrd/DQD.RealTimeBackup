@@ -37,7 +37,9 @@ namespace DQD.RealTimeBackup.Tweaker
 
 			builder.AddBackblazeAgent(backblazeAgentOptions);
 
-			builder.RegisterType<ErrorLogger>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<ErrorLogger>()
+				.UsingConstructor(typeof(OperatingParameters))
+				.AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<NotificationBus>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();

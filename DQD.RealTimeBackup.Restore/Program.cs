@@ -41,7 +41,9 @@ namespace DQD.RealTimeBackup.Restore
 			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCacheRemoteStorage>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<ErrorLogger>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<ErrorLogger>()
+				.UsingConstructor(typeof(OperatingParameters))
+				.AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<CacheActionLog>().AsImplementedInterfaces().SingleInstance();
 
