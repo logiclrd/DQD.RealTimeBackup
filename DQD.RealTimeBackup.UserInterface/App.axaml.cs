@@ -197,8 +197,9 @@ namespace DQD.RealTimeBackup.UserInterface
 						}
 					}
 				}
-				catch
+				catch (Exception e)
 				{
+					Console.WriteLine("Notifications pump thread exception: {0}: {1}", e.GetType().Name, e.Message);
 					bridgeClient.Dispose();
 					break;
 				}

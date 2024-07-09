@@ -38,8 +38,12 @@ namespace DQD.RealTimeBackup.Bridge
 		[Conditional("DEBUGLOG")]
 		void DebugLog(string line)
 		{
-			using (var writer = new StreamWriter("/tmp/DQD.RealTimeBackup.bridge.server.log", append: true))
-				writer.WriteLine("[{0:HH:mm:ss.fffffff}] {1}", DateTime.Now, line);
+			try
+			{
+				using (var writer = new StreamWriter("/tmp/DQD.RealTimeBackup.bridge.server.log", append: true))
+					writer.WriteLine("[{0:HH:mm:ss.fffffff}] {1}", DateTime.Now, line);
+			}
+			catch {}
 		}
 
 		[Conditional("DEBUGLOG")]

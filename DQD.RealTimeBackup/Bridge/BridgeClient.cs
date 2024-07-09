@@ -50,9 +50,13 @@ namespace DQD.RealTimeBackup.Bridge
 		[Conditional("DEBUGLOG")]
 		void DebugLog(string line)
 		{
-			lock (_dls)
-				using (var writer = new StreamWriter("/tmp/DQD.RealTimeBackup.bridge.client.log", append: true))
-					writer.WriteLine("[{0:HH:mm:ss.fffffff}] [{1}] {2}", DateTime.Now, System.Threading.Thread.CurrentThread.ManagedThreadId, line);
+			try
+			{
+				lock (_dls)
+					using (var writer = new StreamWriter("/tmp/DQD.RealTimeBackup.bridge.client.log", append: true))
+						writer.WriteLine("[{0:HH:mm:ss.fffffff}] [{1}] {2}", DateTime.Now, System.Threading.Thread.CurrentThread.ManagedThreadId, line);
+			}
+			catch {}
 		}
 
 		[Conditional("DEBUGLOG")]

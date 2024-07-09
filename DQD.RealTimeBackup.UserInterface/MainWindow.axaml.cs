@@ -326,8 +326,10 @@ namespace DQD.RealTimeBackup.UserInterface
 						}
 					});
 			}
-			catch
+			catch (Exception ex)
 			{
+				Console.WriteLine("Refresh timer exception: {0}: {1}", ex.GetType().Name, ex.Message);
+
 				IsConnected = false;
 
 				_bridgeClient?.Dispose();
