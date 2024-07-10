@@ -1499,8 +1499,6 @@ namespace DQD.RealTimeBackup.Agent
 
 									BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 								}
-
-								_uploadThreadStatus[threadIndex] = null;
 							}
 						}
 						catch (Exception exception)
@@ -1510,6 +1508,10 @@ namespace DQD.RealTimeBackup.Agent
 							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 
 							continue;
+						}
+						finally
+						{
+							_uploadThreadStatus[threadIndex] = null;
 						}
 
 						VerboseDiagnosticOutput("[UP{0}] Registering file state change", threadIndex);
