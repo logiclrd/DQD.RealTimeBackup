@@ -22,6 +22,8 @@
     <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.2.999-cibuild0049017-alpha" />
 
     <PackageReference Include="Tmds.DBus" Version="0.18.0" />
+
+    <PackageReference Include="System.Diagnostics.TraceSource" Version="4.3.0" />
   </ItemGroup>
 
   <ItemGroup>

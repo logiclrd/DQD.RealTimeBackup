@@ -1,13 +1,33 @@
 #!/bin/bash
 
-systemctl stop DQD.RealTimeBackup.service
+if [ $UID -gt 0 ]
+then
+  echo Run as root
+  exit
+fi
 
+echo Stopping processes...
+systemctl stop DQD.RealTimeBackup.service
+killall DQD.RealTimeBackup.UserInterface
+
+echo Waiting for processes to exit
 sleep 5
 
+echo Force-killing the UI process if it\'s still hanging around
+killall -9 DQD.RealTimeBackup.UserInterface
+
+echo Running dotnet publish
 dotnet build && dotnet publish -o /srv/DQD.RealTimeBackup
 
-diff DQD.RealTimeBackup.service /etc/systemd/system/DQD.RealTimeBackup.service || (cp DQD.RealTimeBackup.service /etc/systemd/system/DQD.RealTimeBackup.service && systemctl daemon-reload)
+echo Checking for changes to DQD.RealTimeBackup.service
+diff DQD.RealTimeBackup.service /etc/systemd/system/DQD.RealTimeBackup.service || (echo =\> Installing new DQD.RealTimeBackup.service ; cp DQD.RealTimeBackup.service /etc/systemd/system/DQD.RealTimeBackup.service && systemctl daemon-reload)
 
+echo Restoring permissions on /code/DQD.RealTimeBackup
 chown -R logiclrd:logiclrd /code/DQD.RealTimeBackup
 
+echo Starting new service
 systemctl start DQD.RealTimeBackup.service
+
+echo Starting new UI process
+CMD="export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$SUDO_UID/bus ; nohup /srv/DQD.RealTimeBackup/DQD.RealTimeBackup.UserInterface &"
+sudo -u logiclrd bash -c "$CMD"

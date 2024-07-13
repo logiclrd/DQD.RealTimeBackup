@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -1304,7 +1308,15 @@ namespace DQD.RealTimeBackup.Agent
 						else
 						{
 							if (expectContentFileToExist)
-								_errorLogger.LogError("Failed to delete a content file that was expected to be present in remote storage: " + deleteAction.Path, ErrorLogger.Summary.InternalError, ex);
+							{
+								if (IsTransientError(ex))
+								{
+									OnDiagnosticOutput("Encountered a transient error deleting a file, re-queuing action");
+									AddActionToBackupQueue(deleteAction);
+								}
+								else
+									_errorLogger.LogError("Failed to delete a content file that was expected to be present in remote storage: " + deleteAction.Path, ErrorLogger.Summary.InternalError, ex);
+							}
 							else
 								VerboseDiagnosticOutput("Delete task failed with exception: {0}: {1}", ex.GetType().Name, ex.Message);
 						}
@@ -1330,6 +1342,23 @@ namespace DQD.RealTimeBackup.Agent
 
 					break;
 			}
+		}
+
+		bool IsTransientError(Exception ex)
+		{
+			if (ex is SocketException)
+				return true;
+
+			if (ex is HttpRequestException httpException)
+				return (httpException.StatusCode < HttpStatusCode.InternalServerError);
+
+			if (ex is AggregateException aggregate)
+				return aggregate.InnerExceptions.Any(IsTransientError);
+
+			if (ex.InnerException is Exception inner)
+				return IsTransientError(inner);
+
+			return false;
 		}
 
 		object _uploadQueueSync = new object();
