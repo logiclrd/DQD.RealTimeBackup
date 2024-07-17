@@ -71,12 +71,22 @@ namespace DQD.RealTimeBackup.Storage
 
 		async Task<IApiResults<TResult>> RetryIfNoTomesAreAvailable<TResult>(Func<Task<IApiResults<TResult>>> action)
 		{
+			int nullResponseCount = 0;
+
 			while (true)
 			{
 				var result = await action();
 
 				if (result == null)
-					throw new Exception("Internal error: Received null response from action functor");
+				{
+					nullResponseCount++;
+
+					if (nullResponseCount >= 3)
+						throw new NullResponseException("Internal error: Received null response from action functor");
+
+					await Task.Delay(TimeSpan.FromSeconds(1));
+					continue;
+				}
 
 				if ((result.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
 				 && (result.HttpResponse != null)

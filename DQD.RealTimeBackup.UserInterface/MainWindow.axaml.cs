@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
 
@@ -87,6 +86,41 @@ namespace DQD.RealTimeBackup.UserInterface
 			Height += svNotifications.Bounds.Height;
 		}
 
+		public static readonly StyledProperty<bool> IncludePeriodicRescansInNotificationListProperty =
+			AvaloniaProperty.Register<NotificationView, bool>(nameof(IncludePeriodicRescansInNotificationList));
+
+		public bool IncludePeriodicRescansInNotificationList
+		{
+			get => GetValue(IncludePeriodicRescansInNotificationListProperty);
+			set => SetValue(IncludePeriodicRescansInNotificationListProperty, value);
+		}
+
+		static MainWindow()
+		{
+			IncludePeriodicRescansInNotificationListProperty.Changed.AddClassHandler<MainWindow>(MainWindow_IncludePeriodicRescansInNotificationListChanged);
+		}
+
+		static void MainWindow_IncludePeriodicRescansInNotificationListChanged(MainWindow sender, AvaloniaPropertyChangedEventArgs e)
+		{
+			bool shouldShowRescans = (bool?)e.NewValue ?? false;
+			sender.NotifyIncludePeriodicRescansInNotificationListChanged(shouldShowRescans);
+		}
+
+		void NotifyIncludePeriodicRescansInNotificationListChanged(bool shouldShowRescans)
+		{
+			if (shouldShowRescans)
+			{
+				bool isAtBottom = (svNotifications.Offset.Y > svNotifications.ScrollBarMaximum.Y - 10);
+
+				spNotifications.Classes.Remove("HideRescan");
+
+				if (isAtBottom)
+					svNotifications.ScrollToEnd();
+			}
+			else
+				spNotifications.Classes.Add("HideRescan");
+		}
+
 		public void AddNotification(Notification notification)
 		{
 			if (!Dispatcher.UIThread.CheckAccess())
@@ -102,7 +136,19 @@ namespace DQD.RealTimeBackup.UserInterface
 
 			var view = new NotificationView();
 
+			if ((notification.Event == StateEvent.RescanStarted)
+			 || (notification.Event == StateEvent.RescanCompleted))
+				view.Classes.Add("Rescan");
+
 			spNotifications.Children.Add(view);
+
+			view[!NotificationView.IncludePeriodicRescansInListProperty] = this[!IncludePeriodicRescansInNotificationListProperty];
+
+			view.ToggleIncludePeriodicRescansInList +=
+				(_, _) =>
+				{
+					IncludePeriodicRescansInNotificationList = !IncludePeriodicRescansInNotificationList;
+				};
 
 			view.SetNotificationContent(notification);
 

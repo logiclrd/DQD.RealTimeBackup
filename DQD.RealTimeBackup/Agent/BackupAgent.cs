@@ -7,7 +7,6 @@ using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -1348,6 +1347,10 @@ namespace DQD.RealTimeBackup.Agent
 		{
 			if (ex is SocketException)
 				return true;
+			if (ex is TaskCanceledException)
+				return true;
+			if (ex is NullResponseException)
+				return true;
 
 			if (ex is HttpRequestException httpException)
 				return (httpException.StatusCode < HttpStatusCode.InternalServerError);
@@ -1532,7 +1535,8 @@ namespace DQD.RealTimeBackup.Agent
 						}
 						catch (Exception exception)
 						{
-							_errorLogger.LogError("Upload task failed, returning file to the intake queue\n\nPath: " + fileToUpload.Path, ErrorLogger.Summary.ImportantBackupError, exception);
+							if (!IsTransientError(exception))
+								_errorLogger.LogError("Upload task failed, returning file to the intake queue\n\nPath: " + fileToUpload.Path, ErrorLogger.Summary.ImportantBackupError, exception);
 
 							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 

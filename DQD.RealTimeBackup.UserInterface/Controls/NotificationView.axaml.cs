@@ -27,8 +27,11 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 			AvaloniaProperty.Register<NotificationView, string>(nameof(SummaryText));
 		public static readonly StyledProperty<string> NotificationTextProperty =
 			AvaloniaProperty.Register<NotificationView, string>(nameof(NotificationText));
+		public static readonly StyledProperty<bool> IncludePeriodicRescansInListProperty =
+			AvaloniaProperty.Register<NotificationView, bool>(nameof(IncludePeriodicRescansInList));
 
 		public event EventHandler<string>? CopyToClipboard;
+		public event EventHandler? ToggleIncludePeriodicRescansInList;
 
 		public string TimestampFormatted
 		{
@@ -48,6 +51,12 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 			set => SetValue(NotificationTextProperty, value);
 		}
 
+		public bool IncludePeriodicRescansInList
+		{
+			get => GetValue(IncludePeriodicRescansInListProperty);
+			set => SetValue(IncludePeriodicRescansInListProperty, value);
+		}
+
 		void mnuCopyNotification_Click(object? sender, RoutedEventArgs e)
 		{
 			CopyToClipboard?.Invoke(this, FormatNotification());
@@ -56,6 +65,11 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 		void mnuCopySelectedText_Click(object? sender, RoutedEventArgs e)
 		{
 			CopyToClipboard?.Invoke(this, stbNotification.SelectedText);
+		}
+
+		void mnuShowRescans_Click(object? sender, RoutedEventArgs e)
+		{
+			ToggleIncludePeriodicRescansInList?.Invoke(this, EventArgs.Empty);
 		}
 
 		void stbNotification_ContextRequested(object? sender, RoutedEventArgs e)

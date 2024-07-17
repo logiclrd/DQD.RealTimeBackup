@@ -16,6 +16,7 @@
     <UserControl.ContextMenu>
         <ContextMenu>
             <MenuItem Header="Copy Notification" HotKey="Ctrl+C" Name="mnuCopyNotification" Click="mnuCopyNotification_Click" />
+            <MenuItem Header="Show Rescans" Name="mnuShowRescans" ToggleType="CheckBox" IsChecked="{Binding IncludePeriodicRescansInList}" Click="mnuShowRescans_Click" />
         </ContextMenu>
     </UserControl.ContextMenu>
     <StackPanel>
@@ -30,6 +31,7 @@
                 <ContextMenu>
                     <MenuItem Header="Copy" HotKey="Ctrl+C" InputGesture="Ctrl+C" Name="mnuCopySelectedText" Click="mnuCopySelectedText_Click" />
                     <MenuItem Header="Copy Notification" HotKey="Ctrl+Shift+C" InputGesture="Ctrl+Shift+C" Click="mnuCopyNotification_Click" />
+                    <MenuItem Header="Show Rescans" ToggleType="CheckBox" IsChecked="{Binding IncludePeriodicRescansInList}" Click="mnuShowRescans_Click" />
                 </ContextMenu>
             </SelectableTextBlock.ContextMenu>
         </SelectableTextBlock>
