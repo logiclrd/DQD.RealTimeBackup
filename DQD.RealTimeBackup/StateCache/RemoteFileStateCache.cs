@@ -673,8 +673,17 @@ namespace DQD.RealTimeBackup.StateCache
 					{
 						DebugLog("[AT] processing action");
 
-						while (!action.IsComplete && !_stopping)
-							ProcessCacheAction(action);
+						Monitor.Exit(_actionThreadSync);
+
+						try
+						{
+							while (!action.IsComplete && !_stopping)
+								ProcessCacheAction(action);
+						}
+						finally
+						{
+							Monitor.Enter(_actionThreadSync);
+						}
 
 						if (_stopping && !action.IsComplete)
 						{
