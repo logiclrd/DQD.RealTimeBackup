@@ -21,7 +21,7 @@ namespace DQD.RealTimeBackup.Restore
 {
 	class Program
 	{
-		static IContainer InitializeContainer(OperatingParameters parameters)
+		static IContainer InitializeContainer(CommandLineArguments args, OperatingParameters parameters)
 		{
 			var builder = new ContainerBuilder();
 
@@ -40,10 +40,16 @@ namespace DQD.RealTimeBackup.Restore
 
 			builder.RegisterType<B2RemoteStorage>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<RemoteFileStateCacheRemoteStorage>().AsImplementedInterfaces().SingleInstance();
+
+			if (args.UseFileState)
+				builder.RegisterType<RemoteFileStateCacheStorage>().AsImplementedInterfaces().SingleInstance();
+			else
+				builder.RegisterType<RemoteFileStateCacheRemoteStorage>().AsImplementedInterfaces().SingleInstance();
+
 			builder.RegisterType<ErrorLogger>()
 				.UsingConstructor(typeof(OperatingParameters))
 				.AsImplementedInterfaces().SingleInstance();
+
 			builder.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<CacheActionLog>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<ContentKeyGenerator>().AsImplementedInterfaces().SingleInstance();
@@ -98,16 +104,28 @@ namespace DQD.RealTimeBackup.Restore
 						}
 					}
 
-					var container = InitializeContainer(parameters);
+					var container = InitializeContainer(args, parameters);
 
 					var remoteFileStateCache = container.Resolve<IRemoteFileStateCache>();
 					var storage = container.Resolve<IRemoteStorage>();
 
-					storage.Authenticate();
+					bool storageAuthenticated = false;
+
+					void EnsureStorageAuthenticated()
+					{
+						if (!storageAuthenticated)
+						{
+							storageAuthenticated = true;
+							storage.Authenticate();
+						}
+					}
 
 					var fileStatesMapBuilder = new Lazy<Dictionary<string, FileState>>(
 						() =>
 						{
+							if (!args.UseFileState)
+								EnsureStorageAuthenticated();
+
 							return remoteFileStateCache.EnumerateFileStates().ToDictionary(
 								keySelector: fileState => fileState.Path,
 								elementSelector: fileState => fileState);
@@ -134,6 +152,8 @@ namespace DQD.RealTimeBackup.Restore
 
 								fileStatesMap.TryGetValue(filePath, out fileState);
 							}
+
+							EnsureStorageAuthenticated();
 
 							if (!args.UseFileState || (fileState == null))
 							{
@@ -169,19 +189,43 @@ namespace DQD.RealTimeBackup.Restore
 
 							using (var list = output.BeginList("All Files"))
 							{
-								foreach (var file in storage.EnumerateFiles("/content/", true))
+								if (args.UseFileState)
 								{
-									// The enumeration removes the supplied prefix from the returned paths, making them
-									// relative. But, since we supplied the '/' after 'content', this means that the
-									// returned paths are not rooted. Logically, though, they are, so we need to restore
-									// this property.
+									var fileNamesSorted = fileStatesMap.Keys.ToList();
 
-									file.Path = "/" + file.Path;
+									fileNamesSorted.Sort();
 
-									if (fileStatesMap.TryGetValue(file.Path, out var fileState))
-										file.FileSize = fileState.FileSize;
+									foreach (var path in fileNamesSorted)
+									{
+										var fileState = fileStatesMap[path];
 
-									list.EmitFile(file);
+										var file = new RemoteFileInfo(
+											fileState.Path,
+											fileState.FileSize,
+											fileState.LastModifiedUTC,
+											"");
+
+										list.EmitFile(file);
+									}
+								}
+								else
+								{
+									EnsureStorageAuthenticated();
+
+									foreach (var file in storage.EnumerateFiles("/content/", true))
+									{
+										// The enumeration removes the supplied prefix from the returned paths, making them
+										// relative. But, since we supplied the '/' after 'content', this means that the
+										// returned paths are not rooted. Logically, though, they are, so we need to restore
+										// this property.
+
+										file.Path = "/" + file.Path;
+
+										if (fileStatesMap.TryGetValue(file.Path, out var fileState))
+											file.FileSize = fileState.FileSize;
+
+										list.EmitFile(file);
+									}
 								}
 							}
 						}
@@ -226,23 +270,27 @@ namespace DQD.RealTimeBackup.Restore
 														continue;
 												}
 
+												string relativePath = fullPath.Substring(directoryPathWithSeparators.Length);
+
 												var fileState = fileStatesMap[fullPath];
 
 												var file = new RemoteFileInfo(
-													fileState.Path,
+													relativePath,
 													fileState.FileSize,
 													fileState.LastModifiedUTC,
 													"");
 
 												list.EmitFile(file);
 											}
-											else if (string.Compare(fileNamesSorted[i], directoryPathWithSeparators, StringComparison.InvariantCulture) > 0)
+											else if (string.Compare(fileNamesSorted[i], directoryPathWithSeparators) > 0)
 												break;
 										}
 									}
 								}
 								else
 								{
+									EnsureStorageAuthenticated();
+
 									string contentPointerFilesPrefix = "/content" + directoryPathWithSeparators;
 
 									using (var list = output.BeginList("Directory", directoryPath, args.Recursive))
@@ -266,6 +314,8 @@ namespace DQD.RealTimeBackup.Restore
 
 						if (args.RestoreFile.Any())
 						{
+							EnsureStorageAuthenticated();
+
 							var fileStatesMap = fileStatesMapBuilder.Value;
 
 							foreach (var filePath in args.RestoreFile)
@@ -279,7 +329,7 @@ namespace DQD.RealTimeBackup.Restore
 								if (toDirectory != ".")
 									Directory.CreateDirectory(toDirectory);
 
-								using (var list = output.BeginList("Download", Path.GetDirectoryName(filePath), args.Recursive))
+								using (var list = output.BeginList("Download", Path.GetDirectoryName(filePath), args.Recursive, trustFileSizes: true))
 								{
 									if (args.UseFileState && fileStatesMap.TryGetValue(filePath, out var fileState))
 									{
@@ -301,6 +351,8 @@ namespace DQD.RealTimeBackup.Restore
 
 						if (args.RestoreDirectory.Any())
 						{
+							EnsureStorageAuthenticated();
+
 							var fileStatesMap = args.UseFileState ? fileStatesMapBuilder.Value : default;
 
 							var fileNamesSorted = fileStatesMap?.Keys?.ToList();
@@ -327,23 +379,26 @@ namespace DQD.RealTimeBackup.Restore
 											if (fileNamesSorted[i].StartsWith(restorePrefix))
 											{
 												string filePath = fileNamesSorted[i];
+												string relativePath = filePath.Substring(restorePrefix.Length);
 
-												if (!args.Recursive)
+												if (relativePath.IndexOf('/') > 0)
 												{
-													if (filePath.IndexOf('/', restorePrefix.Length) > 0)
+													if (args.Recursive)
+														Directory.CreateDirectory(Path.Combine(toDirectory, Path.GetDirectoryName(relativePath)!));
+													else
 														continue;
 												}
 
 												var fileState = fileStatesMap![filePath];
 
-												string toFilePath = Path.Combine(toDirectory, filePath.TrimStart('/'));
+												string toFilePath = Path.Combine(toDirectory, relativePath.TrimStart('/'));
 
 												using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
 													storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
 
 												list.EmitFile(toFilePath);
 											}
-											else if (string.Compare(fileNamesSorted[i], restorePrefix, StringComparison.InvariantCulture) > 0)
+											else if (string.Compare(fileNamesSorted[i], restorePrefix) > 0)
 												break;
 										}
 									}
@@ -352,12 +407,14 @@ namespace DQD.RealTimeBackup.Restore
 								{
 									string contentPointerFilesPrefix = Path.Combine("/content", restorePrefix.TrimStart('/'));
 
-									using (var list = output.BeginList("Download", directoryPath, args.Recursive))
+									using (var list = output.BeginList("Download", directoryPath, args.Recursive, trustFileSizes: true))
 									{
 										foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
 										{
 											string filePath = contentPointerFilesPrefix + file.Path;
 											string toFilePath = Path.Combine(toDirectory, file.Path);
+
+											Directory.CreateDirectory(Path.GetDirectoryName(toFilePath)!);
 
 											using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
 												storage.DownloadFile(filePath, stream, CancellationToken.None);

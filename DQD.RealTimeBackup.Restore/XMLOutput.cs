@@ -28,9 +28,9 @@ namespace DQD.RealTimeBackup.Restore
 			}
 		}
 
-		public IOutputFileList BeginList(string listName, string? directoryPath = null, bool isRecursive = false)
+		public IOutputFileList BeginList(string listName, string? directoryPath = null, bool isRecursive = false, bool? trustFileSizes = default)
 		{
-			return new XMLOutputFileList(_writer, listName, directoryPath, isRecursive, _trustFileSizes);
+			return new XMLOutputFileList(_writer, listName, directoryPath, isRecursive, trustFileSizes ?? _trustFileSizes);
 		}
 
 		public void EmitError(Exception e)
