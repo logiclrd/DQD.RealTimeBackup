@@ -574,7 +574,7 @@ namespace DQD.RealTimeBackup.Storage
 
 			do
 				newContentKey = _contentKeyGenerator.GenerateContentKey();
-			while (GetFileIDByName(newContentKey) != null);
+			while (GetFileIDByName(newContentKey, throwIfNotFound: false) != null);
 
 			VerboseDiagnosticOutput("[B2] Uploading file to path: {0}", serverPath);
 			VerboseDiagnosticOutput("[B2] => New content key: {0}", newContentKey);
