@@ -462,12 +462,16 @@ namespace DQD.RealTimeBackup.Storage
 			{
 				const int MaxUploadAttempts = 3;
 
+				var startingPosition = contentStream.Position;
+
 				for (int retry = 0; retry < MaxUploadAttempts; retry++)
 				{
 					bool haveRetries = (retry + 1 < MaxUploadAttempts);
 
 					try
 					{
+						contentStream.Position = startingPosition;
+
 						Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
 							_parameters.RemoteStorageBucketID,
 							serverPath,
@@ -480,7 +484,7 @@ namespace DQD.RealTimeBackup.Storage
 							progress: progressCallback == null ? default : new UploadProgressProxy(progressCallback),
 							cancel: cancellationToken)));
 					}
-					catch when (haveRetries && !cancellationToken.IsCancellationRequested)
+					catch when (haveRetries && contentStream.CanSeek && !cancellationToken.IsCancellationRequested)
 					{
 					}
 				}
