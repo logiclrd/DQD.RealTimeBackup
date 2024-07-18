@@ -46,6 +46,7 @@ namespace DQD.RealTimeBackup.Restore
 				.AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<CacheActionLog>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<ContentKeyGenerator>().AsImplementedInterfaces().SingleInstance();
 
 			return builder.Build();
 		}
