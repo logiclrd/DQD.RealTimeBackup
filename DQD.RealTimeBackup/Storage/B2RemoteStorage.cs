@@ -770,6 +770,8 @@ namespace DQD.RealTimeBackup.Storage
 			request.Prefix = pathPrefix;
 			request.MaxFileCount = 1000;
 
+			string lastFileID = "";
+
 			while (true)
 			{
 				var response = Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.ListVersionsAsync(request, TimeSpan.Zero)));
@@ -785,6 +787,11 @@ namespace DQD.RealTimeBackup.Storage
 
 					if ((fileName.IndexOf('/') >= 0) && !recursive)
 						continue;
+
+					if (fileItem.FileId == lastFileID)
+						continue;
+
+					lastFileID = fileItem.FileId;
 
 					var fileInfo = new RemoteFileInfo(
 						fileName,

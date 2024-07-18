@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml.Serialization;
 
@@ -137,8 +138,13 @@ namespace DQD.RealTimeBackup.Tweaker
 				}
 			}
 
+			List<string>? filesWithMultipleVersions = null;
+
 			if (arguments.ListFilesWithMultipleVersions)
 			{
+				if (arguments.DownloadAllVersionsOfFileAtPath == "*")
+					filesWithMultipleVersions = new List<string>();
+
 				Console.WriteLine("Enumerating files...");
 
 				var paths = new HashSet<string>();
@@ -159,6 +165,8 @@ namespace DQD.RealTimeBackup.Tweaker
 								Console.WriteLine("Files with multiple versions in remote storage:");
 
 							Console.WriteLine("- {0}", filePath);
+
+							filesWithMultipleVersions?.Add(filePath);
 						}
 					}
 
@@ -170,6 +178,113 @@ namespace DQD.RealTimeBackup.Tweaker
 							Console.WriteLine();
 						else
 							Console.CursorLeft = 0;
+					}
+				}
+			}
+
+			if (arguments.DownloadAllVersionsOfFileAtPath != null)
+			{
+				bool inputRedirected = (arguments.DownloadAllVersionsOfFileAtPath == "*");
+
+				if (!inputRedirected)
+					filesWithMultipleVersions = new List<string>() { arguments.DownloadAllVersionsOfFileAtPath };
+
+				var fileVersionsData = inputRedirected ? new List<byte[]>() : default;
+
+				for (int i=0; i < filesWithMultipleVersions!.Count; i++)
+				{
+					string filePath = "/" + filesWithMultipleVersions[i].TrimStart('/');
+
+					Console.WriteLine("Scanning for file versions of: {0}", filePath);
+
+					string searchPrefix = "/content" + Path.GetDirectoryName(filePath);
+					string searchTarget = "/content" + filePath;
+
+					fileVersionsData?.Clear();
+
+					foreach (var file in remoteStorage.EnumerateFiles(searchPrefix, recursive: false))
+					{
+						string fullPath = Path.Combine(searchPrefix, file.Path);
+
+						if (fullPath == searchTarget)
+						{
+							if (!inputRedirected)
+							{
+								Console.WriteLine("File ID: {0}", file.RemoteFileID);
+								Console.WriteLine("Last Modified (UTC): {0}", file.LastModifiedUTC);
+								Console.WriteLine("File Size: {0}", file.FileSize);
+
+								Console.WriteLine();
+
+								if (file.FileSize > 100000)
+									continue;
+
+								Console.WriteLine("---");
+							}
+
+							var buffer = new MemoryStream();
+
+							remoteStorage.DownloadFileByID(file.RemoteFileID, buffer, CancellationToken.None);
+
+							if (!inputRedirected)
+							{
+								Console.WriteLine(Encoding.UTF8.GetString(buffer.ToArray()));
+								Console.WriteLine("---");
+							}
+
+							fileVersionsData?.Add(buffer.ToArray());
+						}
+					}
+
+					if (fileVersionsData.Any())
+					{
+						if (!ByteArraysAreIdentical(fileVersionsData))
+						{
+							Console.WriteLine("SKIPPING: {0}", filePath);
+							Console.WriteLine("Files do not have identical content");
+
+							filesWithMultipleVersions.RemoveAt(i);
+							i--;
+						}
+					}
+				}
+			}
+
+			if (arguments.DeleteAllButOneVersionOfFileAtPath != null)
+			{
+				bool inputRedirected = (arguments.DownloadAllVersionsOfFileAtPath == "*");
+
+				if (!inputRedirected)
+					filesWithMultipleVersions = new List<string>() { arguments.DownloadAllVersionsOfFileAtPath };
+
+				for (int i=0; i < filesWithMultipleVersions.Count; i++)
+				{
+					string filePath = "/" + filesWithMultipleVersions[i].TrimStart('/');
+
+					Console.WriteLine("Scanning for file versions of: {0}", filePath);
+
+					string searchPrefix = "/content" + Path.GetDirectoryName(filePath);
+					string searchTarget = "/content" + filePath;
+
+					bool foundFirst = false;
+
+					foreach (var file in remoteStorage.EnumerateFiles(searchPrefix, recursive: false))
+					{
+						string fullPath = Path.Combine(searchPrefix, file.Path);
+
+						if (fullPath == searchTarget)
+						{
+							if (!foundFirst)
+							{
+								Console.WriteLine("Keeping File ID: {0}", file.RemoteFileID);
+								foundFirst = true;
+							}
+							else
+							{
+								Console.WriteLine("Deleting File ID: {0}", file.RemoteFileID);
+								remoteStorage.DeleteFileByID(file.RemoteFileID, fullPath, CancellationToken.None);
+							}
+						}
 					}
 				}
 			}
@@ -250,6 +365,22 @@ namespace DQD.RealTimeBackup.Tweaker
 			}
 
 			return 0;
+		}
+
+		static bool ByteArraysAreIdentical(IEnumerable<byte[]> listOfArrays)
+		{
+			var arrays = listOfArrays.ToArray();
+
+			for (int i = 1; i < arrays.Length; i++)
+				if (arrays[i].Length != arrays[0].Length)
+					return false;
+
+			for (int o = 0; o < arrays[0].Length; o++)
+				for (int i = 1; i < arrays.Length; i++)
+					if (arrays[i][o] != arrays[0][o])
+						return false;
+
+			return true;
 		}
 	}
 }
