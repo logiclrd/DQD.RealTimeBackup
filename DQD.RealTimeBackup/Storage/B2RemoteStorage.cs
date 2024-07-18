@@ -26,6 +26,7 @@ namespace DQD.RealTimeBackup.Storage
 		// matter of uploading a new link to the key, and then deleting the old link to the key.
 
 		OperatingParameters _parameters;
+		IContentKeyGenerator _contentKeyGenerator;
 		IStorageClient _b2Client;
 		IErrorLogger _errorLogger;
 
@@ -45,9 +46,10 @@ namespace DQD.RealTimeBackup.Storage
 			return task.Result;
 		}
 
-		public B2RemoteStorage(OperatingParameters parameters, IStorageClient b2Client, IErrorLogger errorLogger)
+		public B2RemoteStorage(OperatingParameters parameters, IContentKeyGenerator contentKeyGenerator, IStorageClient b2Client, IErrorLogger errorLogger)
 		{
 			_parameters = parameters;
+			_contentKeyGenerator = contentKeyGenerator;
 			_b2Client = b2Client;
 			_errorLogger = errorLogger;
 		}
@@ -430,8 +432,6 @@ namespace DQD.RealTimeBackup.Storage
 			}
 		}
 
-		const string Alphabet = "0123456789abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ";
-
 		public void UploadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
 			VerboseDiagnosticOutput("[B2] Deleting existing file, if any: {0}", serverPath);
@@ -542,7 +542,7 @@ namespace DQD.RealTimeBackup.Storage
 			return false;
 		}
 
-		public void UploadFile(string serverPath, Stream contentStream, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
+		public void UploadFile(string serverPath, Stream contentStream, out string newContentKey, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
 		{
 			VerboseDiagnosticOutput("[B2] Checking for existing file: {0}", serverPath);
 
@@ -572,21 +572,16 @@ namespace DQD.RealTimeBackup.Storage
 				}
 			}
 
-			char[] contentKeyChars = new char[128];
-
-			Random rnd = new Random();
-
-			for (int i=0; i < contentKeyChars.Length; i++)
-				contentKeyChars[i] = Alphabet[rnd.Next(Alphabet.Length)];
-
-			contentKey = new string(contentKeyChars);
+			do
+				newContentKey = _contentKeyGenerator.GenerateContentKey();
+			while (GetFileIDByName(newContentKey) != null);
 
 			VerboseDiagnosticOutput("[B2] Uploading file to path: {0}", serverPath);
-			VerboseDiagnosticOutput("[B2] => New content key: {0}", contentKey);
+			VerboseDiagnosticOutput("[B2] => New content key: {0}", newContentKey);
 			VerboseDiagnosticOutput("[B2] => Uploading {0:#,##0} bytes to content path", contentStream.Length);
 
 			UploadFileImplementation(
-				contentKey,
+				newContentKey,
 				contentStream,
 				progressCallback,
 				cancellationToken);
@@ -595,7 +590,7 @@ namespace DQD.RealTimeBackup.Storage
 
 			UploadFileImplementation(
 				serverPath,
-				new MemoryStream(Encoding.UTF8.GetBytes(contentKey)),
+				new MemoryStream(Encoding.UTF8.GetBytes(newContentKey)),
 				progressCallback: null,
 				cancellationToken);
 

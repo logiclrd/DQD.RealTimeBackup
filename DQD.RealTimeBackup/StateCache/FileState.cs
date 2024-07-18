@@ -9,6 +9,7 @@ namespace DQD.RealTimeBackup.StateCache
 	public class FileState
 	{
 		public string Path;
+		public string ContentKey;
 		public long FileSize;
 		public DateTime LastModifiedUTC;
 		public string Checksum;
@@ -17,7 +18,7 @@ namespace DQD.RealTimeBackup.StateCache
 		public FileState()
 		{
 			// Dummy constructor.
-			Path = Checksum = "";
+			Path = ContentKey = Checksum = "";
 		}
 
 		public static FileState FromFile(string path, IChecksum checksum)
@@ -53,16 +54,22 @@ namespace DQD.RealTimeBackup.StateCache
 			}
 		}
 
+		const string EmptyContentKeyToken = "\"\"";
+
 		public static FileState Parse(string serialized)
 		{
-			string[] parts = serialized.Split(' ', 4);
+			string[] parts = serialized.Split(' ', 5);
 
 			var ret = new FileState();
 
-			ret.Path = parts[3];
+			ret.Path = parts[4];
+			ret.ContentKey = parts[3];
 			ret.LastModifiedUTC = new DateTime(ticks: long.Parse(parts[2]), DateTimeKind.Utc);
 			ret.Checksum = parts[0];
 			ret.FileSize = long.Parse(parts[1]);
+
+			if (ret.ContentKey == EmptyContentKeyToken)
+				ret.ContentKey = "";
 
 			return ret;
 		}
@@ -72,7 +79,12 @@ namespace DQD.RealTimeBackup.StateCache
 			if (Path.IndexOf('\n') >= 0)
 				throw new Exception("Sanity failure: Path contains a newline character.");
 
-			return $"{Checksum} {FileSize} {LastModifiedUTC.Ticks} {Path}";
+			string contentKeySerialized = ContentKey;
+
+			if (string.IsNullOrWhiteSpace(contentKeySerialized))
+				contentKeySerialized = EmptyContentKeyToken;
+
+			return $"{Checksum} {FileSize} {LastModifiedUTC.Ticks} {contentKeySerialized} {Path}";
 		}
 	}
 }

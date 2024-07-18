@@ -1511,6 +1511,16 @@ namespace DQD.RealTimeBackup.Agent
 						NonQuietDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
 						VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
 
+						VerboseDiagnosticOutput("[UP{0}] Building File State structure");
+
+						var newFileState =
+							new FileState()
+							{
+								FileSize = fileToUpload.FileSize,
+								LastModifiedUTC = fileToUpload.LastModifiedUTC,
+								Checksum = fileToUpload.Checksum,
+							};
+
 						try
 						{
 							using (var stream = File.OpenRead(fileToUpload.SourcePath))
@@ -1522,6 +1532,7 @@ namespace DQD.RealTimeBackup.Agent
 								_storage.UploadFile(
 									PlaceInContentPath(fileToUpload.Path),
 									stream,
+									out newFileState.ContentKey,
 									progress => _uploadThreadStatus[threadIndex]!.Progress = progress,
 									cancellationToken);
 
@@ -1553,12 +1564,7 @@ namespace DQD.RealTimeBackup.Agent
 						{
 							_remoteFileStateCache.UpdateFileState(
 								fileToUpload.Path,
-								new FileState()
-								{
-									FileSize = fileToUpload.FileSize,
-									LastModifiedUTC = fileToUpload.LastModifiedUTC,
-									Checksum = fileToUpload.Checksum,
-								});
+								newFileState);
 						}
 						catch (TaskCanceledException exception)
 						{

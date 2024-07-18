@@ -143,6 +143,15 @@ namespace DQD.RealTimeBackup
 		// Interval between periodic rescans. These are disabled while an initial backup is in progress.
 		public TimeSpan PeriodicRescanInterval = TimeSpan.FromHours(6);
 
+		// Number of characters in the random alphanumeric content keys used to make the uploaded files indirect.
+		// Space of unique content keys will be lg(ContentKeyAlphabet.Length) * ContentKeyLength bits.
+		// For ContentKeyLength 64 and ContentKeyAlphabet with digits and letters (upper and lower), the space
+		// is about 256 bits long. This is more than twice the number of meaningful bits in the best GUID.
+		public int ContentKeyLength = 64;
+
+		// Unique character set from which to draw the characters of a content key.
+		public string ContentKeyAlphabet = "0123456789abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ";
+
 		// Remote storage credentials.
 		public string RemoteStorageKeyID = "MUST BE SET IN CONFIGURATION FILE";
 		public string RemoteStorageApplicationKey = "MUST BE SET IN CONFIGURATION FILE";

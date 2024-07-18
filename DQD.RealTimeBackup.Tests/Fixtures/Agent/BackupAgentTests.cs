@@ -453,7 +453,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Agent
 			{
 				var fileContents = new List<string>();
 
-				var uploadedFiles = new List<(string Path, string Content)>();
+				var uploadedFiles = new List<(string Path, string ContentKey, string Content)>();
 
 				foreach (var reference in fileReferences)
 				{
@@ -468,16 +468,20 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Agent
 					fileContents.Add(contents);
 				}
 
-				storage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<Action<UploadProgress>>(), Arg.Any<CancellationToken>())).Do(
+				storage.When(x => x.UploadFile(Arg.Any<string>(), Arg.Any<Stream>(), out Arg.Any<string>(), Arg.Any<Action<UploadProgress>>(), Arg.Any<CancellationToken>())).Do(
 					x =>
 					{
-						string path = x.Arg<string>();
+						string path = x.ArgAt<string>(0);
 						Stream stream = x.Arg<Stream>();
+
+						string contentKey = Guid.NewGuid().ToString("N");
+
+						x[2] = contentKey;
 
 						string contents = new StreamReader(stream).ReadToEnd();
 
 						lock (uploadedFiles)
-							uploadedFiles.Add((path, contents));
+							uploadedFiles.Add((path, contentKey, contents));
 					});
 
 				// Act
@@ -503,6 +507,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Agent
 
 					uploadedFiles.Remove(uploadedFile);
 
+					uploadedFile.ContentKey.Should().NotBeNullOrWhiteSpace();
 					uploadedFile.Content.Should().Be(fileContents[i]);
 				}
 			}
