@@ -4,9 +4,16 @@ namespace DQD.RealTimeBackup.Restore
 {
 	public class TextOutput : IOutput
 	{
+		bool _trustFileSizes;
+
+		public TextOutput(bool trustFileSizes)
+		{
+			_trustFileSizes = trustFileSizes;
+		}
+
 		public IOutputFileList BeginList(string listName, string? directoryPath = null, bool isRecursive = false)
 		{
-			return new TextOutputFileList(listName, directoryPath, isRecursive);
+			return new TextOutputFileList(listName, directoryPath, isRecursive, _trustFileSizes);
 		}
 
 		public void EmitError(Exception e)

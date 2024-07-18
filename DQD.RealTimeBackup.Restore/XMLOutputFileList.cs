@@ -9,7 +9,7 @@ namespace DQD.RealTimeBackup.Restore
 	{
 		XmlWriter _writer;
 
-		public XMLOutputFileList(XmlWriter writer, string listName, string? path = null, bool isRecursive = false)
+		public XMLOutputFileList(XmlWriter writer, string listName, string? path = null, bool isRecursive = false, bool trustFileSizes = false)
 		{
 			_writer = writer;
 
@@ -20,6 +20,8 @@ namespace DQD.RealTimeBackup.Restore
 
 			if (isRecursive)
 				_writer.WriteAttributeString("IsRecursive", "true");
+
+			_writer.WriteAttributeString("FileSizeAuthoritative", trustFileSizes.ToString());
 		}
 
 		public override void Dispose()

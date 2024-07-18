@@ -8,11 +8,15 @@ namespace DQD.RealTimeBackup.Restore
 		XmlWriter _writer;
 		bool _isDisposed;
 
-		public XMLOutput()
+		bool _trustFileSizes;
+
+		public XMLOutput(bool trustFileSizes)
 		{
 			_writer = new XmlTextWriter(Console.Out);
 
 			_writer.WriteStartElement("Output");
+
+			_trustFileSizes = trustFileSizes;
 		}
 
 		public void Dispose()
@@ -26,7 +30,7 @@ namespace DQD.RealTimeBackup.Restore
 
 		public IOutputFileList BeginList(string listName, string? directoryPath = null, bool isRecursive = false)
 		{
-			return new XMLOutputFileList(_writer, listName, directoryPath, isRecursive);
+			return new XMLOutputFileList(_writer, listName, directoryPath, isRecursive, _trustFileSizes);
 		}
 
 		public void EmitError(Exception e)

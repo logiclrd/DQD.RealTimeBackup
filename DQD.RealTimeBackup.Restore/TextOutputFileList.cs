@@ -8,8 +8,9 @@ namespace DQD.RealTimeBackup.Restore
 	{
 		int _fileFieldsStartColumn;
 		string _fileFieldsIndent;
+		bool _trustFileSizes;
 
-		public TextOutputFileList(string listName, string? path = null, bool isRecursive = false)
+		public TextOutputFileList(string listName, string? path = null, bool isRecursive = false, bool trustFileSizes = false)
 		{
 			int fileSizeWidth = 17; // Allows files up to 9.9 TB in size.
 			int dateWidth = DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss tt").Length;
@@ -19,6 +20,8 @@ namespace DQD.RealTimeBackup.Restore
 			_fileFieldsStartColumn = lineWidth - 1 - dateWidth - 2 - fileSizeWidth;
 
 			_fileFieldsIndent = new string(' ', Math.Max(2, _fileFieldsStartColumn));
+
+			_trustFileSizes = trustFileSizes;
 
 			if (path == null)
 				Console.WriteLine(listName);
@@ -49,7 +52,12 @@ namespace DQD.RealTimeBackup.Restore
 			}
 
 			Console.Write(fileInfo.FileSize.ToString("#,###,###,###,##0").PadLeft(17));
-			Console.Write("  ");
+
+			if (_trustFileSizes)
+				Console.Write("  ");
+			else
+				Console.Write("? ");
+
 			Console.WriteLine(fileInfo.LastModifiedUTC.ToString("yyyy-MM-dd HH:mm:ss tt"));
 		}
 

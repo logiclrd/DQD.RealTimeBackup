@@ -30,6 +30,9 @@ namespace DQD.RealTimeBackup.Restore
 		[Argument("/CATFILE")]
 		public string? CatFile = null;
 
+		[Argument("/USEFILESTATE")]
+		public bool UseFileState = false;
+
 		[Switch(Description = "Output in XML, making it machine-readable. The output is streamed as it arrives, so an XML parser that returns nodes as it gets them can read the output in realtime.")]
 		public bool XML = false;
 

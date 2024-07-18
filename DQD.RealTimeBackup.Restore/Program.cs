@@ -67,9 +67,9 @@ namespace DQD.RealTimeBackup.Restore
 			if (args.CatFile != null)
 				output = null;
 			else if (args.XML)
-				output = new XMLOutput();
+				output = new XMLOutput(trustFileSizes: args.UseFileState);
 			else
-				output = new TextOutput();
+				output = new TextOutput(trustFileSizes: args.UseFileState);
 
 			using (output)
 			{
@@ -104,6 +104,14 @@ namespace DQD.RealTimeBackup.Restore
 
 					storage.Authenticate();
 
+					var fileStatesMapBuilder = new Lazy<Dictionary<string, FileState>>(
+						() =>
+						{
+							return remoteFileStateCache.EnumerateFileStates().ToDictionary(
+								keySelector: fileState => fileState.Path,
+								elementSelector: fileState => fileState);
+						});
+
 					if (args.CatFile != null)
 					{
 						var backblazeClientOptions = container.Resolve<ClientOptions>();
@@ -117,11 +125,30 @@ namespace DQD.RealTimeBackup.Restore
 
 							string filePath = args.CatFile;
 
-							string contentPointerFilePath = Path.Combine("/content", filePath.TrimStart('/'));
+							FileState? fileState = null;
 
-							using (var outputStream = Console.OpenStandardOutput(bufferSize: 1048576))
+							if (args.UseFileState)
 							{
-								storage.DownloadFile(contentPointerFilePath, outputStream, CancellationToken.None);
+								var fileStatesMap = fileStatesMapBuilder.Value;
+
+								fileStatesMap.TryGetValue(filePath, out fileState);
+							}
+
+							if (!args.UseFileState || (fileState == null))
+							{
+								string contentPointerFilePath = Path.Combine("/content", filePath.TrimStart('/'));
+
+								using (var outputStream = Console.OpenStandardOutput(bufferSize: 1048576))
+								{
+									storage.DownloadFile(contentPointerFilePath, outputStream, CancellationToken.None);
+								}
+							}
+							else
+							{
+								using (var outputStream = Console.OpenStandardOutput(bufferSize: 1048576))
+								{
+									storage.DownloadFileDirect(fileState.ContentKey, outputStream, CancellationToken.None);
+								}
 							}
 						}
 						finally
@@ -133,19 +160,11 @@ namespace DQD.RealTimeBackup.Restore
 					if (output == null)
 						return 0;
 
-					var fileSizeMapBuilder = new Lazy<Dictionary<string, long>>(
-						() =>
-						{
-							return remoteFileStateCache.EnumerateFileStates().ToDictionary(
-								keySelector: fileState => fileState.Path,
-								elementSelector: fileState => fileState.FileSize);
-						});
-
 					using (output)
 					{
 						if (args.ListAllFiles)
 						{
-							var fileSizeMap = fileSizeMapBuilder.Value;
+							var fileStatesMap = fileStatesMapBuilder.Value;
 
 							using (var list = output.BeginList("All Files"))
 							{
@@ -158,7 +177,9 @@ namespace DQD.RealTimeBackup.Restore
 
 									file.Path = "/" + file.Path;
 
-									fileSizeMap.TryGetValue(file.Path, out file.FileSize);
+									if (fileStatesMap.TryGetValue(file.Path, out var fileState))
+										file.FileSize = fileState.FileSize;
+
 									list.EmitFile(file);
 								}
 							}
@@ -166,7 +187,15 @@ namespace DQD.RealTimeBackup.Restore
 
 						if (args.ListDirectory.Any())
 						{
-							var fileSizeMap = fileSizeMapBuilder.Value;
+							var fileStatesMap = fileStatesMapBuilder.Value;
+
+							var fileNamesSorted = new List<string>();
+
+							if (args.UseFileState)
+							{
+								fileNamesSorted.AddRange(fileStatesMap.Keys);
+								fileNamesSorted.Sort();
+							}
 
 							foreach (var directoryPath in args.ListDirectory)
 							{
@@ -177,70 +206,164 @@ namespace DQD.RealTimeBackup.Restore
 								if (!directoryPathWithSeparators.EndsWith("/"))
 									directoryPathWithSeparators = directoryPathWithSeparators + '/';
 
-								string contentPointerFilesPrefix = "/content" + directoryPathWithSeparators;
-
-								using (var list = output.BeginList("Directory", directoryPath, args.Recursive))
+								if (args.UseFileState)
 								{
-									foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
+									using (var list = output.BeginList("Directory", directoryPath, args.Recursive))
 									{
-										// The enumeration removes the supplied prefix from the returned paths, making them
-										// relative. We need to determine the full path in order to inject file sizes.
+										for (int i=0; i < fileNamesSorted.Count; i++)
+										{
+											if (fileNamesSorted[i].StartsWith(directoryPathWithSeparators))
+											{
+												// The enumeration removes the supplied prefix from the returned paths, making them
+												// relative. We need to determine the full path in order to inject file sizes.
 
-										string fullPath = directoryPathWithSeparators + file.Path;
+												string fullPath = fileNamesSorted[i];
 
-										fileSizeMap.TryGetValue(fullPath, out file.FileSize);
-										list.EmitFile(file);
+												if (!args.Recursive)
+												{
+													if (fullPath.IndexOf('/', directoryPathWithSeparators.Length) > 0)
+														continue;
+												}
+
+												var fileState = fileStatesMap[fullPath];
+
+												var file = new RemoteFileInfo(
+													fileState.Path,
+													fileState.FileSize,
+													fileState.LastModifiedUTC,
+													"");
+
+												list.EmitFile(file);
+											}
+											else if (string.Compare(fileNamesSorted[i], directoryPathWithSeparators, StringComparison.InvariantCulture) > 0)
+												break;
+										}
+									}
+								}
+								else
+								{
+									string contentPointerFilesPrefix = "/content" + directoryPathWithSeparators;
+
+									using (var list = output.BeginList("Directory", directoryPath, args.Recursive))
+									{
+										foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
+										{
+											// The enumeration removes the supplied prefix from the returned paths, making them
+											// relative. We need to determine the full path in order to inject file sizes.
+
+											string fullPath = directoryPathWithSeparators + file.Path;
+
+											if (fileStatesMap.TryGetValue(fullPath, out var fileState))
+												file.FileSize = fileState.FileSize;
+
+											list.EmitFile(file);
+										}
 									}
 								}
 							}
 						}
 
-						foreach (var filePath in args.RestoreFile)
+						if (args.RestoreFile.Any())
 						{
-							string toFilePath = Path.Combine(
-								args.RestoreTo == null ? "." : args.RestoreTo,
-								filePath.TrimStart('/'));
+							var fileStatesMap = fileStatesMapBuilder.Value;
 
-							string toDirectory = Path.GetDirectoryName(toFilePath)!;
-
-							if (toDirectory != ".")
-								Directory.CreateDirectory(toDirectory);
-
-							string contentPointerFilePath = Path.Combine("/content", filePath.TrimStart('/'));
-
-							using (var list = output.BeginList("Download", Path.GetDirectoryName(filePath), args.Recursive))
+							foreach (var filePath in args.RestoreFile)
 							{
-								using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
-									storage.DownloadFile(contentPointerFilePath, stream, CancellationToken.None);
+								string toFilePath = Path.Combine(
+									args.RestoreTo == null ? "." : args.RestoreTo,
+									filePath.TrimStart('/'));
 
-								list.EmitFile(toFilePath);
+								string toDirectory = Path.GetDirectoryName(toFilePath)!;
+
+								if (toDirectory != ".")
+									Directory.CreateDirectory(toDirectory);
+
+								using (var list = output.BeginList("Download", Path.GetDirectoryName(filePath), args.Recursive))
+								{
+									if (args.UseFileState && fileStatesMap.TryGetValue(filePath, out var fileState))
+									{
+										using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
+											storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
+									}
+									else
+									{
+										string contentPointerFilePath = Path.Combine("/content", filePath.TrimStart('/'));
+
+										using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
+											storage.DownloadFile(contentPointerFilePath, stream, CancellationToken.None);
+									}
+
+									list.EmitFile(toFilePath);
+								}
 							}
 						}
 
-						foreach (var directoryPath in args.RestoreDirectory)
+						if (args.RestoreDirectory.Any())
 						{
-							string restorePrefix = directoryPath.TrimEnd('/') + '/';
+							var fileStatesMap = args.UseFileState ? fileStatesMapBuilder.Value : default;
 
-							string toDirectory = Path.Combine(
-								args.RestoreTo == null ? "." : args.RestoreTo,
-								directoryPath.TrimStart('/'));
+							var fileNamesSorted = fileStatesMap?.Keys?.ToList();
 
-							if (toDirectory != ".")
-								Directory.CreateDirectory(toDirectory);
+							fileNamesSorted?.Sort();
 
-							string contentPointerFilesPrefix = Path.Combine("/content", restorePrefix.TrimStart('/'));
-
-							using (var list = output.BeginList("Download", directoryPath, args.Recursive))
+							foreach (var directoryPath in args.RestoreDirectory)
 							{
-								foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
+								string restorePrefix = directoryPath.TrimEnd('/') + '/';
+
+								string toDirectory = Path.Combine(
+									args.RestoreTo == null ? "." : args.RestoreTo,
+									directoryPath.TrimStart('/'));
+
+								if (toDirectory != ".")
+									Directory.CreateDirectory(toDirectory);
+
+								if (args.UseFileState)
 								{
-									string filePath = contentPointerFilesPrefix + file.Path;
-									string toFilePath = Path.Combine(toDirectory, file.Path);
+									using (var list = output.BeginList("Download", directoryPath, args.Recursive))
+									{
+										for (int i=0; i < fileNamesSorted!.Count; i++)
+										{
+											if (fileNamesSorted[i].StartsWith(restorePrefix))
+											{
+												string filePath = fileNamesSorted[i];
 
-									using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
-										storage.DownloadFile(filePath, stream, CancellationToken.None);
+												if (!args.Recursive)
+												{
+													if (filePath.IndexOf('/', restorePrefix.Length) > 0)
+														continue;
+												}
 
-									list.EmitFile(toFilePath);
+												var fileState = fileStatesMap![filePath];
+
+												string toFilePath = Path.Combine(toDirectory, filePath.TrimStart('/'));
+
+												using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
+													storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
+
+												list.EmitFile(toFilePath);
+											}
+											else if (string.Compare(fileNamesSorted[i], restorePrefix, StringComparison.InvariantCulture) > 0)
+												break;
+										}
+									}
+								}
+								else
+								{
+									string contentPointerFilesPrefix = Path.Combine("/content", restorePrefix.TrimStart('/'));
+
+									using (var list = output.BeginList("Download", directoryPath, args.Recursive))
+									{
+										foreach (var file in storage.EnumerateFiles(contentPointerFilesPrefix, args.Recursive))
+										{
+											string filePath = contentPointerFilesPrefix + file.Path;
+											string toFilePath = Path.Combine(toDirectory, file.Path);
+
+											using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
+												storage.DownloadFile(filePath, stream, CancellationToken.None);
+
+											list.EmitFile(toFilePath);
+										}
+									}
 								}
 							}
 						}
