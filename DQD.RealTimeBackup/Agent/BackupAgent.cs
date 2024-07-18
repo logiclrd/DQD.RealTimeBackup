@@ -1637,7 +1637,7 @@ namespace DQD.RealTimeBackup.Agent
 		{
 			_stopping = true;
 
-			NonQuietDiagnosticOutput("Cancelling pending queue path operations");
+			NonQuietDiagnosticOutput("Cancelling pending queue-path operations");
 			CancelQueuePathForOpenFilesCheck();
 
 			NonQuietDiagnosticOutput("Stopping remote file state cache");

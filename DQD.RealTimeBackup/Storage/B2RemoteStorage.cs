@@ -14,6 +14,7 @@ using Bytewizer.Backblaze.Client;
 using Bytewizer.Backblaze.Models;
 
 using HttpStatusCode = System.Net.HttpStatusCode;
+using Bytewizer.Backblaze.Utility;
 
 namespace DQD.RealTimeBackup.Storage
 {
@@ -57,13 +58,16 @@ namespace DQD.RealTimeBackup.Storage
 		object _authenticationSync = new object();
 		long _authenticationCount;
 
-		public void Authenticate()
-		{
-			long authenticationCountOnEntry = _authenticationCount;
+		long GetAuthenticationState() => _authenticationCount;
 
+		public void Authenticate()
+			=> Authenticate(GetAuthenticationState());
+
+		void Authenticate(long previousAuthenticationState)
+		{
 			lock (_authenticationSync)
 			{
-				if (_authenticationCount == authenticationCountOnEntry)
+				if (_authenticationCount == previousAuthenticationState)
 				{
 					_b2Client.Connect();
 					_authenticationCount++;
@@ -106,6 +110,8 @@ namespace DQD.RealTimeBackup.Storage
 
 		async Task<IApiResults<TResult>> AutomaticallyReauthenticateAsync<TResult>(Func<Task<IApiResults<TResult>>> action)
 		{
+			long authenticationStateOnEntry = GetAuthenticationState();
+
 			var result = await RetryIfNoTomesAreAvailable(action);
 
 			if (result.IsSuccessStatusCode)
@@ -113,7 +119,20 @@ namespace DQD.RealTimeBackup.Storage
 
 			if (result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
 			{
-				Authenticate();
+				const int MaxAuthenticateRetries = 3;
+
+				for (int retry = 0; retry < MaxAuthenticateRetries; retry++)
+				{
+					bool haveRetries = (retry + 1 < MaxAuthenticateRetries);
+
+					try
+					{
+						Authenticate(authenticationStateOnEntry);
+					}
+					catch when (haveRetries)
+					{
+					}
+				}
 
 				result = await RetryIfNoTomesAreAvailable(action);
 
@@ -242,28 +261,37 @@ namespace DQD.RealTimeBackup.Storage
 				functor = () => _b2Client.DownloadByIdAsync(request, buffer, default, cancellationToken);
 			}
 
-			try
-			{
-				var result = Wait(AutomaticallyReauthenticateAsync(functor));
+			const int MaxDownloadRetries = 3;
 
-				if (!result.IsSuccessStatusCode)
+			for (int retry = 0; retry < MaxDownloadRetries; retry++)
+			{
+				bool haveRetries = (retry + 1 < MaxDownloadRetries);
+
+				try
 				{
-					if (result.StatusCode == System.Net.HttpStatusCode.NotFound)
-						return null;
-					else
-						throw new Exception("The operation did not complete successfully.");
-				}
+					var result = Wait(AutomaticallyReauthenticateAsync(functor));
 
-				return Encoding.UTF8.GetString(buffer.ToArray());
+					if (!result.IsSuccessStatusCode)
+					{
+						if (result.StatusCode == System.Net.HttpStatusCode.NotFound)
+							return null;
+						else
+							continue;
+					}
+
+					return Encoding.UTF8.GetString(buffer.ToArray());
+				}
+				catch (AggregateException ex)
+				{
+					if ((ex.InnerException is ApiException apiException)
+					 && (apiException.StatusCode == System.Net.HttpStatusCode.NotFound))
+						return null;
+					else if (!haveRetries || cancellationToken.IsCancellationRequested)
+						throw;
+				}
 			}
-			catch (AggregateException ex)
-			{
-				if ((ex.InnerException is ApiException apiException)
-			     && (apiException.StatusCode == System.Net.HttpStatusCode.NotFound))
-					return null;
-				else
-					throw;
-			}
+
+			throw new Exception("The operation did not complete successfully.");
 		}
 
 		// This method is intended for small resources.
@@ -304,16 +332,25 @@ namespace DQD.RealTimeBackup.Storage
 		{
 			Action<UploadProgress> _progressCallback;
 
+			SpeedCalculator _speedCalculator;
+
 			public UploadProgressProxy(Action<UploadProgress> progressCallback)
 			{
 				_progressCallback = progressCallback;
+
+				_speedCalculator = new SpeedCalculator();
 			}
 
 			public void Report(ICopyProgress value)
 			{
 				var uploadProgress = new UploadProgress();
 
-				uploadProgress.BytesPerSecond = value.BytesPerSecond;
+				// Calculate the speed ourselves, so that we can bridge over the boundary between chunks in
+				// large uploads. Otherwise, right at the start of chunks there are sometimes sudden jumps
+				// to implausibly high speeds, just for a second or so.
+				_speedCalculator.AddSample(value.BytesTransferred);
+
+				uploadProgress.BytesPerSecond = _speedCalculator.CalculateBytesPerSecond();
 				uploadProgress.BytesTransferred = value.BytesTransferred;
 
 				_progressCallback(uploadProgress);
@@ -361,8 +398,11 @@ namespace DQD.RealTimeBackup.Storage
 
 					// Chunks just sometimes randomly fail. Give 'em another go instead of giving up immediately.
 					IApiResults<UploadPartResponse>? partResponse = null;
+					Exception? lastException = null;
 
-					for (int i = 0; i < 3; i++)
+					const int MaxChunkAttempts = 3;
+
+					for (int i = 0; i < MaxChunkAttempts; i++)
 					{
 						try
 						{
@@ -383,12 +423,14 @@ namespace DQD.RealTimeBackup.Storage
 							if (partResponse.IsSuccessStatusCode)
 								break;
 						}
-						catch {}
+						catch (Exception e)
+						{
+							lastException = e;
+						}
 					}
 
-					// I don't think this ever actually happens, but it satisfies the compiler's static analysis.
 					if (partResponse == null)
-						throw new Exception("Error uploading chunk: did not get an UploadPartResponse");
+						throw new Exception("Error uploading chunk #" + partNumber + " at offset " + offset + " after " + MaxChunkAttempts + " attempts. Path: " + serverPath, lastException);
 
 					partResponse.EnsureSuccessStatusCode();
 
@@ -418,17 +460,30 @@ namespace DQD.RealTimeBackup.Storage
 				UploadFileInChunks(serverPath, contentStream, progressCallback, cancellationToken);
 			else
 			{
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
-					_parameters.RemoteStorageBucketID,
-					serverPath,
-					contentStream,
-					lastModified: DateTime.UtcNow,
-					isReadOnly: false,
-					isHidden: false,
-					isArchive: true,
-					isCompressed: false,
-					progress: progressCallback == null ? default : new UploadProgressProxy(progressCallback),
-					cancel: cancellationToken)));
+				const int MaxUploadAttempts = 3;
+
+				for (int retry = 0; retry < MaxUploadAttempts; retry++)
+				{
+					bool haveRetries = (retry + 1 < MaxUploadAttempts);
+
+					try
+					{
+						Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.UploadAsync(
+							_parameters.RemoteStorageBucketID,
+							serverPath,
+							contentStream,
+							lastModified: DateTime.UtcNow,
+							isReadOnly: false,
+							isHidden: false,
+							isArchive: true,
+							isCompressed: false,
+							progress: progressCallback == null ? default : new UploadProgressProxy(progressCallback),
+							cancel: cancellationToken)));
+					}
+					catch when (haveRetries && !cancellationToken.IsCancellationRequested)
+					{
+					}
+				}
 			}
 		}
 
