@@ -121,9 +121,9 @@ namespace DQD.RealTimeBackup.Storage
 			{
 				const int MaxAuthenticateRetries = 3;
 
-				for (int retry = 0; retry < MaxAuthenticateRetries; retry++)
+				for (int retry = 1; retry <= MaxAuthenticateRetries; retry++)
 				{
-					bool haveRetries = (retry + 1 < MaxAuthenticateRetries);
+					bool haveRetries = (retry < MaxAuthenticateRetries);
 
 					try
 					{
@@ -264,9 +264,9 @@ namespace DQD.RealTimeBackup.Storage
 
 			const int MaxDownloadRetries = 3;
 
-			for (int retry = 0; retry < MaxDownloadRetries; retry++)
+			for (int retry = 1; retry <= MaxDownloadRetries; retry++)
 			{
-				bool haveRetries = (retry + 1 < MaxDownloadRetries);
+				bool haveRetries = (retry < MaxDownloadRetries);
 
 				try
 				{
@@ -441,7 +441,25 @@ namespace DQD.RealTimeBackup.Storage
 					partNumber++;
 				}
 
-				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.FinishLargeFileAsync(startResponse.Response.FileId, partChecksums)));
+				const int MaxFinishRetries = 3;
+
+				for (int retry = 1; retry <= MaxFinishRetries; retry++)
+				{
+					bool haveRetries = (retry < MaxFinishRetries);
+
+					try
+					{
+						Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Parts.FinishLargeFileAsync(startResponse.Response.FileId, partChecksums)));
+						break;
+					}
+					catch when (haveRetries)
+					{
+					}
+					catch (Exception ex)
+					{
+						throw new Exception("Error completing file after " + (partNumber - 1) + " parts uploaded. Attempted finish call " + MaxFinishRetries + " times. Path: " + serverPath, ex);
+					}
+				}
 			}
 			catch
 			{
@@ -465,9 +483,9 @@ namespace DQD.RealTimeBackup.Storage
 
 				var startingPosition = contentStream.Position;
 
-				for (int retry = 0; retry < MaxUploadAttempts; retry++)
+				for (int retry = 1; retry <= MaxUploadAttempts; retry++)
 				{
-					bool haveRetries = (retry + 1 < MaxUploadAttempts);
+					bool haveRetries = (retry < MaxUploadAttempts);
 
 					try
 					{
