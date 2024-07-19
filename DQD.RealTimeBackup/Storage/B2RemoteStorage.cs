@@ -533,10 +533,29 @@ namespace DQD.RealTimeBackup.Storage
 
 					for (int retry = 1; retry <= MaxRetries; retry++)
 					{
-						var result = _b2Client.Files.ListVersionsAsync(request, cacheTTL: TimeSpan.FromSeconds(10));
+						bool haveRetries = (retry < MaxRetries);
 
-						if (result != null)
-							return result;
+						try
+						{
+							var result = _b2Client.Files.ListVersionsAsync(request, cacheTTL: TimeSpan.FromSeconds(10));
+
+							if (result != null)
+								return result;
+						}
+						catch when (haveRetries)
+						{
+							Thread.Sleep(500);
+							continue;
+						}
+						catch (Exception e)
+						{
+							_errorLogger.LogError(
+								"Exception calling B2 Client ListVersionsAsync",
+								"The call to B2Client.Files.ListVersionsAsync threw an exception. Retries have been exhausted.",
+								exception: e);
+
+							throw;
+						}
 
 						_errorLogger.LogError(
 							"B2 Client ListVersionsAsync returned null",
