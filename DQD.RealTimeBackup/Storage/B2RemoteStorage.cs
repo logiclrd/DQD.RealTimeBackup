@@ -479,7 +479,7 @@ namespace DQD.RealTimeBackup.Storage
 				UploadFileInChunks(serverPath, contentStream, progressCallback, cancellationToken);
 			else
 			{
-				const int MaxUploadAttempts = 3;
+				const int MaxUploadAttempts = 5;
 
 				var startingPosition = contentStream.Position;
 
@@ -509,6 +509,17 @@ namespace DQD.RealTimeBackup.Storage
 					}
 					catch when (haveRetries && contentStream.CanSeek && !cancellationToken.IsCancellationRequested)
 					{
+					}
+					catch (Exception e)
+					{
+						if (!contentStream.CanSeek)
+							throw new Exception("Can't retry upload because the content stream is not seekable", e);
+						if (cancellationToken.IsCancellationRequested)
+							throw new TaskCanceledException("Upload cancelled", e);
+						if (!haveRetries)
+							throw new Exception("Upload task failed after " + MaxUploadAttempts + " retries", e);
+
+						throw new Exception("Unknown failure of upload task", e);
 					}
 				}
 			}
