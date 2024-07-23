@@ -226,12 +226,30 @@ namespace DQD.RealTimeBackup.Storage
 				functor = () => _b2Client.DownloadByIdAsync(request, buffer, default, cancellationToken);
 			}
 
-			var result = Wait(AutomaticallyReauthenticateAsync(functor));
+			const int MaxDownloadAttempts = 3;
 
-			if (!result.IsSuccessStatusCode)
-				throw new Exception("The operation did not complete successfully.");
+			for (int retry = 1; retry <= MaxDownloadAttempts; retry++)
+			{
+				bool haveRetries = (retry < MaxDownloadAttempts);
 
-			return Encoding.UTF8.GetString(buffer.ToArray());
+				try
+				{
+					buffer.Position = 0;
+					buffer.SetLength(0);
+
+					var result = Wait(AutomaticallyReauthenticateAsync(functor));
+
+					if (!result.IsSuccessStatusCode)
+						throw new Exception("The operation did not complete successfully.");
+
+					return Encoding.UTF8.GetString(buffer.ToArray());
+				}
+				catch when (haveRetries)
+				{
+				}
+			}
+
+			throw new Exception("Failed to download file after " + MaxDownloadAttempts + " attempts: " + serverPath);
 		}
 
 		string? DownloadFileStringNoErrorIfNonexistent(string serverPath, CancellationToken cancellationToken)

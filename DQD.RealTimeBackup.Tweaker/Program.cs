@@ -236,7 +236,7 @@ namespace DQD.RealTimeBackup.Tweaker
 						}
 					}
 
-					if (fileVersionsData.Any())
+					if ((fileVersionsData != null) && fileVersionsData.Any())
 					{
 						if (!ByteArraysAreIdentical(fileVersionsData))
 						{
@@ -254,8 +254,13 @@ namespace DQD.RealTimeBackup.Tweaker
 			{
 				bool inputRedirected = (arguments.DownloadAllVersionsOfFileAtPath == "*");
 
-				if (!inputRedirected)
-					filesWithMultipleVersions = new List<string>() { arguments.DownloadAllVersionsOfFileAtPath };
+				if (!inputRedirected || (filesWithMultipleVersions == null))
+				{
+					filesWithMultipleVersions = new List<string>();
+
+					if (arguments.DownloadAllVersionsOfFileAtPath != null)
+						filesWithMultipleVersions.Add(arguments.DownloadAllVersionsOfFileAtPath);
+				}
 
 				for (int i=0; i < filesWithMultipleVersions.Count; i++)
 				{
