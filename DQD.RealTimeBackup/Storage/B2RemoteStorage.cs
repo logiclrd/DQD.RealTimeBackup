@@ -226,7 +226,7 @@ namespace DQD.RealTimeBackup.Storage
 				functor = () => _b2Client.DownloadByIdAsync(request, buffer, default, cancellationToken);
 			}
 
-			const int MaxDownloadAttempts = 3;
+			const int MaxDownloadAttempts = 5;
 
 			for (int retry = 1; retry <= MaxDownloadAttempts; retry++)
 			{
@@ -246,6 +246,10 @@ namespace DQD.RealTimeBackup.Storage
 				}
 				catch when (haveRetries)
 				{
+				}
+				catch (Exception ex)
+				{
+					throw new Exception("Failed to download file after " + MaxDownloadAttempts + " attempts: " + serverPath, ex);
 				}
 			}
 

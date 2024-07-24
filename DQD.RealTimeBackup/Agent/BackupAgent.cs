@@ -1352,7 +1352,7 @@ namespace DQD.RealTimeBackup.Agent
 			if (ex is NullResponseException)
 				return true;
 
-			if (ex is HttpRequestException httpException)
+			if ((ex is HttpRequestException httpException) && httpException.StatusCode.HasValue)
 				return (httpException.StatusCode < HttpStatusCode.InternalServerError);
 
 			if (ex is AggregateException aggregate)
