@@ -5,6 +5,8 @@ tab_width = 2
 insert_final_newline = true
 charset = utf-8-bom
 
+dotnet_diagnostic.IDE0047.severity = none
+
 [*.axaml]
 indent_size = 4
 indent_style = space
