@@ -49,5 +49,20 @@ namespace DQD.RealTimeBackup.Interop
 		{
 			return new FileAccessNotifyFlags(left._value | (int)right);
 		}
+
+		[Flags]
+		public enum Control
+		{
+			[Description("FAN_CLOEXEC")]         CloseOnExec       = 0x00000001,
+			[Description("FAN_NONBLOCK")]        NonBlocking       = 0x00000002,
+			[Description("FAN_UNLIMITED_QUEUE")] UnlimitedQueue    = 0x00000010,
+			[Description("FAN_UNLIMITED_MARKS")] UnlimitedMarks    = 0x00000020,
+			[Description("FAN_ENABLE_AUDIT")]    EnableAuditEvents = 0x00000040,
+		}
+
+		public static FileAccessNotifyFlags operator |(FileAccessNotifyFlags left, Control right)
+		{
+			return new FileAccessNotifyFlags(left._value | (int)right);
+		}
 	}
 }

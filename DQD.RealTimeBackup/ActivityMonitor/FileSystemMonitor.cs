@@ -46,10 +46,22 @@ namespace DQD.RealTimeBackup.ActivityMonitor
 
 		internal void ProcessEvent(FileAccessNotifyEvent @event)
 		{
+			bool lostEvents = @event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.LostEvents);
+
+			if (lostEvents)
+			{
+				Console.Error.WriteLine("  *** Received notification of lost fanotify events");
+				_errorLogger.LogError("Some filesystem notification events were lost. The backup of one or more files may be out-of-date until the next rescan.", ErrorLogger.Summary.SystemError);
+			}
+
 			if (!@event.InformationStructures.Any())
 			{
-				Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
-				_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures", ErrorLogger.Summary.InternalError);
+				if (!lostEvents)
+				{
+					Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
+					_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures", ErrorLogger.Summary.InternalError);
+				}
+
 				return;
 			}
 

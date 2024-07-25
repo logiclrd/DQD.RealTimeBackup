@@ -25,7 +25,8 @@ namespace DQD.RealTimeBackup.Interop
 				FileAccessNotifyFlags.Class.Notification |
 				FileAccessNotifyFlags.Report.UniqueFileID |
 				FileAccessNotifyFlags.Report.UniqueDirectoryID |
-				FileAccessNotifyFlags.Report.IncludeName,
+				FileAccessNotifyFlags.Report.IncludeName |
+				FileAccessNotifyFlags.Control.UnlimitedQueue,
 				0);
 
 			if (_fd < 0)
