@@ -48,16 +48,28 @@
             Cancel Rescan
         </Button>
 
-        <ScrollViewer Name="svNotifications" Grid.Row="2" Grid.ColumnSpan="2" Background="{DynamicResource SystemControlBackgroundAltMediumLowBrush}">
+        <ScrollViewer Name="svNotifications" Classes="HideRescan" Grid.Row="2" Grid.ColumnSpan="2" Background="{DynamicResource SystemControlBackgroundAltMediumLowBrush}">
+            <ScrollViewer.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Show Rescans" Name="mnuShowRescans" ToggleType="CheckBox" IsChecked="{Binding IncludePeriodicRescansInNotificationList}" Click="mnuShowRescans_Click" />
+                </ContextMenu>
+            </ScrollViewer.ContextMenu>
+            <ScrollViewer.Styles>
+                <Style Selector="ScrollViewer.HasNonRescanChildren > StackPanel > Label">
+                    <Setter Property="IsVisible" Value="false" />
+                </Style>
+                <Style Selector="ScrollViewer.HasAnyChildren:not(.HideRescan) > StackPanel > Label">
+                    <Setter Property="IsVisible" Value="false" />
+                </Style>
+                <Style Selector="ScrollViewer.HideRescan controls|NotificationView.Rescan">
+                    <Setter Property="IsVisible" Value="false" />
+                </Style>
+            </ScrollViewer.Styles>
             <StackPanel Orientation="Vertical">
-                <Label Name="lblNoNotifications">No notifications yet.</Label>
-                <StackPanel Name="spNotifications" Classes="HideRescan" Orientation="Vertical">
-                    <StackPanel.Styles>
-                        <Style Selector="StackPanel.HideRescan > controls|NotificationView.Rescan">
-                            <Setter Property="IsVisible" Value="false" />
-                        </Style>
-                    </StackPanel.Styles>
-                </StackPanel>
+                <Label Name="lblNoNotifications" Background="#01808080">
+                    No notifications yet.
+                </Label>
+                <StackPanel Name="spNotifications" Orientation="Vertical" />
                 <Button Name="cmdClearNotifications" IsVisible="false" HorizontalAlignment="Center" Margin="8" Click="cmdClearNotifications_Click">Clear</Button>
             </StackPanel>
         </ScrollViewer>

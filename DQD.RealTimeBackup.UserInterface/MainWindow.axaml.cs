@@ -26,6 +26,8 @@ namespace DQD.RealTimeBackup.UserInterface
 		{
 			InitializeComponent();
 
+			DataContext = this;
+
 			_refreshTimer = new Timer();
 			_refreshTimer.Interval = TimeSpan.FromSeconds(2).TotalMilliseconds;
 			_refreshTimer.Elapsed += refreshTimer_Elapsed;
@@ -112,13 +114,18 @@ namespace DQD.RealTimeBackup.UserInterface
 			{
 				bool isAtBottom = (svNotifications.Offset.Y > svNotifications.ScrollBarMaximum.Y - 10);
 
-				spNotifications.Classes.Remove("HideRescan");
+				svNotifications.Classes.Remove("HideRescan");
 
 				if (isAtBottom)
 					svNotifications.ScrollToEnd();
 			}
 			else
-				spNotifications.Classes.Add("HideRescan");
+				svNotifications.Classes.Add("HideRescan");
+		}
+
+		void mnuShowRescans_Click(object? sender, RoutedEventArgs e)
+		{
+			IncludePeriodicRescansInNotificationList = !IncludePeriodicRescansInNotificationList;
 		}
 
 		public void AddNotification(Notification notification)
@@ -136,9 +143,13 @@ namespace DQD.RealTimeBackup.UserInterface
 
 			var view = new NotificationView();
 
+			svNotifications.Classes.Add("HasAnyChildren");
+
 			if ((notification.Event == StateEvent.RescanStarted)
 			 || (notification.Event == StateEvent.RescanCompleted))
 				view.Classes.Add("Rescan");
+			else
+				svNotifications.Classes.Add("HasNonRescanChildren");
 
 			spNotifications.Children.Add(view);
 
@@ -159,14 +170,14 @@ namespace DQD.RealTimeBackup.UserInterface
 						Clipboard.SetTextAsync(text).Wait();
 				};
 
-			lblNoNotifications.IsVisible = false;
 			cmdClearNotifications.IsVisible = true;
 		}
 
 		void cmdClearNotifications_Click(object? sender, RoutedEventArgs e)
 		{
-			lblNoNotifications.IsVisible = true;
 			spNotifications.Children.Clear();
+			svNotifications.Classes.Remove("HasAnyChildren");
+			svNotifications.Classes.Remove("HasNonRescanChildren");
 			cmdClearNotifications.IsVisible = false;
 		}
 
@@ -177,6 +188,8 @@ namespace DQD.RealTimeBackup.UserInterface
 				var request = new BridgeMessage_PerformRescan_Request();
 
 				client.SendRequestAndReceiveResponse(request);
+
+				IncludePeriodicRescansInNotificationList = true;
 			}
 		}
 
