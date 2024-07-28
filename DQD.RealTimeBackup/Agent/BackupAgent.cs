@@ -304,7 +304,7 @@ namespace DQD.RealTimeBackup.Agent
 
 		object _snapshotSharingDelaySync = new object();
 		ITimerInstance? _snapshotSharingDelay;
-		List<string> _snapshotSharingBatch = new List<string>();
+		HashSet<string> _snapshotSharingBatch = new HashSet<string>();
 
 		void BeginQueuePathForOpenFilesCheck(string path)
 		{
@@ -416,58 +416,60 @@ namespace DQD.RealTimeBackup.Agent
 				var snapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
 
 				lock (_openFilesSync)
-				foreach (string path in _snapshotSharingBatch)
 				{
-					VerboseDiagnosticOutput("[IN] => {0}", path);
-
-					var zfs = FindZFSVolumeForPath(path);
-
-					if (zfs == null)
+					foreach (string path in _snapshotSharingBatch)
 					{
-						Console.Error.WriteLine("[IN] Can't process file because it doesn't appear to be on a ZFS volume: {0}", path);
-						_errorLogger.LogError("The Backup Agent was asked to consider the following path:\n\n" + path + "\n\nIt does not appear to be on a ZFS volume.", ErrorLogger.Summary.InternalError);
-						continue;
-					}
+						VerboseDiagnosticOutput("[IN] => {0}", path);
 
-					if (!snapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
-					{
-						VerboseDiagnosticOutput("[IN]   * ZFS snapshot needed on volume {0}", zfs.MountPoint);
+						var zfs = FindZFSVolumeForPath(path);
 
-						// Temporary release the lock while creating the snapshot.
-						Monitor.Exit(_openFilesSync);
-
-						try
+						if (zfs == null)
 						{
-							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
-
-							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, _errorLogger);
-
-							snapshots[zfs] = snapshotReferenceTracker;
+							Console.Error.WriteLine("[IN] Can't process file because it doesn't appear to be on a ZFS volume: {0}", path);
+							_errorLogger.LogError("The Backup Agent was asked to consider the following path:\n\n" + path + "\n\nIt does not appear to be on a ZFS volume.", ErrorLogger.Summary.InternalError);
+							continue;
 						}
-						finally
+
+						if (!snapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
 						{
-							Monitor.Enter(_openFilesSync);
+							VerboseDiagnosticOutput("[IN]   * ZFS snapshot needed on volume {0}", zfs.MountPoint);
+
+							// Temporary release the lock while creating the snapshot.
+							Monitor.Exit(_openFilesSync);
+
+							try
+							{
+								var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
+
+								snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, _errorLogger);
+
+								snapshots[zfs] = snapshotReferenceTracker;
+							}
+							finally
+							{
+								Monitor.Enter(_openFilesSync);
+							}
 						}
+
+						var snapshotReference = snapshotReferenceTracker.AddReference(path);
+
+						if (!File.Exists(snapshotReference.SnapshottedPath))
+						{
+							VerboseDiagnosticOutput("[IN]   * File does not exist in the snapshot, it must have already been deleted. Removing from consideration.");
+							snapshotReference.Dispose();
+						}
+						else
+						{
+							VerboseDiagnosticOutput("[IN]   * Queuing path for open files check");
+							QueuePathForOpenFilesCheck(snapshotReference);
+						}
+
+						if (_stopping)
+							break;
 					}
 
-					var snapshotReference = snapshotReferenceTracker.AddReference(path);
-
-					if (!File.Exists(snapshotReference.SnapshottedPath))
-					{
-						VerboseDiagnosticOutput("[IN]   * File does not exist in the snapshot, it must have already been deleted. Removing from consideration.");
-						snapshotReference.Dispose();
-					}
-					else
-					{
-						VerboseDiagnosticOutput("[IN]   * Queuing path for open files check");
-						QueuePathForOpenFilesCheck(snapshotReference);
-					}
-
-					if (_stopping)
-						break;
+					_snapshotSharingBatch.Clear();
 				}
-
-				_snapshotSharingBatch.Clear();
 			}
 		}
 
@@ -1212,6 +1214,18 @@ namespace DQD.RealTimeBackup.Agent
 
 					break;
 				case MoveAction moveAction:
+				{
+					var existingUploadOfPath =
+						_uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == moveAction.FromPath)) ??
+						_uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == moveAction.ToPath));
+
+					if (existingUploadOfPath != null)
+					{
+						NonQuietDiagnosticOutput("[BQ] => DeleteAction: Ignoring because an upload thread is already uploading this path: {0}", existingUploadOfPath.Path);
+						existingUploadOfPath.RecheckAfterUploadCompletes();
+						break;
+					}
+
 					VerboseDiagnosticOutput("[BQ] => MoveAction");
 					NonQuietDiagnosticOutput("[BQ] File moved locally, moving on server");
 					NonQuietDiagnosticOutput("[BQ]   * From Path: {0}", moveAction.FromPath);
@@ -1279,7 +1293,18 @@ namespace DQD.RealTimeBackup.Agent
 					}
 
 					break;
+				}
 				case DeleteAction deleteAction:
+				{
+					var existingUploadOfPath = _uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == deleteAction.Path));
+
+					if (existingUploadOfPath != null)
+					{
+						NonQuietDiagnosticOutput("[BQ] => DeleteAction: Ignoring because an upload thread is already uploading this path: {0}", deleteAction.Path);
+						existingUploadOfPath.RecheckAfterUploadCompletes();
+						break;
+					}
+
 					VerboseDiagnosticOutput("[BQ] => DeleteAction:");
 					NonQuietDiagnosticOutput("[BQ] File deleted locally, deleting from server: {0}", deleteAction.Path);
 					VerboseDiagnosticOutput("[BQ] Removing from Remote File State Cache");
@@ -1322,8 +1347,10 @@ namespace DQD.RealTimeBackup.Agent
 					}
 
 					break;
+				}
 
 				default:
+				{
 					// This shouldn't ever happen.
 					_errorLogger.LogError(
 						"The Backup Queue has an action it doesn't know what to do with. None of the type filters matched it.\n" +
@@ -1340,6 +1367,7 @@ namespace DQD.RealTimeBackup.Agent
 					}
 
 					break;
+				}
 			}
 		}
 
@@ -1504,7 +1532,7 @@ namespace DQD.RealTimeBackup.Agent
 						if (existingUploadOfPath != null)
 						{
 							NonQuietDiagnosticOutput("[UP{0}] Ignoring upload action because another thread is already uploading this path: {0}", fileToUpload.Path);
-							existingUploadOfPath.RecheckAfterUploadCompletes = true;
+							existingUploadOfPath.RecheckAfterUploadCompletes();
 							continue;
 						}
 
@@ -1527,7 +1555,18 @@ namespace DQD.RealTimeBackup.Agent
 							{
 								fileToUpload.FileSize = stream.Length;
 
-								_uploadThreadStatus[threadIndex] = new UploadStatus(fileToUpload.Path, fileToUpload.FileSize);
+								_uploadThreadStatus[threadIndex] = new UploadStatus(
+									fileToUpload.Path,
+									fileToUpload.FileSize,
+									() =>
+									{
+										VerboseDiagnosticOutput("[UP{0}] (post-completion action) Returning file to the intake queue: {1}", threadIndex, fileToUpload.Path);
+
+										BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
+									});
+
+								if (fileToUpload.Path.IndexOf(".biglybt") >= 0)
+									Console.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.ttttttt}] UPLOAD PATH {1}", DateTime.Now, fileToUpload.Path);
 
 								_storage.UploadFile(
 									PlaceInContentPath(fileToUpload.Path),
@@ -1536,12 +1575,7 @@ namespace DQD.RealTimeBackup.Agent
 									progress => _uploadThreadStatus[threadIndex]!.Progress = progress,
 									cancellationToken);
 
-								if (_uploadThreadStatus[threadIndex]!.RecheckAfterUploadCompletes)
-								{
-									VerboseDiagnosticOutput("[UP{0}] Another thread tried to begin an upload while we were uploading the file. It may have been altered. Returning file to the intake queue.", threadIndex);
-
-									BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
-								}
+								_uploadThreadStatus[threadIndex]!.MarkCompleted();
 							}
 						}
 						catch (Exception exception)

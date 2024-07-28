@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 
 using DQD.RealTimeBackup.Bridge.Serialization;
@@ -14,23 +15,54 @@ namespace DQD.RealTimeBackup.Agent
 		[FieldOrder(2)]
 		public UploadProgress? Progress;
 
-		public bool RecheckAfterUploadCompletes;
+		public Action RecheckFunctor;
+
+		bool _isCompleted;
+		bool _recheckAfterUploadCompletes;
+
+		public void RecheckAfterUploadCompletes()
+		{
+			lock (this)
+			{
+				if (_isCompleted)
+				{
+					RecheckFunctor();
+					RecheckFunctor = () => {};
+				}
+				else
+					_recheckAfterUploadCompletes = true;
+			}
+		}
+
+		public void MarkCompleted()
+		{
+			lock (this)
+			{
+				_isCompleted = true;
+
+				if (_recheckAfterUploadCompletes)
+					RecheckAfterUploadCompletes();
+			}
+		}
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public UploadStatus()
 		{
+			RecheckFunctor = () => {};
 			Path = "";
 		}
 
-		public UploadStatus(string path)
+		public UploadStatus(string path, Action recheckFunctor)
 		{
 			Path = path;
+			RecheckFunctor = recheckFunctor;
 		}
 
-		public UploadStatus(string path, long fileSize)
+		public UploadStatus(string path, long fileSize, Action recheckFunctor)
 		{
 			Path = path;
 			FileSize = fileSize;
+			RecheckFunctor = recheckFunctor;
 		}
 	}
 }
