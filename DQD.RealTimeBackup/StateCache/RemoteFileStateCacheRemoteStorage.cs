@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
 
@@ -22,21 +23,23 @@ namespace DQD.RealTimeBackup.StateCache
 			_remoteStorage = remoteStorage;
 		}
 
-		public IEnumerable<int> EnumerateBatches()
+		public IEnumerable<BatchFileInfo> EnumerateBatches()
 		{
 			var stateFiles = _remoteStorage.EnumerateFiles("/state/", recursive: false).ToList();
 
-			int batchNumber = -1;
+			foreach (var stateFile in stateFiles)
+			{
+				var info = new BatchFileInfo();
 
-			var batchNumbers = stateFiles
-				.Select(file => Path.GetFileName(file.Path))
-				.Where(fileName => int.TryParse(fileName, out batchNumber))
-				.Select(fileName => batchNumber)
-				.ToList();
+				info.Path = stateFile.Path;
 
-			batchNumbers.Sort();
+				if (int.TryParse(Path.GetFileName(info.Path), out var batchNumber))
+					info.BatchNumber = batchNumber;
 
-			return batchNumbers;
+				info.FileSize = stateFile.FileSize;
+
+				yield return info;
+			}
 		}
 
 		public int GetBatchFileSize(int batchNumber)
@@ -58,13 +61,17 @@ namespace DQD.RealTimeBackup.StateCache
 		{
 			string batchFileName = "/state/" + batchNumber;
 
-			var buffer = new MemoryStream();
+			var pipeOut = new AnonymousPipeServerStream(PipeDirection.Out);
+			var pipeIn = new AnonymousPipeClientStream(PipeDirection.In, pipeOut.ClientSafePipeHandle);
 
-			_remoteStorage.DownloadFileDirect(batchFileName, buffer, CancellationToken.None);
+			_remoteStorage.DownloadFileDirectAsync(batchFileName, pipeOut, CancellationToken.None)
+				.ContinueWith(
+					_ =>
+					{
+						pipeOut.Close();
+					});
 
-			buffer.Position = 0;
-
-			return buffer;
+			return pipeIn;
 		}
 
 		public StreamWriter OpenNewBatchFileWriter(int batchNumber)

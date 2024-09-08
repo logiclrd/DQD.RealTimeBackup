@@ -61,7 +61,7 @@ namespace DQD.RealTimeBackup.Storage
 
 			services.RegisterInstance(Options.Create(memoryCacheOptions)).AsImplementedInterfaces();
 
-			services.RegisterInstance(LoggerFactory.Create(_ => { })).AsImplementedInterfaces();
+			services.RegisterInstance(LoggerFactory.Create(_ => { })).AsImplementedInterfaces().IfNotRegistered(typeof(ILoggerFactory));
 			services.RegisterType<MemoryCache>().AsImplementedInterfaces();
 
 			services.RegisterType<BackblazeClient>().As<IStorageClient>();

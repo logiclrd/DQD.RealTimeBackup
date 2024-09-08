@@ -212,10 +212,13 @@ namespace DQD.RealTimeBackup.StateCache
 		}
 
 		public IEnumerable<FileState> EnumerateFileStates()
+			=> EnumerateFileStates(null);
+
+		public IEnumerable<FileState> EnumerateFileStates(Action<double>? progressCallback = null)
 		{
 			lock (_sync)
 			{
-				EnsureCacheIsLoaded();
+				EnsureCacheIsLoaded(progressCallback);
 
 				return _cache.Values.ToList();
 			}
@@ -276,30 +279,80 @@ namespace DQD.RealTimeBackup.StateCache
 			}
 		}
 
-		void EnsureCacheIsLoaded()
+		void EnsureCacheIsLoaded(Action<double>? progressCallback = null)
 		{
 			if (!_cacheLoaded)
-				LoadCache();
+				LoadCache(progressCallback);
+			else
+				progressCallback?.Invoke(1.0);
 		}
 
 		public void LoadCache()
+			=> LoadCache(null);
+
+		public void LoadCache(Action<double>? progressCallback = null)
 		{
 			DebugLog("loading cache");
 
-			// Enumerate the batch numbers that are stored locally. Process them in order.
-			var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
+			// Enumerate the batch numbers in storage. Process them in order.
+			var batchFiles = new List<BatchFileInfo>(_cacheStorage.EnumerateBatches());
 
-			batchNumbers.Sort();
+			batchFiles.Sort();
 
-			DebugLog("found {0} batches", batchNumbers.Count);
+			DebugLog("found {0} batches", batchFiles.Count);
+
+			// Inflate the size of each batch by a fixed amount, to account for the overhead
+			// of switching from one file to the next.
+			const int BatchFileExtraSize = 500_000;
+
+			long[]? batchFileProgressContribution = null;
+			Action<double>[]? batchFileProgressCallback = null;
+
+			if (progressCallback != null)
+			{
+				batchFileProgressContribution = batchFiles
+					.Select(batch => batch.FileSize + BatchFileExtraSize)
+					.ToArray();
+
+				batchFileProgressCallback = new Action<double>[batchFileProgressContribution.Length];
+
+				long batchOverallOffset = 0;
+				double allBatchesTotalSize = batchFileProgressContribution.Sum();
+
+				for (int i=0; i < batchFileProgressContribution.Length; i++)
+				{
+					int thisBatchIndex = i;
+					long thisBatchOffset = batchOverallOffset;
+
+					batchFileProgressCallback[i] =
+						(progress) =>
+						{
+							double thisFileCompletion = progress * batchFileProgressContribution[thisBatchIndex];
+
+							double overallCompletion = thisBatchOffset + thisFileCompletion;
+
+							progressCallback(overallCompletion / allBatchesTotalSize);
+						};
+
+					batchOverallOffset += batchFileProgressContribution[i];
+				}
+			}
 
 			// Load in all saved FileStates. If we encounter one that we already have in the cache,
 			// it is a newer state that supersedes the previously-loaded one.
-			foreach (var batchNumber in batchNumbers)
+			for (int i=0; i < batchFiles.Count; i++)
 			{
+				var batchFile = batchFiles[i];
+				Action<double>? thisBatchFileProgressCallback = (progressCallback != null)
+					? batchFileProgressCallback![i]
+					: default;
+
+				int batchNumber = batchFile.BatchNumber;
+
 				DebugLog("applying batch {0}", batchNumber);
 
-				using (var reader = _cacheStorage.OpenBatchFileReader(batchNumber))
+				using (var stream = _cacheStorage.OpenBatchFileStream(batchNumber))
+				using (var reader = new StreamReader(new ReadProgressStream(stream, batchFile.FileSize, thisBatchFileProgressCallback)))
 				{
 					while (true)
 					{
@@ -321,8 +374,8 @@ namespace DQD.RealTimeBackup.StateCache
 				}
 			}
 
-			if (batchNumbers.Any())
-				_currentBatchNumber = batchNumbers.Max() + 1;
+			if (batchFiles.Any())
+				_currentBatchNumber = batchFiles.Max()!.BatchNumber + 1;
 			else
 				_currentBatchNumber = 1;
 
@@ -478,7 +531,8 @@ namespace DQD.RealTimeBackup.StateCache
 			{
 				// Find the oldest batches. There need to be enough batches that we won't
 				// be touching the current batch that's in progress.
-				var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches());
+				var batchNumbers = new List<int>(_cacheStorage.EnumerateBatches()
+					.Select(batchFile => batchFile.BatchNumber));
 
 				DebugLog("=> found {0} batch numbers", batchNumbers.Count);
 

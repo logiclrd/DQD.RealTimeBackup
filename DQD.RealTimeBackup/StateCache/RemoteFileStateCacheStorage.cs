@@ -17,11 +17,19 @@ namespace DQD.RealTimeBackup.StateCache
 			Directory.CreateDirectory(_parameters.RemoteFileStateCachePath);
 		}
 
-		public IEnumerable<int> EnumerateBatches()
+		public IEnumerable<BatchFileInfo> EnumerateBatches()
 		{
 			foreach (var batchFile in Directory.EnumerateFiles(_parameters.RemoteFileStateCachePath))
 				if (int.TryParse(Path.GetFileName(batchFile), out var batchNumber))
-					yield return batchNumber;
+				{
+					var batchFileInfo = new BatchFileInfo();
+
+					batchFileInfo.BatchNumber = batchNumber;
+					batchFileInfo.Path = "/state/" + batchNumber;
+					batchFileInfo.FileSize = new FileInfo(batchFile).Length;
+
+					yield return batchFileInfo;
+				}
 		}
 
 		public int GetBatchFileSize(int batchNumber)

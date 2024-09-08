@@ -1,0 +1,61 @@
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<script type="text/javascript">
+			window.onload =
+				function()
+				{
+					var params = new URLSearchParams(window.location.search);
+
+					var sessionID = params.get("SessionID");
+
+					var lblFileCount = document.getElementById("lblFileCount");
+					var lblError = document.getElementById("lblError");
+
+					function RefreshStatus()
+					{
+						fetch("/api/GetSessionStatus?SessionID=" + sessionID)
+							.then(async response => [response.ok, response.status, await response.json()])
+							.then(
+								([ok, statusCode, result]) =>
+								{
+									if (statusCode == 404)
+										window.location = "index.html";
+									else if (!ok)
+										lblError.style.display = 'block';
+									else
+									{
+										var ProgressBarWidth = 40;
+
+										var filled = Math.round(result.LoadFileStateProgress * ProgressBarWidth);
+										var unfilled = ProgressBarWidth - filled;
+
+										var progressValue = result.LoadFileStateProgress * 100;
+
+										lblProgressBar.innerText = "▓".repeat(filled) + "░".repeat(unfilled);
+										lblProgressValue.innerText = progressValue.toFixed(1) + "%";
+
+										if (result.LoadFileStateComplete)
+											window.location = "filetree.html?SessionID=" + sessionID;
+										else
+											setTimeout(RefreshStatus, 500);
+									}
+								});
+					}
+
+					RefreshStatus();
+				};
+		</script>
+	</head>
+	<body>
+		<p>
+			Please wait while the file list loads...
+		</p>
+		<p>
+			Progress: <span id="lblProgressBar"></span> <span id="lblProgressValue"></span>
+		</p>
+		<p id="lblError" style="display: none">
+			An error has occurred while loading the file list.
+		</p>
+	</body>
+</html>

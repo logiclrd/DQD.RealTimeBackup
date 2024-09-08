@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DQD.RealTimeBackup.Console"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DQD.RealTimeBackup.UserInterface.Tests", "DQD.RealTimeBackup.UserInterface.Tests\DQD.RealTimeBackup.UserInterface.Tests.csproj", "{366A773B-3158-4CED-8547-C38A9A6C1236}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DQD.RealTimeBackup.Web", "DQD.RealTimeBackup.Web\DQD.RealTimeBackup.Web.csproj", "{23611443-8847-432A-AED7-B5672A617CDB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -60,5 +62,9 @@ Global
 		{366A773B-3158-4CED-8547-C38A9A6C1236}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{366A773B-3158-4CED-8547-C38A9A6C1236}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{366A773B-3158-4CED-8547-C38A9A6C1236}.Release|Any CPU.Build.0 = Release|Any CPU
+		{23611443-8847-432A-AED7-B5672A617CDB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{23611443-8847-432A-AED7-B5672A617CDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{23611443-8847-432A-AED7-B5672A617CDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{23611443-8847-432A-AED7-B5672A617CDB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

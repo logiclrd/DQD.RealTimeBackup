@@ -1,0 +1,36 @@
+<html>
+	<head>
+		<script type="text/javascript">
+			window.onload =
+				function()
+				{
+					var cmdStartSession = document.getElementById("cmdStartSession");
+
+					cmdStartSession.onclick =
+						function()
+						{
+							cmdStartSession.disabled = true;
+
+							fetch("/api/StartSession", { "method": "POST" })
+								.then(async response => { console.log(response.status); return [response.ok, await response.json()]; })
+								.then(
+									([ok, result]) =>
+									{
+										if (!ok)
+										{
+											alert(result.ErrorMessage);
+											cmdStartSession.disabled = false;
+										}
+										else
+											window.location = "loading.html?SessionID=" + result.SessionID;
+									});
+						};
+				};
+		</script>
+	</head>
+	<body>
+		TODO: login mechanism<br />
+		<br />
+		<input type="button" value="Access Files" id="cmdStartSession" />
+	</body>
+</html>

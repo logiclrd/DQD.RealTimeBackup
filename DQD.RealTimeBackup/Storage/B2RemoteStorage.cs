@@ -731,18 +731,16 @@ namespace DQD.RealTimeBackup.Storage
 			VerboseDiagnosticOutput("[B2] Upload complete");
 		}
 
-		public void DownloadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		public Task DownloadFileDirectAsync(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
 			// BUGS IN BACKBLAZE B2 API: See discussion at top of DownloadFileString.
-
-			Task<IApiResults<DownloadFileResponse>> task;
 
 			if (serverPath.IndexOfAny(B2ProblematicFileNameCharacters) < 0)
 			{
 				// Fast path: b2_download_file_by_name
 				var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), serverPath);
 
-				task = _b2Client.DownloadAsync(request, contentStream, default, cancellationToken);
+				return _b2Client.DownloadAsync(request, contentStream, default, cancellationToken);
 			}
 			else
 			{
@@ -751,10 +749,13 @@ namespace DQD.RealTimeBackup.Storage
 
 				var request = new DownloadFileByIdRequest(fileID);
 
-				task = _b2Client.DownloadByIdAsync(request, contentStream, default, cancellationToken);
+				return _b2Client.DownloadByIdAsync(request, contentStream, default, cancellationToken);
 			}
+		}
 
-			Wait(task);
+		public void DownloadFileDirect(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		{
+			Wait(DownloadFileDirectAsync(serverPath, contentStream, cancellationToken));
 		}
 
 		public void DownloadFileByID(string remoteFileID, Stream contentStream, CancellationToken cancellationToken)

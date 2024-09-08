@@ -1,0 +1,632 @@
+<html>
+	<head>
+		<style type="text/css">
+			.Expanding
+			{
+				font-style: italic;
+				color: blueviolet;
+			}
+
+			.Expanding.Hidden
+			{
+				display: none;
+			}
+
+			/*
+			.FileListItem
+			{
+			}
+			*/
+
+			.FileListItemTreeLinesAndRest
+			{
+				display: flex;
+				flex-direction: row;
+				align-items: stretch;
+			}
+
+			.FileListItemTreeLines
+			{
+				display: flex;
+				flex-direction: column;
+				margin: 0;
+			}
+
+			.FileListItemTreeLines > :first-child
+			{
+				margin: 0;
+				height: 0.7em;
+				width: 0.7em;
+				border-left: 1px solid black;
+				border-bottom: 1px solid black;
+			}
+
+			.FileListItemTreeLines > :last-child
+			{
+				margin: 0;
+				width: 1em;
+				flex-grow: 1;
+				border-left: 1px solid black;
+			}
+
+			.FileListItem:last-child > .FileListItemTreeLines > :last-child
+			{
+				border-left: 1px solid transparent;
+			}
+
+			.FileListItemTreeLinesAndRest > :last-child
+			{
+				flex-grow: 1;
+			}
+
+			.FileListItemLabelAndChildren
+			{
+				display: flex;
+				flex-direction: column;
+			}
+
+			.FileListItemLabel
+			{
+				margin: 0;
+			}
+
+			.FileListAttributes
+			{
+				margin: 0;
+				padding-left: 0.5em;
+				opacity: 0.5;
+			}
+
+			.FileListItemLabelAndChildren *
+			{
+				margin-top: 0;
+			}
+
+			.FileListItemLabelAndChildren > :last-child
+			{
+				flex-grow: 1;
+			}
+
+			.ExpandButton
+			{
+				display: inline-block;
+				vertical-align: center;
+				width: 0.65em;
+				height: 0.65em;
+				position: relative;
+				border: 1px solid transparent;
+				content: url("nothing.svg");
+				margin-right: 0.4em;
+				object-fit: fill;
+			}
+			
+			.HasChildren > * > * > .ExpandButton
+			{
+				border: 1px solid black;
+				content: url("expand_plus.svg");
+			}
+
+			.HasChildren.Expanded > * > * > .ExpandButton
+			{
+				content: url("expand_minus.svg");
+			}
+
+			.FileListChildren
+			{
+				height: 0;
+				overflow: hidden;
+			}
+
+			.Expanded > * > .FileListChildren
+			{
+				height: unset;
+			}
+
+			.Selected > .FileListItemLabelAndChildren *
+			{
+				background: #bbccee;
+			}
+
+			.Selected > .FileListItemLabelAndChildren .FileListItem:not(.Selected) *
+			{
+				background: #ccddff;
+			}
+		</style>
+		<script type="text/javascript">
+			class Node
+			{
+				OnSelectionChanged = null;
+
+				RaiseSelectionChanged()
+				{
+					console.log("raising!");
+
+					if (this.OnSelectionChanged != null)
+						this.OnSelectionChanged(this);
+					if (this.#parentNode != null)
+						this.#parentNode.RaiseSelectionChanged();
+				}
+
+				#element = null;
+				#isDirectory = false;
+				#lazyInit = false;
+				#expandingSubtree = false;
+				#childContainer = null;
+				#attributes = null;
+				#fileSize = 0;
+				#parentNode = null;
+				#childNodes = [];
+
+				constructor(label)
+				{
+					var me = this;
+
+					this.#element = document.createElement("div");
+
+					this.#element.className = "FileListItem FileListItemTreeLinesAndRest";
+
+					var treeLines = document.createElement("p");
+
+					treeLines.className = "FileListItemTreeLines";
+
+					var treeLinesConnectToParent = document.createElement("p");
+					var treeLinesConnectToNextSibling = document.createElement("p");
+
+					treeLines.appendChild(treeLinesConnectToParent);
+					treeLines.appendChild(treeLinesConnectToNextSibling);
+
+					var content = document.createElement("div");
+
+					content.className = "FileListItemLabelAndChildren"
+
+					var pnlHeading = document.createElement("p");
+
+					pnlHeading.className = "FileListItemLabel";
+
+					var cmdExpand = document.createElement("img");
+
+					cmdExpand.className = "ExpandButton";
+
+					cmdExpand.onclick =
+						function()
+						{
+							me.ToggleExpanded();
+						};
+
+					var lblLabel = document.createElement("span")
+
+					lblLabel.innerText = label;
+
+					lblLabel.onclick =
+						function()
+						{
+							me.ToggleSelected();
+						};
+
+					this.#attributes = document.createElement("span");
+
+					this.#attributes.className = "FileListAttributes";
+
+					pnlHeading.appendChild(cmdExpand);
+					pnlHeading.appendChild(lblLabel);
+					pnlHeading.appendChild(this.#attributes);
+
+					this.#childContainer = document.createElement("div");
+
+					this.#childContainer.className = "FileListChildren";
+
+					content.appendChild(pnlHeading);
+					content.appendChild(this.#childContainer);
+
+					this.#element.appendChild(treeLines);
+					this.#element.appendChild(content);
+				}
+
+				SetParentNode(parentNode)
+				{
+					this.#parentNode = parentNode;
+				}
+
+				ParentNode()
+				{
+					return this.#parentNode;
+				}
+
+				SetIsDirectory(newValue)
+				{
+					this.#isDirectory = newValue;
+				}
+
+				IsDirectory()
+				{
+					return this.#isDirectory;
+				}
+
+				SetAttributes(fileSize, lastModifiedUTC)
+				{
+					this.#fileSize = fileSize;
+					this.#attributes.innerText = FormatFileSize(fileSize) + ", " + FormatDateTime(lastModifiedUTC);
+				}
+
+				*EnumerateSelectedFiles()
+				{
+					if (this.IsDirectory())
+					{
+						if (this.IsSelected())
+						{
+							for (var file of this.EnumerateAllFiles())
+								yield file;
+						}
+						else
+						{
+							for (var child of this.#childNodes)
+								for (var file of child.EnumerateSelectedFiles())
+									yield file;
+						}
+					}
+					else
+					{
+						if (this.IsSelected())
+							yield this;
+					}
+				}
+
+				*EnumerateAllFiles()
+				{
+					if (this.IsDirectory())
+					{
+						for (var child of this.#childNodes)
+							for (var file of child.EnumerateAllFiles())
+								yield file;
+					}
+					else
+						yield this;
+				}
+
+				FileSize()
+				{
+					return this.#fileSize;
+				}
+
+				RootElement()
+				{
+					return this.#element;
+				}
+
+				AttachToDOM(newParent)
+				{
+					if (this.#element.parentNode != null)
+						this.#element.parentNode.removeChild(this.#element);
+
+					newParent.appendChild(this.#element);
+				}
+
+				AddChild(childNode)
+				{
+					childNode.AttachToDOM(this.#childContainer);
+					childNode.SetParentNode(this);
+
+					this.#childNodes.push(childNode);
+					this.#element.classList.add("HasChildren");
+				}
+
+				AddLazyChildren(enumerateChildren)
+				{
+					var me = this;
+
+					this.#element.classList.add("HasChildren");
+					this.#lazyInit = true;
+
+					this.Expand =
+						function(onComplete)
+						{
+							me.Expand = function() {};
+
+							me.#element.classList.remove("HasChildren");
+							me.#element.classList.add("Expanded");
+
+							IncrementExpandingCount();
+
+							var childTaskCount = 1;
+
+							function ChildTaskComplete()
+							{
+								childTaskCount--;
+
+								if (childTaskCount == 0)
+								{
+									if (onComplete)
+										onComplete(this);
+
+									DecrementExpandingCount();
+								}
+							}
+
+							enumerateChildren()
+								.then(
+									result =>
+									{
+										if (result.HasChildren)
+										{
+											me.#element.classList.add("HasChildren");
+
+											result.Directories.forEach(
+												childPath =>
+												{
+													var childName = childPath.split('/').pop();
+
+													var childNode = new Node(childName);
+
+													childNode.SetIsDirectory(true);
+
+													me.AddChild(childNode);
+
+													childNode.AddLazyChildren(result.GetEnumerator(childName));
+
+													if (this.#expandingSubtree)
+													{
+														childTaskCount++;
+														childNode.LoadSubtree(ChildTaskComplete);
+													}
+												});
+
+											result.Files.forEach(
+												childInfo =>
+												{
+													var childName = childInfo.Path.split('/').pop();
+
+													var childNode = new Node(childName);
+
+													childNode.SetAttributes(
+														childInfo.FileSize,
+														childInfo.LastModifiedUTC);
+
+													me.AddChild(childNode);
+												});
+										}
+
+										ChildTaskComplete();
+
+										me.Expand =
+											function()
+											{
+												me.#element.classList.add("Expanded");
+											};
+
+										me.#lazyInit = false;
+									});
+						};
+				}
+
+				LoadSubtree(onComplete)
+				{
+					if (this.#lazyInit)
+					{
+						this.#expandingSubtree = true;
+						this.Expand(onComplete);
+					}
+					else
+					{
+						var childTaskCount = 1;
+
+						function ChildTaskComplete()
+						{
+							childTaskCount--;
+							if (childTaskCount == 0)
+							{
+								if (onComplete != null)
+									onComplete(this);
+							}
+						}
+
+						for (var child of this.#childNodes)
+							if (child.IsDirectory())
+							{
+								childTaskCount++;
+								child.LoadSubtree(ChildTaskComplete);
+							}
+
+						ChildTaskComplete();
+					}
+				}
+
+				Expand(onComplete)
+				{
+					this.#element.classList.add("Expanded");
+					if (onComplete)
+						onComplete(this);
+				}
+
+				Unexpand()
+				{
+					this.#element.classList.remove("Expanded");
+				}
+
+				IsExpanded()
+				{
+					return this.#element.classList.contains("Expanded");
+				}
+
+				ToggleExpanded()
+				{
+					if (!this.IsExpanded())
+						this.Expand();
+					else
+						this.Unexpand();
+				}
+
+				Select()
+				{
+					this.#element.classList.add("Selected");
+
+					if (!this.#lazyInit)
+						this.RaiseSelectionChanged();
+					else
+					{
+						var me = this;
+
+						this.LoadSubtree(() => me.RaiseSelectionChanged());
+					}
+				}
+
+				Unselect()
+				{
+					this.#element.classList.remove("Selected");
+					this.RaiseSelectionChanged();
+				}
+
+				IsSelected()
+				{
+					return this.#element.classList.contains("Selected");
+				}
+
+				ToggleSelected()
+				{
+					if (!this.IsSelected())
+						this.Select();
+					else
+						this.Unselect();
+				}
+			}
+
+			var sessionID;
+			var lblSelectedFileCount, lblSelectedFileSize;
+			var lblExpanding;
+			var cmdDownload;
+			var tvwFiles;
+
+			function FormatFileSize(fileSize)
+			{
+				if (fileSize < 1000)
+					return fileSize + "b";
+				if (fileSize < 1024000)
+					return Math.round(fileSize / 1024) + "kb";
+				if (fileSize < 1048576000)
+					return Math.round(fileSize / 1048576) + "mb";
+
+				return Math.round(fileSize / 1073741824) + "gb";
+			}
+
+			function FormatDateTime(dateTimeUTC)
+			{
+				var dateTime = new Date(dateTimeUTC);
+
+				return dateTime.toLocaleString();
+			}
+
+			function GetDirectoryEnumerator(path)
+			{
+				return () => fetch("/api/GetChildItems",
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(
+							{
+								SessionID: sessionID,
+								ParentPath: path,
+							})
+					})
+					.then(async response => [response.ok, response.status, await response.json()])
+					.then(
+						([ok, statusCode, result]) =>
+						{
+							var enumerationResult = {};
+
+							enumerationResult.Directories = result.Directories;
+							enumerationResult.Files = result.Files;
+							enumerationResult.HasChildren = (result.Directories.length > 0) || (result.Files.length > 0);
+							enumerationResult.GetEnumerator =
+								function (childName)
+								{
+									var childPath = path;
+
+									if (!childPath.endsWith("/"))
+										childPath += "/";
+
+									childPath += childName;
+
+									return GetDirectoryEnumerator(childPath);
+								};
+
+							return enumerationResult;
+						});
+			}
+
+			var expandingCount = 0;
+
+			function IncrementExpandingCount()
+			{
+				expandingCount++;
+
+				if (expandingCount == 1)
+					lblExpanding.classList.remove("Hidden");
+			}
+
+			function DecrementExpandingCount()
+			{
+				expandingCount--;
+
+				if (expandingCount == 0)
+					lblExpanding.classList.add("Hidden");
+			}
+
+			window.onload =
+				function()
+				{
+					var params = new URLSearchParams(window.location.search);
+
+					sessionID = params.get("SessionID");
+
+					lblSelectedFileCount = document.getElementById("lblSelectedFileCount");
+					lblSelectedFileSize = document.getElementById("lblSelectedFileSize");
+					lblExpanding = document.getElementById("lblExpanding");
+					cmdDownload = document.getElementById("cmdDownload");
+					tvwFiles = document.getElementById("tvwFiles");
+
+					var rootNode = new Node("/");
+
+					rootNode.SetIsDirectory(true);
+					rootNode.AddLazyChildren(GetDirectoryEnumerator("/"));
+
+					rootNode.AttachToDOM(tvwFiles);
+
+					rootNode.OnSelectionChanged =
+						function()
+						{
+							var fileCount = 0;
+							var totalSize = 0;
+
+							for (var fileNode of rootNode.EnumerateSelectedFiles())
+							{
+								fileCount++;
+								totalSize += fileNode.FileSize();
+							}
+
+							lblSelectedFileCount.innerText = fileCount.toLocaleString();
+							lblSelectedFileSize.innerText = FormatFileSize(totalSize);
+
+							cmdDownload.disabled = (fileCount == 0);
+						};
+
+					rootNode.Expand();
+				};
+
+			cmdDownload.onclick =
+				function()
+				{
+					alert("TODO");
+				};
+		</script>
+	</head>
+	<body>
+		<div>
+			Selected files: <span id="lblSelectedFileCount"></span> <span id="lblExpanding" class="Expanding Hidden">expanding...</span><br />
+			Size: <span id="lblSelectedFileSize"></span><br />
+			<br />
+			<input type="button" id="cmdDownload" value="Download Selected Files" disabled="true" />
+		</div>
+		<hr />
+		<div id="tvwFiles">
+		</div>
+	</body>
+</html>

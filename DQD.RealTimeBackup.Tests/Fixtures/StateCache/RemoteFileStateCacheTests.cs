@@ -51,9 +51,18 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				}
 			}
 
-			public IEnumerable<int> EnumerateBatches()
+			public IEnumerable<BatchFileInfo> EnumerateBatches()
 			{
-				return BatchData.Keys;
+				foreach (var (batchNumber, batchFileData) in BatchData)
+				{
+					yield return
+						new BatchFileInfo()
+						{
+							BatchNumber = batchNumber,
+							Path = "/batch/" + batchNumber,
+							FileSize = batchFileData.Length,
+						};
+				}
 			}
 
 			public int GetBatchFileSize(int batchNumber)
@@ -301,11 +310,11 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				remoteStorage);
 
 			// Act
-			var maxBatchNumberBefore = dummyStorage.EnumerateBatches().Max();
+			var maxBatchNumberBefore = dummyStorage.EnumerateBatches().Select(batch => batch.BatchNumber).Max();
 
 			sut.UpdateFileState(fileState.Path, newFileState);
 
-			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
+			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Select(batch => batch.BatchNumber).Max();
 
 			// Assert
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
@@ -387,11 +396,11 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				remoteStorage);
 
 			// Act
-			var maxBatchNumberBefore = dummyStorage.EnumerateBatches().Max();
+			var maxBatchNumberBefore = dummyStorage.EnumerateBatches().Select(batch => batch.BatchNumber).Max();
 
 			sut.RemoveFileState(fileState.Path);
 
-			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Max();
+			var maxBatchNumberAfter = dummyStorage.EnumerateBatches().Select(batch => batch.BatchNumber).Max();
 
 			// Assert
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());

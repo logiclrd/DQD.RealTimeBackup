@@ -8,7 +8,7 @@ namespace DQD.RealTimeBackup.StateCache
 {
 	public interface IRemoteFileStateCacheStorage : IDiagnosticOutput
 	{
-		IEnumerable<int> EnumerateBatches();
+		IEnumerable<BatchFileInfo> EnumerateBatches();
 		int GetBatchFileSize(int batchNumber);
 		StreamWriter OpenBatchFileWriter(int batchNumber);
 		StreamReader OpenBatchFileReader(int batchNumber);
