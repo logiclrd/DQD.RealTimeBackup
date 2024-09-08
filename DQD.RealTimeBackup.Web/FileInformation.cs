@@ -7,5 +7,6 @@ namespace DQD.RealTimeBackup.Web
 		public string? Path { get; set; }
 		public long FileSize { get; set; }
 		public DateTime LastModifiedUTC { get; set; }
+		public int FileIndex { get; set; }
 	}
 }

@@ -91,7 +91,7 @@ namespace DQD.RealTimeBackup.Web
 
 						configure.RegisterType<Timer>().AsImplementedInterfaces().SingleInstance();
 						configure.RegisterType<CacheActionLog>().AsImplementedInterfaces().SingleInstance();
-						configure.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().SingleInstance();
+						configure.RegisterType<RemoteFileStateCache>().AsImplementedInterfaces().InstancePerDependency();
 
 						configure.RegisterType<RemoteFileStateCacheRemoteStorage>().AsImplementedInterfaces().InstancePerDependency();
 

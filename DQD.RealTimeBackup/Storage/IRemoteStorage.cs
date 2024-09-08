@@ -17,6 +17,7 @@ namespace DQD.RealTimeBackup.Storage
 		Task DownloadFileDirectAsync(string serverPath, Stream content, CancellationToken cancellationToken);
 		void DeleteFileDirect(string serverPath, CancellationToken cancellationToken);
 		void UploadFile(string serverPath, Stream content, out string newContentKey, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken);
+		Task DownloadFileAsync(string serverPath, Stream content, CancellationToken cancellationToken);
 		void DownloadFile(string serverPath, Stream content, CancellationToken cancellationToken);
 		void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken);
 		void DeleteFile(string serverPath, CancellationToken cancellationToken);

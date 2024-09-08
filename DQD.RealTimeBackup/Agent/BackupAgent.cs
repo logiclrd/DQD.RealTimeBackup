@@ -80,7 +80,7 @@ namespace DQD.RealTimeBackup.Agent
 				UnpauseNetworkThreads();
 		}
 
-		static internal string PlaceInContentPath(string path)
+		public static string PlaceInContentPath(string path)
 		{
 			if (path.StartsWith("/"))
 				return "/content" + path;

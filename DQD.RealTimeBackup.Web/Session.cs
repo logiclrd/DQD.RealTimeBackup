@@ -93,7 +93,7 @@ namespace DQD.RealTimeBackup.Web
 
 		public int GetFileCount() => _allFiles.Count;
 
-		public IEnumerable<FileState> GetFilesInDirectory(string directoryPath, bool recursive)
+		public IEnumerable<FileInformation> GetFilesInDirectory(string directoryPath, bool recursive)
 		{
 			if (!directoryPath.EndsWith("/"))
 				directoryPath += "/";
@@ -117,7 +117,16 @@ namespace DQD.RealTimeBackup.Web
 					}
 
 					if (include)
-						yield return candidate;
+					{
+						var result = new FileInformation();
+
+						result.Path = candidate.Path;
+						result.FileSize = candidate.FileSize;
+						result.LastModifiedUTC = candidate.LastModifiedUTC;
+						result.FileIndex = index;
+
+						yield return result;
+					}
 
 					index++;
 
@@ -199,6 +208,11 @@ namespace DQD.RealTimeBackup.Web
 				else
 					lastCandidateIndex = probeIndex; // The probed path could be a match, do not exclude from range.
 			}
+		}
+
+		public FileState GetFileByIndex(int fileIndex)
+		{
+			return _allFiles[fileIndex];
 		}
 	}
 }

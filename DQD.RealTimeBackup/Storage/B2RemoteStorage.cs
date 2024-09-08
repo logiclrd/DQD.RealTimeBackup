@@ -765,11 +765,16 @@ namespace DQD.RealTimeBackup.Storage
 			Wait(_b2Client.DownloadByIdAsync(request, contentStream, default, cancellationToken));
 		}
 
-		public void DownloadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		public Task DownloadFileAsync(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
-			Wait(_b2Client.DownloadAsync(FindAndCacheBucketName(), contentKey, contentStream));
+			return _b2Client.DownloadAsync(FindAndCacheBucketName(), contentKey, contentStream);
+		}
+
+		public void DownloadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		{
+			Wait(DownloadFileAsync(serverPath, contentStream, cancellationToken));
 		}
 
 		public void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken)

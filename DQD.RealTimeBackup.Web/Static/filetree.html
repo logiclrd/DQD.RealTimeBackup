@@ -154,6 +154,7 @@
 				#childContainer = null;
 				#attributes = null;
 				#fileSize = 0;
+				#fileIndex = -1;
 				#parentNode = null;
 				#childNodes = [];
 
@@ -242,9 +243,10 @@
 					return this.#isDirectory;
 				}
 
-				SetAttributes(fileSize, lastModifiedUTC)
+				SetAttributes(fileSize, lastModifiedUTC, fileIndex)
 				{
 					this.#fileSize = fileSize;
+					this.#fileIndex = fileIndex;
 					this.#attributes.innerText = FormatFileSize(fileSize) + ", " + FormatDateTime(lastModifiedUTC);
 				}
 
@@ -286,6 +288,11 @@
 				FileSize()
 				{
 					return this.#fileSize;
+				}
+
+				FileIndex()
+				{
+					return this.#fileIndex;
 				}
 
 				RootElement()
@@ -379,7 +386,8 @@
 
 													childNode.SetAttributes(
 														childInfo.FileSize,
-														childInfo.LastModifiedUTC);
+														childInfo.LastModifiedUTC,
+														childInfo.FileIndex);
 
 													me.AddChild(childNode);
 												});
@@ -487,12 +495,22 @@
 					else
 						this.Unselect();
 				}
+
+				ClearSelection()
+				{
+					if (this.IsSelected())
+						this.Unselect();
+
+					for (var child of this.#childNodes)
+						child.ClearSelection();
+				}
 			}
 
 			var sessionID;
 			var lblSelectedFileCount, lblSelectedFileSize;
 			var lblExpanding;
 			var cmdDownload;
+			var cmdClearSelection;
 			var tvwFiles;
 
 			function FormatFileSize(fileSize)
@@ -581,6 +599,7 @@
 					lblSelectedFileSize = document.getElementById("lblSelectedFileSize");
 					lblExpanding = document.getElementById("lblExpanding");
 					cmdDownload = document.getElementById("cmdDownload");
+					cmdClearSelection = document.getElementById("cmdClearSelection");
 					tvwFiles = document.getElementById("tvwFiles");
 
 					var rootNode = new Node("/");
@@ -608,13 +627,37 @@
 							cmdDownload.disabled = (fileCount == 0);
 						};
 
-					rootNode.Expand();
-				};
+					cmdDownload.onclick =
+						function()
+						{
+							var fileIndices = [];
 
-			cmdDownload.onclick =
-				function()
-				{
-					alert("TODO");
+							for (var fileNode of rootNode.EnumerateSelectedFiles())
+							fileIndices.push(fileNode.FileIndex());
+
+							if (fileIndices.length == 1)
+								window.location = "/api/DownloadSingleFile?SessionID=" + sessionID + "&FileIndex=" + fileIndices[0];
+							else if (fileIndices.length > 1)
+							{
+								var form = document.getElementById("Form_InitiateMultipleDownload");
+
+								var form_sessionID = document.getElementById("FormInput_SessionID");
+								var form_fileIndices = document.getElementById("FormInput_FileIndices");
+
+								form_sessionID.value = sessionID;
+								form_fileIndices.value = fileIndices.join(",");
+
+								form.submit();
+							}
+						};
+
+					cmdClearSelection.onclick =
+						function()
+						{
+							rootNode.ClearSelection();
+						};
+
+					rootNode.Expand();
 				};
 		</script>
 	</head>
@@ -623,8 +666,13 @@
 			Selected files: <span id="lblSelectedFileCount"></span> <span id="lblExpanding" class="Expanding Hidden">expanding...</span><br />
 			Size: <span id="lblSelectedFileSize"></span><br />
 			<br />
-			<input type="button" id="cmdDownload" value="Download Selected Files" disabled="true" />
+			<input type="button" id="cmdDownload" value="Download Selected Files" disabled="true" /><br />
+			<input type="button" id="cmdClearSelection" value="Clear Selection" />
 		</div>
+		<form id="Form_InitiateMultipleDownload" action="/api/DownloadMultipleFiles" method="POST">
+			<input type="hidden" name="SessionID" id="FormInput_SessionID" />
+			<input type="hidden" name="FileIndices" id="FormInput_FileIndices" />
+		</form>
 		<hr />
 		<div id="tvwFiles">
 		</div>

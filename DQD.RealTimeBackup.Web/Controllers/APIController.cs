@@ -1,10 +1,20 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Text;
+using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
+using ICSharpCode.SharpZipLib.Tar;
+using ICSharpCode.SharpZipLib.BZip2;
+
 using DQD.RealTimeBackup.StateCache;
-using System.Collections.Generic;
+using DQD.RealTimeBackup.Storage;
+using DQD.RealTimeBackup.Agent;
 
 namespace DQD.RealTimeBackup.Web
 {
@@ -13,11 +23,13 @@ namespace DQD.RealTimeBackup.Web
 	{
 		ISessionManager _sessionManager;
 
+		IRemoteStorage _remoteStorage;
 		Func<IRemoteFileStateCache> _remoteFileStateCacheFactory;
 
-		public APIController(ISessionManager sessionManager, Func<IRemoteFileStateCache> remoteFileStateCacheBuilder)
+		public APIController(ISessionManager sessionManager, IRemoteStorage remoteStorage, Func<IRemoteFileStateCache> remoteFileStateCacheBuilder)
 		{
 			_sessionManager = sessionManager;
+			_remoteStorage = remoteStorage;
 			_remoteFileStateCacheFactory = remoteFileStateCacheBuilder;
 		}
 
@@ -47,7 +59,7 @@ namespace DQD.RealTimeBackup.Web
 		}
 
 		[HttpGet("GetSessionStatus")]
-		public JsonResult GetSessionStatus(string sessionID)
+		public JsonResult GetSessionStatus([FromQuery] string sessionID)
 		{
 			try
 			{
@@ -94,15 +106,7 @@ namespace DQD.RealTimeBackup.Web
 					result.Directories.Add(childPath);
 
 				foreach (var child in session.GetFilesInDirectory(request.ParentPath, recursive: false))
-				{
-					var fileInfo = new FileInformation();
-
-					fileInfo.Path = child.Path;
-					fileInfo.FileSize = child.FileSize;
-					fileInfo.LastModifiedUTC = child.LastModifiedUTC;
-
-					result.Files.Add(fileInfo);
-				}
+					result.Files.Add(child);
 
 				return Json(result);
 			}
@@ -113,6 +117,137 @@ namespace DQD.RealTimeBackup.Web
 				result.StatusCode = StatusCodes.Status500InternalServerError;
 
 				return result;
+			}
+		}
+
+		[HttpGet("DownloadSingleFile")]
+		public IActionResult DownloadSingleFile([FromQuery] string sessionID, [FromQuery] int fileIndex)
+		{
+			try
+			{
+				var session = _sessionManager.GetSession(sessionID ?? throw new NullReferenceException("SessionID"));
+
+				if (session == null)
+					throw new KeyNotFoundException();
+
+				var fileState = session.GetFileByIndex(fileIndex);
+
+				return new SingleFileDownloadResult(_remoteStorage, fileState);
+			}
+			catch (Exception e)
+			{
+				var result = Json(ErrorResult.FromException(e));
+
+				result.StatusCode = StatusCodes.Status500InternalServerError;
+
+				return result;
+			}
+		}
+
+		[HttpPost("DownloadMultipleFiles")]
+		public IActionResult DownloadMultipleFiles([FromForm] string sessionID, [FromForm(Name = "FileIndices")] string fileIndicesString)
+		{
+			try
+			{
+				var session = _sessionManager.GetSession(sessionID ?? throw new NullReferenceException("SessionID"));
+
+				if (session == null)
+					throw new KeyNotFoundException();
+
+				var fileIndices = fileIndicesString.Split(',').Select(str => int.Parse(str));
+
+				var fileStates = fileIndices.Select(fileIndex => session.GetFileByIndex(fileIndex)).ToList();
+
+				return new MultipleFileDownloadResult(_remoteStorage, fileStates);
+			}
+			catch (Exception e)
+			{
+				var result = Json(ErrorResult.FromException(e));
+
+				result.StatusCode = StatusCodes.Status500InternalServerError;
+
+				return result;
+			}
+		}
+
+		class SingleFileDownloadResult : IActionResult
+		{
+			IRemoteStorage _remoteStorage;
+			FileState _file;
+
+			public SingleFileDownloadResult(IRemoteStorage remoteStorage, FileState file)
+			{
+				_remoteStorage = remoteStorage;
+				_file = file;
+			}
+
+			public Task ExecuteResultAsync(ActionContext context)
+			{
+				var response = context.HttpContext.Response;
+
+				string fileName = Path.GetFileName(_file.Path);
+
+				byte[] fileNameBytes = Encoding.UTF8.GetBytes(fileName);
+
+				string encodedFileName = System.Web.HttpUtility.UrlEncode(fileNameBytes);
+
+				response.Headers.ContentType = "application/octet-stream";
+				response.Headers.ContentDisposition = "attachment; filename*=UTF-8''" + encodedFileName;
+
+				var serverPath = BackupAgent.PlaceInContentPath(_file.Path);
+
+				return _remoteStorage.DownloadFileAsync(
+					serverPath,
+					response.Body,
+					context.HttpContext.RequestAborted);
+			}
+		}
+
+		class MultipleFileDownloadResult : IActionResult
+		{
+			IRemoteStorage _remoteStorage;
+			IEnumerable<FileState> _files;
+
+			public MultipleFileDownloadResult(IRemoteStorage remoteStorage, IEnumerable<FileState> files)
+			{
+				_remoteStorage = remoteStorage;
+				_files = files;
+			}
+
+			public async Task ExecuteResultAsync(ActionContext context)
+			{
+				var response = context.HttpContext.Response;
+
+				string fileName = "restore-" + _files.Count() + "_files-" + DateTime.Now.ToString("yyyy_MM_dd-HH_mm") + ".tar.bz2";
+
+				byte[] fileNameBytes = Encoding.UTF8.GetBytes(fileName);
+
+				string encodedFileName = System.Web.HttpUtility.UrlEncode(fileNameBytes);
+
+				response.Headers.ContentType = "application/octet-stream";
+				response.Headers.ContentDisposition = "attachment; filename*=UTF-8''" + encodedFileName;
+
+				using (var compressor = await BZip2AsyncOutputStream.CreateAsync(response.Body, context.HttpContext.RequestAborted))
+				using (var tar = new TarOutputStream(compressor, Encoding.UTF8))
+				{
+					foreach (var file in _files)
+					{
+						var tarEntry = TarEntry.CreateTarEntry(file.Path.TrimStart('/'));
+
+						tarEntry.Size = file.FileSize;
+
+						await tar.PutNextEntryAsync(tarEntry, response.HttpContext.RequestAborted);
+
+						var serverPath = BackupAgent.PlaceInContentPath(file.Path);
+
+						await _remoteStorage.DownloadFileAsync(
+							serverPath,
+							tar,
+							context.HttpContext.RequestAborted);
+
+						tar.CloseEntry();
+					}
+				}
 			}
 		}
 	}
