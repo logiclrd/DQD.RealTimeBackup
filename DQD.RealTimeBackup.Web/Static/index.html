@@ -1,17 +1,45 @@
 <html>
 	<head>
 		<script type="text/javascript">
+			async function ComputeSHA512Async(stringValue)
+			{
+				var bytes = new TextEncoder("utf-8").encode(stringValue);
+
+				var hashBytes = await crypto.subtle.digest("SHA-512", bytes);
+
+				return Array.prototype.map.call(new Uint8Array(hashBytes), x => (('00' + x.toString(16)).slice(-2))).join('');
+			}
+
 			window.onload =
 				function()
 				{
 					var cmdStartSession = document.getElementById("cmdStartSession");
 
 					cmdStartSession.onclick =
-						function()
+						async function()
 						{
+							var txtPassword = document.getElementById("txtPassword");
+
+							if (txtPassword.value.trim() == '')
+							{
+								alert("Please enter password.");
+								return;
+							}
+
+							var passwordSalt = await fetch("/api/GetNextSaltForPasswordHash").then(async response => await response.text());
+
+							var unsaltedPasswordHash = await ComputeSHA512Async("secret" + txtPassword.value + "secret");
+
+							var saltedPasswordHash = await ComputeSHA512Async("salty" + passwordSalt + unsaltedPasswordHash + "salty");
+
 							cmdStartSession.disabled = true;
 
-							fetch("/api/StartSession", { "method": "POST" })
+							fetch("/api/StartSession",
+								{
+									method: "POST",
+									headers: { "Content-Type": "application/json" },
+									body: JSON.stringify({ "PasswordHash": saltedPasswordHash })
+								})
 								.then(async response => { console.log(response.status); return [response.ok, await response.json()]; })
 								.then(
 									([ok, result]) =>
@@ -29,7 +57,7 @@
 		</script>
 	</head>
 	<body>
-		TODO: login mechanism<br />
+		Password: <input type="password" name="Password" id="txtPassword" /><br />
 		<br />
 		<input type="button" value="Access Files" id="cmdStartSession" />
 	</body>

@@ -164,6 +164,9 @@ namespace DQD.RealTimeBackup
 
 		// B2-specific: Files uploaded in chunks will use this chunk size.
 		public int B2LargeFileChunkSize = 5 * 1048576;
+
+		// Hash of the password for web access via DQD.RealTimeBackup.Web.
+		public string WebAccessPasswordHash = "MUST BE SET IN CONFIGURATION FILE";
 	}
 }
 

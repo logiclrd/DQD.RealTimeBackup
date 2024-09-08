@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -21,26 +22,76 @@ namespace DQD.RealTimeBackup.Web
 	[Route("api")]
 	public class APIController : Controller
 	{
+		OperatingParameters _parameters;
 		ISessionManager _sessionManager;
+
+		static string s_nextSalt;
 
 		IRemoteStorage _remoteStorage;
 		Func<IRemoteFileStateCache> _remoteFileStateCacheFactory;
 
-		public APIController(ISessionManager sessionManager, IRemoteStorage remoteStorage, Func<IRemoteFileStateCache> remoteFileStateCacheBuilder)
+		static APIController()
 		{
+			s_nextSalt = "";
+
+			RotateSalt();
+		}
+
+		public APIController(OperatingParameters parameters, ISessionManager sessionManager, IRemoteStorage remoteStorage, Func<IRemoteFileStateCache> remoteFileStateCacheBuilder)
+		{
+			_parameters = parameters;
 			_sessionManager = sessionManager;
 			_remoteStorage = remoteStorage;
 			_remoteFileStateCacheFactory = remoteFileStateCacheBuilder;
 		}
 
+		public static void RotateSalt()
+		{
+			s_nextSalt = Guid.NewGuid().ToString();
+		}
+
+		string GetCorrectPasswordHash()
+		{
+			string unsaltedPasswordHash = _parameters.WebAccessPasswordHash ?? "blorg";
+
+			byte[] buffer = Encoding.UTF8.GetBytes("salty" + s_nextSalt + unsaltedPasswordHash + "salty");
+
+			byte[] hash = SHA512.Create().ComputeHash(buffer);
+
+			char[] hashChars = new char[hash.Length * 2];
+
+			char ToHex(int value) => "0123456789abcdef"[value];
+
+			for (int i=0; i < hash.Length; i++)
+			{
+				hashChars[i + i] = ToHex(hash[i] >> 4);
+				hashChars[i + i + 1] = ToHex(hash[i] & 15);
+			}
+
+			return new string(hashChars);
+		}
+
+		[HttpGet("GetNextSaltForPasswordHash")]
+		public string GetNextSaltForPasswordHash()
+		{
+			return s_nextSalt;
+		}
+
 		[HttpPost("StartSession")]
-		public JsonResult StartSession()
+		public ActionResult StartSession([FromBody] StartSessionRequest request)
 		{
 			try
 			{
+				var correctPasswordHash = GetCorrectPasswordHash();
+
+				if (request.PasswordHash != correctPasswordHash)
+					return StatusCode(401, "Not authorized");
+
 				var session = _sessionManager.StartSession();
 
 				session.BeginLoadFileState(_remoteFileStateCacheFactory);
+
+				RotateSalt();
 
 				return Json(
 					new StartSessionResult()
