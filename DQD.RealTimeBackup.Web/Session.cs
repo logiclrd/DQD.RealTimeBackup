@@ -30,11 +30,11 @@ namespace DQD.RealTimeBackup.Web
 			 && (LoadFileStateTask.Status < TaskStatus.RanToCompletion))
 				return;
 
+			var remoteFileStateCache = remoteFileStateCacheFactory();
+
 			LoadFileStateTask = Task.Run(
 				() =>
 				{
-					var remoteFileStateCache = remoteFileStateCacheFactory();
-
 					LoadFileState(remoteFileStateCache);
 				});
 		}

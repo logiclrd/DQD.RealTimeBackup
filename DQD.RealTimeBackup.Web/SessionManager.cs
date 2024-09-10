@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace DQD.RealTimeBackup.Web
 {
@@ -19,6 +20,37 @@ namespace DQD.RealTimeBackup.Web
 					session.LastActivityDateTimeUTC = DateTime.UtcNow;
 
 				return session;
+			}
+		}
+
+		public void StartSessionExpiryThread()
+		{
+			var thread = new Thread(SessionExpiryThread);
+
+			thread.IsBackground = true;
+			thread.Start();
+		}
+
+		void SessionExpiryThread()
+		{
+			try
+			{
+				while (true)
+				{
+					Thread.Sleep(TimeSpan.FromSeconds(30));
+					CullSessions();
+				}
+			}
+			catch (Exception e)
+			{
+				Console.WriteLine("Crash on session expiry thread:");
+				Console.WriteLine(e);
+
+				Thread.Sleep(TimeSpan.FromSeconds(10));
+
+				Console.WriteLine("Restarting session expiry thread");
+
+				StartSessionExpiryThread();
 			}
 		}
 

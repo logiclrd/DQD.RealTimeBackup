@@ -331,7 +331,10 @@ namespace DQD.RealTimeBackup.StateCache
 
 							double overallCompletion = thisBatchOffset + thisFileCompletion;
 
-							progressCallback(overallCompletion / allBatchesTotalSize);
+							double overallProgress = overallCompletion / allBatchesTotalSize;
+
+							if (double.IsFinite(overallProgress))
+								progressCallback(overallProgress);
 						};
 
 					batchOverallOffset += batchFileProgressContribution[i];
@@ -685,86 +688,101 @@ namespace DQD.RealTimeBackup.StateCache
 
 		void ActionThreadProc()
 		{
-			while (!_stopping)
+			try
 			{
-				CacheAction action;
-
-				lock (_actionThreadSync)
+				while (!_stopping)
 				{
-					if (_actionQueue.Count == 0)
+					CacheAction action;
+
+					lock (_actionThreadSync)
 					{
-						DebugLog("[AT] action thread waiting");
-						Monitor.Wait(_actionThreadSync);
-						continue;
-					}
-
-					action = _actionQueue.Dequeue();
-
-					DebugLog("[AT] checking if this action is redundant");
-
-					bool isRedundant = false;
-
-					if (action.CacheActionType == CacheActionType.UploadFile)
-					{
-						if (_actionQueue.Any(futureAction => (futureAction.Path == action.Path) && (futureAction.CacheActionType == CacheActionType.DeleteFile)))
+						if (_actionQueue.Count == 0)
 						{
-							DebugLog("[AT] => future action will delete this path anyway, no point in uploading");
-							isRedundant = true;
+							DebugLog("[AT] action thread waiting");
+							Monitor.Wait(_actionThreadSync);
+							continue;
 						}
-					}
 
-					if (isRedundant)
-					{
-						if (File.Exists(action.SourcePath))
+						action = _actionQueue.Dequeue();
+
+						DebugLog("[AT] checking if this action is redundant");
+
+						bool isRedundant = false;
+
+						if (action.CacheActionType == CacheActionType.UploadFile)
 						{
-							DebugLog("[AT] deleting source file: {0}", action.SourcePath);
-							File.Delete(action.SourcePath);
+							if (_actionQueue.Any(futureAction => (futureAction.Path == action.Path) && (futureAction.CacheActionType == CacheActionType.DeleteFile)))
+							{
+								DebugLog("[AT] => future action will delete this path anyway, no point in uploading");
+								isRedundant = true;
+							}
+						}
+
+						if (isRedundant)
+						{
+							if (File.Exists(action.SourcePath))
+							{
+								DebugLog("[AT] deleting source file: {0}", action.SourcePath);
+								File.Delete(action.SourcePath);
+							}
+							else
+								DebugLog("[AT] source file has gone missing anyway: {0}", action.SourcePath);
 						}
 						else
-							DebugLog("[AT] source file has gone missing anyway: {0}", action.SourcePath);
-					}
-					else
-					{
-						DebugLog("[AT] processing action");
+						{
+							DebugLog("[AT] processing action");
 
-						Monitor.Exit(_actionThreadSync);
+							Monitor.Exit(_actionThreadSync);
+
+							try
+							{
+								while (!action.IsComplete && !_stopping)
+									ProcessCacheAction(action);
+							}
+							finally
+							{
+								Monitor.Enter(_actionThreadSync);
+							}
+
+							if (_stopping && !action.IsComplete)
+							{
+								DebugLog("[AT] stopping, leaving incomplete action's file");
+								break;
+							}
+						}
 
 						try
 						{
-							while (!action.IsComplete && !_stopping)
-								ProcessCacheAction(action);
+							DebugLog("[AT] deleting action file");
+							if (action.ActionFileName != null)
+							{
+								File.Delete(action.ActionFileName);
+								action.ActionFileName = null;
+							}
 						}
-						finally
+						catch (Exception exception)
 						{
-							Monitor.Enter(_actionThreadSync);
+							_errorLogger.LogError("An error occurred deleting an action file: " + action.ActionFileName, ErrorLogger.Summary.SystemError, exception);
+							DebugLog("[AT] => error deleting action file (logged)");
 						}
 
-						if (_stopping && !action.IsComplete)
-						{
-							DebugLog("[AT] stopping, leaving incomplete action's file");
-							break;
-						}
-					}
+						DebugLog("[AT] notifying anybody waiting that we achieved something");
 
-					try
-					{
-						DebugLog("[AT] deleting action file");
-						if (action.ActionFileName != null)
-						{
-							File.Delete(action.ActionFileName);
-							action.ActionFileName = null;
-						}
+						Monitor.PulseAll(_actionThreadSync);
 					}
-					catch (Exception exception)
-					{
-						_errorLogger.LogError("An error occurred deleting an action file: " + action.ActionFileName, ErrorLogger.Summary.SystemError, exception);
-						DebugLog("[AT] => error deleting action file (logged)");
-					}
-
-					DebugLog("[AT] notifying anybody waiting that we achieved something");
-
-					Monitor.PulseAll(_actionThreadSync);
 				}
+			}
+			catch (Exception e)
+			{
+				_errorLogger.LogError(
+					"The Remote File State Cache Action Queue has crashed",
+					"The thread in charge of pushing updates to the Remote File State Cache to remote storage has crashed. The thread will " +
+					"be restarted in 30 seconds.",
+					e);
+
+				Thread.Sleep(TimeSpan.FromSeconds(30));
+
+				StartActionThread();
 			}
 		}
 
