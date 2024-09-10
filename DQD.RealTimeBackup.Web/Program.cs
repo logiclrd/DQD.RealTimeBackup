@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Xml.Serialization;
 
 using Microsoft.AspNetCore.Builder;
@@ -33,7 +35,26 @@ namespace DQD.RealTimeBackup.Web
 	{
 		static void Main(string[] args)
 		{
-			var arguments = new CommandLine().Parse<CommandLineArguments>();
+			var commandLine = new CommandLine();
+
+			var arguments = commandLine.Parse<CommandLineArguments>();
+
+			if (arguments.ShowUsage)
+			{
+				commandLine.ShowUsage<CommandLineArguments>(Console.Error, "dotnet DQD.RealTimeBackup.dll", detailed: true);
+				return;
+			}
+
+			if (arguments.GetPasswordHash != null)
+			{
+				string stringToHash = "secret" + arguments.GetPasswordHash + "secret";
+
+				var unsaltedPasswordHash = ComputeSHA512(stringToHash);
+
+				Console.WriteLine("  <WebAccessPasswordHash>{0}</WebAccessPasswordHash>", unsaltedPasswordHash);
+
+				return;
+			}
 
 			var parameters = LoadOperatingParameters();
 
@@ -145,6 +166,25 @@ namespace DQD.RealTimeBackup.Web
 			}
 
 			host.Run();
+		}
+
+		static string ComputeSHA512(string input)
+		{
+			var sha512 = SHA512.Create();
+
+			byte[] inputBytes = Encoding.UTF8.GetBytes(input);
+
+			byte[] hash = sha512.ComputeHash(inputBytes);
+
+			char[] hashChars = new char[hash.Length * 2];
+
+			for (int i=0; i < hash.Length; i++)
+			{
+				hashChars[i + i] = "0123456789abcdef"[hash[i] >> 4];
+				hashChars[i + i + 1] = "0123456789abcdef"[hash[i] & 15];
+			}
+
+			return new string(hashChars);
 		}
 
 		static X509Certificate2 LoadServerCertificate(string path)

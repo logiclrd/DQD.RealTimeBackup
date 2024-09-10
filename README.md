@@ -169,7 +169,12 @@ The format is defined in the XML Schema specification here:
 
 ## Restoring Files
 
-A backup system is only useful if there is a way to get the files back. For this purpose, DQD.RealTimeBackup supplies a utility called DQD.RealTimeBackup.Restore.
+A backup system is only useful if there is a way to get the files back. For this purpose, DQD.RealTimeBackup supplies a command-line utility and a
+hostable web portal for accessing backed-up files.
+
+### `DQD.RealTimeBackup.Restore`
+
+The direct method of restoring backed-up files is a command-line utility called DQD.RealTimeBackup.Restore.
 ```
 root@visor:/srv/DQD.RealTimeBackup# dotnet DQD.RealTimeBackup.Restore.dll /?
 usage: dotnet DQD.RealTimeBackup.Restore.dll [/CONFIG <value>] [/LISTALLFILES] [/RECURSIVE] 
@@ -187,6 +192,62 @@ This utility provides the following options:
 * `/RESTORETO <path>`: Specifies the base path for restored files. File paths are built relative to the specified path. For instance, if you specify `/RESTORETO /Restores` and you are restoring a file called `/Documents/Taxes/2023.ods`, then the restored file will be written to `/Restores/Documents/Taxes/2023.ods`.
 * `/CATFILE <path>`: Restores the specified file and writes its content directly to standard output. This could allow it to be piped into another command.
 * `/XML`: Makes the output from DQD.RealTimeBackup.Restore machine-readable. The output from commands (other than `/CATFILE`) is streamed an XML that can be read in realtime with an XML reader in another process.
+
+### `DQD.RealTimeBackup.Web`
+
+A web application is provided that allows quick and easy access to backed-up files from anywhere that can reach it. `DQD.RealTimeBackup.Web` access the B2 API
+and streams results back. If multiple files are selected, they are automatically compressed into a `.tar.bz2` archive (not .ZIP because it can't be streamed).
+
+Some configuration may be needed to configure your host operating system to run `DQD.RealTimeBackup.Web`. In my case, the host operating system is
+FreeBSD 14.1-RELEASE, which can run .NET 8.0 natively.
+
+Steps to configure:
+
+1. Configure whatever domain or hostname you wish to run the service on.
+
+2. Obtain an SSL server certificate for HTTPS encryption. I used LetsEncrypt for this, and I used the tool CertBot (a Python script which has distribution
+   in the FreeBSD package system as `py311-certbot` (the version number will change over time)). The certificate is expected to be in PEM format. CertBot
+   saves files `fullchain.pem` and `privkey.pem`, among others. These are the files needed to run `DQD.RealTimeBackup.Web`.
+
+3. Create a file `/etc/DQD.RealTimeBackup.xml` with just the settings needed for the driving the web app.
+```
+<?xml version="1.0" encoding="utf-8"?>
+<OperatingParameters xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <RemoteStorageKeyID>0015................00001</RemoteStorageKeyID>
+  <RemoteStorageApplicationKey>K0...........................KU</RemoteStorageApplicationKey>
+  <RemoteStorageBucketID>d5....................11</RemoteStorageBucketID>
+  <WebAccessCertificatePath>/usr/local/etc/letsencrypt/live/rtb.logiclrd.cx</WebAccessCertificatePath>
+  <WebAccessPasswordHash>1dd.................................................363</WebAccessPasswordHash>
+</OperatingParameters>
+```
+
+  * `WebAccessCertificatePath` points to the directory in which the SSL certificate from step 2 is stored. It is not technically necessary to use a
+    matched certificate, but of course if it doesn't match then you will get validation warnings whenever you access the interface. It is extremely
+    inadvisable to run this kind of interface over unencrypted connections, and for this reason DQD.RealTimeBackup.Web does not support running without
+    transport-level encryption.
+
+  * `WebAccessPasswordHash` is a hash for a password used to prevent undesired access to your files. Use the `DQD.RealTimeBackup.Web` executable itself
+    to procure these values:
+
+    ```
+    /srv/DQD.RealTimeBackup> DQD.RealTimeBackup.Web /GETPASSWORDHASH 'abc123'
+      <WebAccessPasswordHash>8bd635544f90a5bb4f973320b017a28fb562ceca7ef4eb27653df20853b868b2a75a3b721e31fb5acd43c067c2b3f7816412a40e91e8e271c5496d49f972d2e9</WebAccessPasswordHash>
+    /srv/DQD.RealTimeBackup>
+    ```
+
+    The string is provided as XML ready to copy/paste into `/etc/DQD.RealTimeBackup.xml`.
+
+    Note: This hashed version of the password is not transmitted over the wire. There is a second (salted) layer of security in verifying the passwords.
+
+4. Configure the host's services mechanism to run `DQD.RealTimeBackup.Web`. For my FreeBSD host, this was done by placing the file
+   `dqd_realtimebackup_web` (in the `DQD.RealTimeBackup.Web` subdirectory) into `/etc/rc.d`, and then editing `/etc/rc.conf` to enable it:
+
+   ```
+   dqd_realtime_backup_web_enable="YES"
+   ```
+
+Step 4 will vary for different operating systems and distributions. If you figure it out for a new system, create a PR and we can look at getting it
+contributed to the project centrally. :-)
 
 ## Operating Principles
 
