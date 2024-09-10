@@ -147,7 +147,7 @@ namespace DQD.RealTimeBackup.Web
 
 		static X509Certificate2 LoadServerCertificate(string path)
 		{
-			string certificatePem = File.ReadAllText(Path.Combine(path, "cert.pem"));
+			string certificatePem = File.ReadAllText(Path.Combine(path, "fullchain.pem"));
 			string privateKeyPem = File.ReadAllText(Path.Combine(path, "privkey.pem"));
 
 			return X509Certificate2.CreateFromPem(certificatePem, privateKeyPem);
