@@ -15,7 +15,6 @@
     <PackageReference Include="DQD.Backblaze.Agent.Autofac" Version="1.2.1" />
     <PackageReference Include="DQD.Backblaze.Client" Version="1.2.1" />
     <PackageReference Include="DQD.CommandLineParser" Version="1.1.0" />
-    <PackageReference Include="LettuceEncrypt" Version="1.3.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
