@@ -12,9 +12,9 @@ using DQD.RealTimeBackup.Utility;
 using Bytewizer.Backblaze;
 using Bytewizer.Backblaze.Client;
 using Bytewizer.Backblaze.Models;
+using Bytewizer.Backblaze.Utility;
 
 using HttpStatusCode = System.Net.HttpStatusCode;
-using Bytewizer.Backblaze.Utility;
 
 namespace DQD.RealTimeBackup.Storage
 {

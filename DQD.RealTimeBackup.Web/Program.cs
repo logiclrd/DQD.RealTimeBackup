@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Xml.Serialization;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.StaticFiles;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -14,12 +16,12 @@ using Autofac.Extensions.DependencyInjection;
 
 using Bytewizer.Backblaze.Client;
 
+using DQD.Backblaze.Agent.Autofac;
+
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.StateCache;
 using DQD.RealTimeBackup.Storage;
 using DQD.RealTimeBackup.Utility;
-using Microsoft.AspNetCore.StaticFiles;
-using System.Collections.Generic;
 
 namespace DQD.RealTimeBackup.Web
 {

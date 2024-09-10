@@ -7,6 +7,10 @@ using System.Xml.Serialization;
 
 using Autofac;
 
+using Bytewizer.Backblaze.Client;
+
+using DQD.Backblaze.Agent.Autofac;
+
 using DQD.CommandLineParser;
 
 using DQD.RealTimeBackup.ActivityMonitor;
@@ -24,8 +28,6 @@ using DQD.RealTimeBackup.SurfaceArea;
 using DQD.RealTimeBackup.Utility;
 
 using Timer = DQD.RealTimeBackup.Utility.Timer;
-
-using Bytewizer.Backblaze.Client;
 
 namespace DQD.RealTimeBackup
 {

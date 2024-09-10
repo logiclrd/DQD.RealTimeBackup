@@ -11,6 +11,8 @@ using Autofac;
 
 using Bytewizer.Backblaze.Client;
 
+using DQD.Backblaze.Agent.Autofac;
+
 using DQD.RealTimeBackup.Bridge.Notifications;
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.StateCache;

@@ -10,6 +10,8 @@ using Autofac;
 
 using Bytewizer.Backblaze.Client;
 
+using DQD.Backblaze.Agent.Autofac;
+
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.StateCache;
 using DQD.RealTimeBackup.Storage;
