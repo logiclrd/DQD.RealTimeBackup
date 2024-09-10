@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography.X509Certificates;
 using System.Xml.Serialization;
@@ -19,6 +20,8 @@ using Bytewizer.Backblaze.Client;
 
 using DQD.Backblaze.Agent.Autofac;
 
+using DQD.CommandLineParser;
+
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.StateCache;
 using DQD.RealTimeBackup.Storage;
@@ -30,6 +33,8 @@ namespace DQD.RealTimeBackup.Web
 	{
 		static void Main(string[] args)
 		{
+			var arguments = new CommandLine().Parse<CommandLineArguments>();
+
 			var parameters = LoadOperatingParameters();
 
 			Environment.SetEnvironmentVariable("DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE", "false");
@@ -121,6 +126,22 @@ namespace DQD.RealTimeBackup.Web
 					})
 				.Build();
 
+			if (arguments.Daemon)
+			{
+				// We can't literally fork the process, because that'll only bring the calling thread across. But, the child
+				// will repeat exactly the same initialization, so if it was going to fail, it already would have.
+				var psi = new ProcessStartInfo();
+
+				psi.FileName = Process.GetCurrentProcess().MainModule!.FileName;
+
+				if (psi.FileName.EndsWith("/dotnet"))
+					psi.Arguments = typeof(Program).Assembly.Location;
+
+				Process.Start(psi);
+
+				return;
+			}
+
 			host.Run();
 		}
 
@@ -160,12 +181,12 @@ namespace DQD.RealTimeBackup.Web
 
 			try
 			{
-				using (var stream = File.OpenRead(CommandLineArguments.DefaultConfigurationPath))
+				using (var stream = File.OpenRead(DQD.RealTimeBackup.CommandLineArguments.DefaultConfigurationPath))
 					parameters = (OperatingParameters)serializer.Deserialize(stream)!;
 			}
 			catch (Exception e)
 			{
-				throw new Exception("Unable to parse configuration file: " + CommandLineArguments.DefaultConfigurationPath, e);
+				throw new Exception("Unable to parse configuration file: " + DQD.RealTimeBackup.CommandLineArguments.DefaultConfigurationPath, e);
 			}
 
 			return parameters;
