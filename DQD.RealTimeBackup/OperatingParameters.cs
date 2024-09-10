@@ -165,6 +165,12 @@ namespace DQD.RealTimeBackup
 		// B2-specific: Files uploaded in chunks will use this chunk size.
 		public int B2LargeFileChunkSize = 5 * 1048576;
 
+		// Endpoint on which the web server in DQD.RealTimeBackup.Web should listen for requests.
+		public string WebAccessServerURLs = "https://*:8081";
+
+		// Path to the TLS certificate that authenticates the server.
+		public string WebAccessCertificatePath = "/usr/local/etc/letsencrypt/live/rtb.logiclrd.cx";
+
 		// Hash of the password for web access via DQD.RealTimeBackup.Web.
 		public string WebAccessPasswordHash = "MUST BE SET IN CONFIGURATION FILE";
 	}

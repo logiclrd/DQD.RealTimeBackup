@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography.X509Certificates;
 using System.Xml.Serialization;
 
 using Microsoft.AspNetCore.Builder;
@@ -29,6 +30,8 @@ namespace DQD.RealTimeBackup.Web
 	{
 		static void Main(string[] args)
 		{
+			var parameters = LoadOperatingParameters();
+
 			Environment.SetEnvironmentVariable("DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE", "false");
 
 			var builder = Host.CreateDefaultBuilder(args);
@@ -38,6 +41,23 @@ namespace DQD.RealTimeBackup.Web
 				.ConfigureWebHostDefaults(
 					webHostBuilder =>
 					{
+						webHostBuilder.UseUrls(parameters.WebAccessServerURLs);
+
+						if (!string.IsNullOrWhiteSpace(parameters.WebAccessCertificatePath)
+						 && Directory.Exists(parameters.WebAccessCertificatePath))
+						{
+							webHostBuilder.ConfigureKestrel(
+								serverOptions =>
+								{
+									serverOptions.ConfigureHttpsDefaults(
+										httpsOptions =>
+										{
+											httpsOptions.AllowAnyClientCertificate();
+											httpsOptions.ServerCertificate = LoadServerCertificate(parameters.WebAccessCertificatePath);
+										});
+								});
+						}
+
 						webHostBuilder.UseWebRoot("Static");
 
 						webHostBuilder.Configure(
@@ -74,8 +94,6 @@ namespace DQD.RealTimeBackup.Web
 				.ConfigureContainer<ContainerBuilder>(
 					configure =>
 					{
-						var parameters = LoadOperatingParameters();
-
 						configure.RegisterInstance(parameters);
 
 						var backblazeAgentOptions =
@@ -104,6 +122,14 @@ namespace DQD.RealTimeBackup.Web
 				.Build();
 
 			host.Run();
+		}
+
+		static X509Certificate2 LoadServerCertificate(string path)
+		{
+			string certificatePem = File.ReadAllText(Path.Combine(path, "cert.pem"));
+			string privateKeyPem = File.ReadAllText(Path.Combine(path, "privkey.pem"));
+
+			return X509Certificate2.CreateFromPem(certificatePem, privateKeyPem);
 		}
 
 		class AuthenticateWithBackblazeFilter : IStartupFilter
