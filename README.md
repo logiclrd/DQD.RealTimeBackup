@@ -28,8 +28,8 @@ DQD.RealTimeBackup is written in C# against .NET 8.0. When compiled, it produces
 
 In order to run DQD.RealTimeBackup and perform an initial backup, you can use one of these two command-line options:
 ```
-  dotnet DQD.RealTimeBackup.dll /INITIALBACKUPTHENEXIT
-  dotnet DQD.RealTimeBackup.dll /INITIALBACKUPTHENMONITOR
+  ./DQD.RealTimeBackup /INITIALBACKUPTHENEXIT
+  ./DQD.RealTimeBackup /INITIALBACKUPTHENMONITOR
 ```
 You may also wish to supply the `/VERBOSE` command-line option to get more detailed output. The volume of output will be utterly overwhelming, but if problems arise there will be more detail to inspect and diagnose.
 
@@ -65,11 +65,10 @@ DQD.RealTimeBackup.UserInterface handles light and dark themes automatically. In
 
 There is also a command-line tool DQD.RealTimeBackup.Console that can connect to a running Backup Agent and retrieve its current operating state and statistics. This tool can also submit paths to be processed and pause/unpause filesystem monitoring.
 ```
-logiclrd@visor:/code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console$ dotnet run
-usage: /code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console/bin/Debug/net8.0/DQD.RealTimeBackup.Console.dll
-    [/CONNECT <value>] [/GETSTATS] [/GETSTATSINCLUDEUPLOADS] [/GETSTATSREPEAT]
+logiclrd@visor:/srv/DQD.RealTimeBackup$ ./DQD.RealTimeBackup.Console run
+usage: /srv/DQD.RealTimeBackup/DQD.RealTimeBackup.Console [/CONNECT <value>] [/GETSTATS] [/GETSTATSINCLUDEUPLOADS] [/GETSTATSREPEAT]
     [/CHECKPATH [/CHECKPATH <value> [..]]] [/PAUSEMONITOR] [/UNPAUSEMONITOR] [/DISCARDBUFFEREDNOTIFICATIONS] [/XML] [/?]
-logiclrd@visor:/code/DQD.RealTimeBackup/DQD.RealTimeBackup.Console$ 
+logiclrd@visor:/srv/DQD.RealTimeBackup$ 
 ```
 This utility provides the following options:
 
@@ -176,7 +175,7 @@ hostable web portal for accessing backed-up files.
 
 The direct method of restoring backed-up files is a command-line utility called DQD.RealTimeBackup.Restore.
 ```
-root@visor:/srv/DQD.RealTimeBackup# dotnet DQD.RealTimeBackup.Restore.dll /?
+root@visor:/srv/DQD.RealTimeBackup# ./DQD.RealTimeBackup.Restore.dll /?
 usage: dotnet DQD.RealTimeBackup.Restore.dll [/CONFIG <value>] [/LISTALLFILES] [/RECURSIVE] 
     [/LISTDIRECTORY <value> [/LISTDIRECTORY <value> [..]]] [/RESTOREFILE <value> [/RESTOREFILE <value> [..]]] 
     [/RESTOREDIRECTORY <value> [/RESTOREDIRECTORY <value> [..]]] [/RESTORETO <value>] [/CATFILE <value>] [/XML] [/?]
