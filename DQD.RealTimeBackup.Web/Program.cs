@@ -51,6 +51,12 @@ namespace DQD.RealTimeBackup.Web
 						if (!string.IsNullOrWhiteSpace(parameters.WebAccessCertificatePath)
 						 && Directory.Exists(parameters.WebAccessCertificatePath))
 						{
+							webHostBuilder.ConfigureServices(
+								services =>
+								{
+									services.AddLettuceEncrypt();
+								});
+
 							webHostBuilder.ConfigureKestrel(
 								serverOptions =>
 								{
@@ -58,7 +64,7 @@ namespace DQD.RealTimeBackup.Web
 										httpsOptions =>
 										{
 											httpsOptions.AllowAnyClientCertificate();
-											httpsOptions.ServerCertificate = LoadServerCertificate(parameters.WebAccessCertificatePath);
+											httpsOptions.UseLettuceEncrypt(serverOptions.ApplicationServices);
 										});
 								});
 						}
@@ -143,14 +149,6 @@ namespace DQD.RealTimeBackup.Web
 			}
 
 			host.Run();
-		}
-
-		static X509Certificate2 LoadServerCertificate(string path)
-		{
-			string certificatePem = File.ReadAllText(Path.Combine(path, "cert.pem"));
-			string privateKeyPem = File.ReadAllText(Path.Combine(path, "privkey.pem"));
-
-			return X509Certificate2.CreateFromPem(certificatePem, privateKeyPem);
 		}
 
 		class AuthenticateWithBackblazeFilter : IStartupFilter
