@@ -12,8 +12,8 @@
   <ItemGroup>
     <PackageReference Include="Autofac" Version="8.0.0" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="8.0.0" />
-    <PackageReference Include="DQD.Backblaze.Agent.Autofac" Version="1.2.0" />
-    <PackageReference Include="DQD.Backblaze.Client" Version="1.2.0" />
+    <PackageReference Include="DQD.Backblaze.Agent.Autofac" Version="1.2.1" />
+    <PackageReference Include="DQD.Backblaze.Client" Version="1.2.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
