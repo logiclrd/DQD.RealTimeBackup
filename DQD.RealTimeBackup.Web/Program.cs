@@ -63,7 +63,9 @@ namespace DQD.RealTimeBackup.Web
 								});
 						}
 
-						webHostBuilder.UseWebRoot("Static");
+						string? myPath = Path.GetDirectoryName(typeof(Program).Assembly.Location);
+
+						webHostBuilder.UseWebRoot(Path.Combine(myPath ?? "/", "Static"));
 
 						webHostBuilder.Configure(
 							app =>

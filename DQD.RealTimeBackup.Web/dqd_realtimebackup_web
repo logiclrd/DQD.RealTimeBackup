@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# This is an /etc/rc.d script for FreeBSD. With this file in that directory (and with the +x mode), you can
+# enable the automatic startup of the DQD.RealTimeBackup.Web service as a daemon by configuring it in rc.conf:
+#
+#         dqd_realtimebackup_web_enable="YES"
+#
+# Manual start/stop:
+#
+#         service dqd_realtimebackup_web start
+#         service dqd_realtimebackup_web status
+#         service dqd_realtimebackup_web stop
+#
+
+# PROVIDE: dqd_realtimebackup_web
+# REQUIRE: DAEMON
+# KEYWORD: nojail
+
+. /etc/rc.subr
+
+name=dqd_realtimebackup_web
+rcvar=dqd_realtimebackup_web_enable
+
+command="/srv/DQD.RealTimeBackup/DQD.RealTimeBackup.Web"
+command_args="/DAEMON"
+
+load_rc_config $name
+run_rc_command "$1"
