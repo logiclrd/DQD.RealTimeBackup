@@ -9,8 +9,8 @@
 
   <ItemGroup>
     <PackageReference Include="Autofac" Version="8.0.0" />
-    <PackageReference Include="DQD.Backblaze.Agent.Autofac" Version="1.1.0" />
-    <PackageReference Include="DQD.Backblaze.Client" Version="1.1.0" />
+    <PackageReference Include="DQD.Backblaze.Agent.Autofac" Version="1.2.0" />
+    <PackageReference Include="DQD.Backblaze.Client" Version="1.2.0" />
     <PackageReference Include="DQD.CommandLineParser" Version="1.1.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.0" />
