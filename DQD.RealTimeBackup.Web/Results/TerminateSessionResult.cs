@@ -1,6 +1,6 @@
 namespace DQD.RealTimeBackup.Web
 {
-	public class TerminateSessionResponse
+	public class TerminateSessionResult
 	{
 		public string? SessionID { get; set; }
 		public bool Success { get; set; }

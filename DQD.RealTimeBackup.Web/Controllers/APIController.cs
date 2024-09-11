@@ -165,7 +165,7 @@ namespace DQD.RealTimeBackup.Web
 				_sessionManager.EndSession(request.SessionID);
 
 				return Json(
-					new TerminateSessionResponse()
+					new TerminateSessionResult()
 					{
 						SessionID = request.SessionID,
 						Success = true,
@@ -201,7 +201,7 @@ namespace DQD.RealTimeBackup.Web
 					if (request.ParentPath == null)
 						throw new Exception("Invalid request");
 
-					var result = new GetChildItemsResponse();
+					var result = new GetChildItemsResult();
 
 					foreach (var childPath in session.GetDirectoriesInDirectory(request.ParentPath, recursive: false))
 						result.Directories.Add(childPath);
