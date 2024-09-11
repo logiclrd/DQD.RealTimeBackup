@@ -103,6 +103,7 @@ namespace DQD.RealTimeBackup.Web
 												new Dictionary<string, string>()
 												{
 													{ ".html", "text/html" },
+													{ ".js", "text/javascript" },
 													{ ".svg", "image/svg+xml" },
 												}),
 									});

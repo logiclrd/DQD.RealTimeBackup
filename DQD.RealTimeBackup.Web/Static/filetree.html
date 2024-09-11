@@ -1,6 +1,55 @@
 <html>
 	<head>
 		<style type="text/css">
+			body
+			{
+				margin: 0;
+			}
+
+			form
+			{
+				display: none;
+			}
+
+			.Root
+			{
+				height: 100%;
+				overflow: hidden;
+			}
+
+			.Content
+			{
+				display: flex;
+				flex-direction: column;
+				margin: 0.4em;
+				height: 100%;
+			}
+
+			.Content > *:last-child
+			{
+				flex-grow: 1;
+				overflow-y: scroll;
+				margin-bottom: 1em;
+			}
+
+			.TopRow
+			{
+				display: flex;
+				align-items: flex-start;
+			}
+
+			.TopRow > *:last-child
+			{
+				flex-grow: 1;
+			}
+
+			.Logo
+			{
+				width: 6em;
+				height: 6em;
+				margin: 0 2em 1em 0;
+			}
+
 			.Expanding
 			{
 				font-style: italic;
@@ -132,6 +181,7 @@
 				background: #ccddff;
 			}
 		</style>
+		<script type="text/javascript" src="twinkle.js"></script>
 		<script type="text/javascript">
 			class Node
 			{
@@ -463,11 +513,23 @@
 						this.Unexpand();
 				}
 
+				IsFullyLoaded()
+				{
+					if (this.#lazyInit)
+						return false;
+
+					for (var childNode of this.#childNodes)
+						if (!childNode.IsFullyLoaded())
+							return false;
+
+					return true;
+				}
+
 				Select()
 				{
 					this.#element.classList.add("Selected");
 
-					if (!this.#lazyInit)
+					if (this.IsFullyLoaded())
 						this.RaiseSelectionChanged();
 					else
 					{
@@ -583,7 +645,10 @@
 				expandingCount++;
 
 				if (expandingCount == 1)
+				{
 					lblExpanding.classList.remove("Hidden");
+					StartTwinkle(200);
+				}
 			}
 
 			function DecrementExpandingCount()
@@ -591,7 +656,10 @@
 				expandingCount--;
 
 				if (expandingCount == 0)
+				{
+					StopTwinkle();
 					lblExpanding.classList.add("Hidden");
+				}
 			}
 
 			window.onload =
@@ -668,19 +736,26 @@
 		</script>
 	</head>
 	<body>
-		<div>
-			Selected files: <span id="lblSelectedFileCount"></span> <span id="lblExpanding" class="Expanding Hidden">expanding...</span><br />
-			Size: <span id="lblSelectedFileSize"></span><br />
-			<br />
-			<input type="button" id="cmdDownload" value="Download Selected Files" disabled="true" /><br />
-			<input type="button" id="cmdClearSelection" value="Clear Selection" />
+		<div class="Root">
+			<div class="Content">
+				<div class="TopRow">
+					<object id="imgLogo" class="Logo" data="logo.svg" type="image/svg+xml"></object>
+					<div>
+						Selected files: <span id="lblSelectedFileCount"></span> <span id="lblExpanding" class="Expanding Hidden">expanding...</span><br />
+						Size: <span id="lblSelectedFileSize"></span><br />
+						<br />
+						<input type="button" id="cmdDownload" value="Download Selected Files" disabled="true" /><br />
+						<input type="button" id="cmdClearSelection" value="Clear Selection" />
+					</div>
+				</div>
+				<hr />
+				<div id="tvwFiles">
+				</div>
+			</div>
 		</div>
 		<form id="Form_InitiateMultipleDownload" action="/api/DownloadMultipleFiles" method="POST">
 			<input type="hidden" name="SessionID" id="FormInput_SessionID" />
 			<input type="hidden" name="FileIndices" id="FormInput_FileIndices" />
 		</form>
-		<hr />
-		<div id="tvwFiles">
-		</div>
 	</body>
 </html>

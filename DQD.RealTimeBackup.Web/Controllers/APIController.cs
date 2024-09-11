@@ -85,7 +85,17 @@ namespace DQD.RealTimeBackup.Web
 				var correctPasswordHash = GetCorrectPasswordHash();
 
 				if (request.PasswordHash != correctPasswordHash)
-					return StatusCode(401, "Not authorized");
+				{
+					var result = Json(
+						new
+						{
+							ErrorMessage = "Login failed: Incorrect password"
+						});
+
+					result.StatusCode = StatusCodes.Status401Unauthorized;
+
+					return result;
+				}
 
 				var session = _sessionManager.StartSession();
 

@@ -1,10 +1,28 @@
 <html>
 	<head>
 		<meta charset="UTF-8" />
+		<style type="text/css">
+			.Centered
+			{
+				display: block;
+				max-width: fit-content;
+				margin-left: auto;
+				margin-right: auto;
+			}
+
+			.SpacedVertically
+			{
+				margin-top: 2em;
+				margin-bottom: 1em;
+			}
+		</style>
+		<script type="text/javascript" src="twinkle.js"></script>
 		<script type="text/javascript">
 			window.onload =
 				function()
 				{
+					StartTwinkle(200);
+
 					var params = new URLSearchParams(window.location.search);
 
 					var sessionID = params.get("SessionID");
@@ -48,14 +66,19 @@
 		</script>
 	</head>
 	<body>
-		<p>
-			Please wait while the file list loads...
-		</p>
-		<p>
-			Progress: <span id="lblProgressBar"></span> <span id="lblProgressValue"></span>
-		</p>
-		<p id="lblError" style="display: none">
-			An error has occurred while loading the file list.
-		</p>
+		<div class="Centered">
+			<object id="imgLogo" class="Centered" data="logo.svg" type="image/svg+xml"></object>
+			<div class="SpacedVertically">
+				<p>
+					Please wait while the file list loads...
+				</p>
+				<p>
+					Progress: <span id="lblProgressBar"></span> <span id="lblProgressValue"></span>
+				</p>
+				<p id="lblError" style="display: none">
+					An error has occurred while loading the file list.
+				</p>
+			</div>
+		</div>
 	</body>
 </html>

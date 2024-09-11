@@ -1,5 +1,26 @@
 <html>
 	<head>
+		<style type="text/css">
+			.Centered
+			{
+				display: block;
+				max-width: fit-content;
+				margin-left: auto;
+				margin-right: auto;
+			}
+
+			.SpacedVertically
+			{
+				margin-top: 2em;
+				margin-bottom: 1em;
+			}
+
+			input[type="button"]
+			{
+				width: 100%;
+			}
+		</style>
+		<script type="text/javascript" src="twinkle.js"></script>
 		<script type="text/javascript">
 			async function ComputeSHA512Async(stringValue)
 			{
@@ -13,12 +34,20 @@
 			window.onload =
 				function()
 				{
+					var txtPassword = document.getElementById("txtPassword");
 					var cmdStartSession = document.getElementById("cmdStartSession");
+
+					txtPassword.onkeydown =
+						function (event)
+						{
+							if (event.keyCode == 13)
+								cmdStartSession.click();
+						};
 
 					cmdStartSession.onclick =
 						async function()
 						{
-							var txtPassword = document.getElementById("txtPassword");
+							StartTwinkle(100);
 
 							if (txtPassword.value.trim() == '')
 							{
@@ -46,6 +75,7 @@
 									{
 										if (!ok)
 										{
+											StopTwinkle();
 											alert(result.ErrorMessage);
 											cmdStartSession.disabled = false;
 										}
@@ -57,8 +87,22 @@
 		</script>
 	</head>
 	<body>
-		Password: <input type="password" name="Password" id="txtPassword" /><br />
-		<br />
-		<input type="button" value="Access Files" id="cmdStartSession" />
+		<div class="Centered">
+			<object id="imgLogo" class="Centered" data="logo.svg" type="image/svg+xml"></object>
+			<table class="Centered">
+				<tr>
+					<td>
+						<p class="SpacedVertically">
+							Password: <input type="password" name="Password" id="txtPassword" />
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<input type="button" value="Access Files" id="cmdStartSession" />
+					</td>
+				</tr>
+			</table>
+		</div>
 	</body>
 </html>
