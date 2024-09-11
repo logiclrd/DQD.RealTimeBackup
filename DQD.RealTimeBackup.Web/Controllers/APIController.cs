@@ -146,20 +146,28 @@ namespace DQD.RealTimeBackup.Web
 				var session = _sessionManager.GetSession(request.SessionID ?? throw new NullReferenceException("SessionID"));
 
 				if (session == null)
-					return StatusCode(StatusCodes.Status401Unauthorized);
+				{
+					var result = Json(new { SessionExpired = true });
 
-				if (request.ParentPath == null)
-					throw new Exception("Invalid request");
+					result.StatusCode = StatusCodes.Status401Unauthorized;
 
-				var result = new GetChildItemsResponse();
+					return result;
+				}
+				else
+				{
+					if (request.ParentPath == null)
+						throw new Exception("Invalid request");
 
-				foreach (var childPath in session.GetDirectoriesInDirectory(request.ParentPath, recursive: false))
-					result.Directories.Add(childPath);
+					var result = new GetChildItemsResponse();
 
-				foreach (var child in session.GetFilesInDirectory(request.ParentPath, recursive: false))
-					result.Files.Add(child);
+					foreach (var childPath in session.GetDirectoriesInDirectory(request.ParentPath, recursive: false))
+						result.Directories.Add(childPath);
 
-				return Json(result);
+					foreach (var child in session.GetFilesInDirectory(request.ParentPath, recursive: false))
+						result.Files.Add(child);
+
+					return Json(result);
+				}
 			}
 			catch (Exception e)
 			{
