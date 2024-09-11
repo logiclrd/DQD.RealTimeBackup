@@ -38,6 +38,11 @@
 				align-items: flex-start;
 			}
 
+			.FloatRight
+			{
+				float: right;
+			}
+
 			.TopRow > *:last-child
 			{
 				flex-grow: 1;
@@ -569,6 +574,7 @@
 			}
 
 			var sessionID;
+			var cmdTerminateSession;
 			var lblSelectedFileCount, lblSelectedFileSize;
 			var lblExpanding;
 			var cmdDownload;
@@ -669,12 +675,36 @@
 
 					sessionID = params.get("SessionID");
 
+					cmdTerminateSession = document.getElementById("cmdTerminateSession");
 					lblSelectedFileCount = document.getElementById("lblSelectedFileCount");
 					lblSelectedFileSize = document.getElementById("lblSelectedFileSize");
 					lblExpanding = document.getElementById("lblExpanding");
 					cmdDownload = document.getElementById("cmdDownload");
 					cmdClearSelection = document.getElementById("cmdClearSelection");
 					tvwFiles = document.getElementById("tvwFiles");
+
+					cmdTerminateSession.onclick =
+						function()
+						{
+							fetch("/api/TerminateSession",
+								{
+									method: "POST",
+									headers: { "Content-Type": "application/json" },
+									body: JSON.stringify(
+										{
+											SessionID: sessionID,
+										})
+								})
+							.then(async response => [response.ok, response.status, await response.json()])
+							.then(
+								([ok, statusCode, result]) =>
+								{
+									if (ok)
+										window.location = "index.html";
+									else
+										alert("An error occurred terminating the session.\n\n" + result.ErrorMessage);
+								});
+						};
 
 					var rootNode = new Node("/");
 
@@ -741,6 +771,7 @@
 				<div class="TopRow">
 					<object id="imgLogo" class="Logo" data="logo.svg" type="image/svg+xml"></object>
 					<div>
+						<input type="button" id="cmdTerminateSession" class="FloatRight" value="Terminate Session" /><br />
 						Selected files: <span id="lblSelectedFileCount"></span> <span id="lblExpanding" class="Expanding Hidden">expanding...</span><br />
 						Size: <span id="lblSelectedFileSize"></span><br />
 						<br />

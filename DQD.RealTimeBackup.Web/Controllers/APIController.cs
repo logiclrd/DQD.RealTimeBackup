@@ -148,6 +148,39 @@ namespace DQD.RealTimeBackup.Web
 			}
 		}
 
+		[HttpPost("TerminateSession")]
+		public ActionResult TerminateSession([FromBody] TerminateSessionRequest request)
+		{
+			try
+			{
+				if (request.SessionID == null)
+				{
+					var result = Json(new { ErrorMessage = "Invalid request: no SessionID supplied" });
+
+					result.StatusCode = StatusCodes.Status400BadRequest;
+
+					return result;
+				}
+
+				_sessionManager.EndSession(request.SessionID);
+
+				return Json(
+					new TerminateSessionResponse()
+					{
+						SessionID = request.SessionID,
+						Success = true,
+					});
+			}
+			catch (Exception e)
+			{
+				var result = Json(ErrorResult.FromException(e));
+
+				result.StatusCode = StatusCodes.Status500InternalServerError;
+
+				return result;
+			}
+		}
+
 		[HttpPost("GetChildItems")]
 		public ActionResult GetChildItems([FromBody] GetChildItemsRequest request)
 		{
