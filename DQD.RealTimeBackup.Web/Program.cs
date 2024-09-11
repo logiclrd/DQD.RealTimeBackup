@@ -165,6 +165,8 @@ namespace DQD.RealTimeBackup.Web
 				return;
 			}
 
+			host.Services.GetRequiredService<ISessionManager>().StartSessionExpiryThread();
+
 			host.Run();
 		}
 
