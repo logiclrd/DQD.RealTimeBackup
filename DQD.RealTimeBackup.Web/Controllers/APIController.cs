@@ -139,14 +139,14 @@ namespace DQD.RealTimeBackup.Web
 		}
 
 		[HttpPost("GetChildItems")]
-		public JsonResult GetChildItems([FromBody] GetChildItemsRequest request)
+		public ActionResult GetChildItems([FromBody] GetChildItemsRequest request)
 		{
 			try
 			{
 				var session = _sessionManager.GetSession(request.SessionID ?? throw new NullReferenceException("SessionID"));
 
 				if (session == null)
-					throw new KeyNotFoundException();
+					return StatusCode(StatusCodes.Status401Unauthorized);
 
 				if (request.ParentPath == null)
 					throw new Exception("Invalid request");
@@ -178,8 +178,9 @@ namespace DQD.RealTimeBackup.Web
 			{
 				var session = _sessionManager.GetSession(sessionID ?? throw new NullReferenceException("SessionID"));
 
+				// Session expired?
 				if (session == null)
-					throw new KeyNotFoundException();
+					return Redirect("index.html");
 
 				var fileState = session.GetFileByIndex(fileIndex);
 
@@ -202,8 +203,9 @@ namespace DQD.RealTimeBackup.Web
 			{
 				var session = _sessionManager.GetSession(sessionID ?? throw new NullReferenceException("SessionID"));
 
+				// Session expired?
 				if (session == null)
-					throw new KeyNotFoundException();
+					return Redirect("index.html");
 
 				var fileIndices = fileIndicesString.Split(',').Select(str => int.Parse(str));
 

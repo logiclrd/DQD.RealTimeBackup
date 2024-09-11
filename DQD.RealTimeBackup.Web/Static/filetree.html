@@ -548,6 +548,12 @@
 					.then(
 						([ok, statusCode, result]) =>
 						{
+							if (statusCode == 401) // Session expired
+							{
+								window.location = "index.html";
+								return;
+							}
+
 							var enumerationResult = {};
 
 							enumerationResult.Directories = result.Directories;
