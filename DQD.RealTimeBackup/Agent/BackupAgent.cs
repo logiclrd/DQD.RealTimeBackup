@@ -1617,6 +1617,20 @@ namespace DQD.RealTimeBackup.Agent
 										}
 									}
 
+									VerboseDiagnosticOutput("[UP{0}] Adding main file cache entry for file in preparation for uploading parts", threadIndex);
+
+									try
+									{
+										_remoteFileStateCache.UpdateFileState(
+											fileToUpload.Path,
+											newFileState);
+									}
+									catch (TaskCanceledException exception)
+									{
+										_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
+										throw;
+									}
+
 									long totalBytesTransferred = 0;
 
 									string contentPath = PlaceInContentPath(fileToUpload.Path);
