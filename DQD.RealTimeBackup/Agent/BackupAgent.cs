@@ -37,6 +37,7 @@ namespace DQD.RealTimeBackup.Agent
 
 		IErrorLogger _errorLogger;
 		ITimer _timer;
+		Func<IChecksum> _checksumFactory;
 		IChecksum _checksum;
 		ISurfaceArea _surfaceArea;
 		IFileSystemMonitor _monitor;
@@ -48,13 +49,13 @@ namespace DQD.RealTimeBackup.Agent
 
 		List<(string MountPoint, IZFS ZFS)> _zfsInstanceByMountPoint; // Sorted by decreasing length of MountPoint
 
-		public BackupAgent(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, IChecksum checksum, ISurfaceArea surfaceArea, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
+		public BackupAgent(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, Func<IChecksum> checksumFactory, ISurfaceArea surfaceArea, IFileSystemMonitor monitor, IOpenFileHandles openFileHandles, IZFS zfs, IStaging staging, IRemoteFileStateCache remoteFileStateCache, IRemoteStorage storage)
 		{
 			_parameters = parameters;
 
 			_errorLogger = errorLogger;
 			_timer = timer;
-			_checksum = checksum;
+			_checksumFactory = checksumFactory;
 			_surfaceArea = surfaceArea;
 			_monitor = monitor;
 			_openFileHandles = openFileHandles;
@@ -62,6 +63,8 @@ namespace DQD.RealTimeBackup.Agent
 			_staging = staging;
 			_remoteFileStateCache = remoteFileStateCache;
 			_storage = storage;
+
+			_checksum = _checksumFactory();
 
 			_zfsInstanceByMountPoint = new List<(string MountPoint, IZFS ZFS)>();
 
@@ -1484,6 +1487,9 @@ namespace DQD.RealTimeBackup.Agent
 
 		void UploadThreadProc(int threadIndex, CancellationToken cancellationToken)
 		{
+			// Instance per thread; the system MD5 class may not be threadsafe.
+			var checksum = _checksumFactory();
+
 			VerboseDiagnosticOutput("[UP{0}] Thread starting", threadIndex);
 
 			if (_uploadThreadStatus == null)
@@ -1575,7 +1581,7 @@ namespace DQD.RealTimeBackup.Agent
 										out newFileState.ContentKey,
 										progress =>
 										{
-											progress.TotalBytes = stream.Length;
+											progress.TotalBytes = fileToUpload.FileSize;
 											_uploadThreadStatus[threadIndex]!.Progress = progress;
 										},
 										cancellationToken);
@@ -1592,13 +1598,13 @@ namespace DQD.RealTimeBackup.Agent
 
 									for (int partNumber = 1; partNumber <= partCount; partNumber++)
 									{
-										long partOffset = (partNumber - 1) * _parameters.FilePartSize;
-										int partLength = (int)Math.Min(stream.Length - partOffset, _parameters.FilePartSize);
+										long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
+										int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
 
 										var partStream = new Substream(stream, partOffset, partLength);
 
 										if (!partByPartNumber.TryGetValue(partNumber, out var partState)
-										 || (partState.Checksum != _checksum.ComputeChecksum(partStream)))
+										 || (partState.Checksum != checksum.ComputeChecksum(partStream)))
 										{
 											partsToUpload.Add(partNumber);
 											totalBytesToUpload += partLength;
@@ -1617,8 +1623,8 @@ namespace DQD.RealTimeBackup.Agent
 
 									foreach (int partNumber in partsToUpload)
 									{
-										long partOffset = (partNumber - 1) * _parameters.FilePartSize;
-										int partLength = (int)Math.Min(stream.Length - partOffset, _parameters.FilePartSize);
+										long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
+										int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
 
 										var partStream = new Substream(stream, partOffset, partLength);
 
@@ -1650,7 +1656,7 @@ namespace DQD.RealTimeBackup.Agent
 
 										partStream.Position = 0;
 
-										partState.Checksum = _checksum.ComputeChecksum(partStream);
+										partState.Checksum = checksum.ComputeChecksum(partStream);
 
 										_remoteFileStateCache.UpdateFileState(
 											fileToUpload.Path,

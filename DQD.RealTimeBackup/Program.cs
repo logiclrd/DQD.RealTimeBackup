@@ -109,7 +109,7 @@ namespace DQD.RealTimeBackup
 			builder.RegisterType<PeriodicRescanOrchestrator>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<FileAccessNotify>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<FileSystemMonitor>().AsImplementedInterfaces().SingleInstance();
-			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces().SingleInstance();
+			builder.RegisterType<MD5Checksum>().AsImplementedInterfaces().InstancePerDependency();
 			builder.RegisterType<SurfaceAreaImplementation>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<MountTable>().AsImplementedInterfaces().SingleInstance();
 			builder.RegisterType<StatImplementation>().AsImplementedInterfaces().SingleInstance();

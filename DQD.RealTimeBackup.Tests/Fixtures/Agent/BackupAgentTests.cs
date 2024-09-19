@@ -36,8 +36,10 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Agent
 	{
 		Faker _faker = new Faker();
 
-		BackupAgent CreateSUT(OperatingParameters parameters, out IErrorLogger errorLogger, out ITimer timer, out IChecksum checksum, out ISurfaceArea surfaceArea, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
+		BackupAgent CreateSUT(OperatingParameters parameters, out IErrorLogger errorLogger, out ITimer timer, out IChecksum checksumMock, out ISurfaceArea surfaceArea, out IFileSystemMonitor monitor, out IOpenFileHandles openFileHandles, out IZFS zfs, out IStaging staging, out IRemoteFileStateCache remoteFileStateCache, out IRemoteStorage storage)
 		{
+			IChecksum checksum;
+
 			errorLogger = Substitute.For<IErrorLogger>();
 			timer = Substitute.For<ITimer>();
 			checksum = Substitute.For<IChecksum>();
@@ -54,11 +56,13 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Agent
 			checksum.ComputeChecksum(Arg.Any<Stream>()).Returns(x => md5Checksum.ComputeChecksum(x.Arg<Stream>()));
 			checksum.ComputeChecksum(Arg.Any<string>()).Returns(x => md5Checksum.ComputeChecksum(new MemoryStream(Encoding.UTF8.GetBytes(x.Arg<string>()))));
 
+			checksumMock = checksum;
+
 			return new BackupAgent(
 				parameters,
 				errorLogger,
 				timer,
-				checksum,
+				() => checksum,
 				surfaceArea,
 				monitor,
 				openFileHandles,
