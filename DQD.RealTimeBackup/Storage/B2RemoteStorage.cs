@@ -317,7 +317,7 @@ namespace DQD.RealTimeBackup.Storage
 			throw new Exception("The operation did not complete successfully.");
 		}
 
-		// This method is intended for small resources.
+		// This method is intended for small resources. This method does not support files in parts.
 		byte[] DownloadFileBytes(string serverPath, CancellationToken cancellationToken)
 		{
 			// BUGS IN BACKBLAZE B2 API: See discussion at top of DownloadFileString.
@@ -641,10 +641,15 @@ namespace DQD.RealTimeBackup.Storage
 			return fileID;
 		}
 
-		public void DeleteFileDirect(string serverPath, CancellationToken cancellationToken)
+		public bool DeleteFileDirect(string serverPath, CancellationToken cancellationToken)
 		{
-			if (GetFileIDByName(serverPath, throwIfNotFound: false) is string fileID)
+			if (!(GetFileIDByName(serverPath, throwIfNotFound: false) is string fileID))
+				return false;
+			else
+			{
 				Wait(AutomaticallyReauthenticateAsync(() => _b2Client.Files.DeleteAsync(fileID, serverPath)));
+				return true;
+			}
 		}
 
 		public void DeleteFileByID(string remoteFileID, string serverPath, CancellationToken cancellationToken)
@@ -704,11 +709,24 @@ namespace DQD.RealTimeBackup.Storage
 					if (!IsNotFoundException(e))
 						_errorLogger.LogError("Error while deleting path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
 				}
+
+				int partNumber = 1;
+
+				try
+				{
+					while (DeleteFileDirect(contentKey + "-" + partNumber, cancellationToken))
+						partNumber++;
+				}
+				catch (Exception e)
+				{
+					if (!IsNotFoundException(e))
+						_errorLogger.LogError("Error while deleting part #" + partNumber + " for path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+				}
 			}
 
 			do
 				newContentKey = _contentKeyGenerator.GenerateContentKey();
-			while (GetFileIDByName(newContentKey, throwIfNotFound: false) != null);
+			while ((GetFileIDByName(newContentKey, throwIfNotFound: false) != null) || (GetFileIDByName(newContentKey + "-1", throwIfNotFound: false) != null));
 
 			VerboseDiagnosticOutput("[B2] Uploading file to path: {0}", serverPath);
 			VerboseDiagnosticOutput("[B2] => New content key: {0}", newContentKey);
@@ -726,6 +744,54 @@ namespace DQD.RealTimeBackup.Storage
 				serverPath,
 				new MemoryStream(Encoding.UTF8.GetBytes(newContentKey)),
 				progressCallback: null,
+				cancellationToken);
+
+			VerboseDiagnosticOutput("[B2] Upload complete");
+		}
+
+		public void UploadFilePart(string serverPath, Stream partContentStream, int partNumber, Action<string> newContentKeyCallback, Action<UploadProgress>? progressCallback, CancellationToken cancellationToken)
+		{
+			VerboseDiagnosticOutput("[B2] Checking for existing file: {0}", serverPath);
+
+			if (DownloadFileStringNoErrorIfNonexistent(serverPath, cancellationToken) is string contentKey)
+			{
+				VerboseDiagnosticOutput("[B2] => Existing content key: {0}", contentKey);
+				VerboseDiagnosticOutput("[B2] => Issuing deletion against non-part content item");
+
+				if (DeleteFileDirect(contentKey, cancellationToken))
+					VerboseDiagnosticOutput("[B2]   * File deleted");
+			}
+			else
+			{
+				VerboseDiagnosticOutput("[B2] => Assigning content key...");
+
+				do
+					contentKey = _contentKeyGenerator.GenerateContentKey();
+				while ((GetFileIDByName(contentKey, throwIfNotFound: false) != null) || (GetFileIDByName(contentKey + "-1", throwIfNotFound: false) != null));
+
+				VerboseDiagnosticOutput("[B2] => New content key: {0}", contentKey);
+				VerboseDiagnosticOutput("[B2] => Uploading reference to content key to subject path");
+
+				UploadFileImplementation(
+					serverPath,
+					new MemoryStream(Encoding.UTF8.GetBytes(contentKey)),
+					progressCallback: null,
+					cancellationToken);
+
+				newContentKeyCallback(contentKey);
+			}
+
+			VerboseDiagnosticOutput("[B2] => Uploading {0:#,##0} bytes to part {1} of content path: {2}", partContentStream.Length, partNumber, serverPath);
+
+			string partName = contentKey + "-" + partNumber;
+
+			if (DeleteFileDirect(partName, cancellationToken))
+				VerboseDiagnosticOutput("[B2]   * Previously-uploaded part {0} deleted", partNumber);
+
+			UploadFileImplementation(
+				partName,
+				partContentStream,
+				progressCallback,
 				cancellationToken);
 
 			VerboseDiagnosticOutput("[B2] Upload complete");
@@ -758,6 +824,18 @@ namespace DQD.RealTimeBackup.Storage
 			Wait(DownloadFileDirectAsync(serverPath, contentStream, cancellationToken));
 		}
 
+		public Task DownloadFilePartDirectAsync(string contentKey, int partNumber, Stream contentStream, CancellationToken cancellationToken)
+		{
+			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), contentKey + "-" + partNumber);
+
+			return _b2Client.DownloadAsync(request, contentStream, default, cancellationToken);
+		}
+
+		public void DownloadFilePartDirect(string contentKey, int partNumber, Stream contentStream, CancellationToken cancellationToken)
+		{
+			Wait(DownloadFilePartDirectAsync(contentKey, partNumber, contentStream, cancellationToken));
+		}
+
 		public void DownloadFileByID(string remoteFileID, Stream contentStream, CancellationToken cancellationToken)
 		{
 			var request = new DownloadFileByIdRequest(remoteFileID);
@@ -765,11 +843,29 @@ namespace DQD.RealTimeBackup.Storage
 			Wait(_b2Client.DownloadByIdAsync(request, contentStream, default, cancellationToken));
 		}
 
-		public Task DownloadFileAsync(string serverPath, Stream contentStream, CancellationToken cancellationToken)
+		public async Task DownloadFileAsync(string serverPath, Stream contentStream, CancellationToken cancellationToken)
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
-			return _b2Client.DownloadAsync(FindAndCacheBucketName(), contentKey, contentStream);
+			if (GetFileIDByName(contentKey, throwIfNotFound: false) is string fileId)
+				await _b2Client.DownloadByIdAsync(fileId, contentStream);
+			else
+			{
+				int partNumber = 1;
+
+				while (true)
+				{
+					if (GetFileIDByName(contentKey, throwIfNotFound: false) is string partFileId)
+						await _b2Client.DownloadByIdAsync(partFileId, contentStream);
+					else
+					{
+						if (partNumber == 1)
+							throw new Exception("File not found in remote storage: " + serverPath);
+						else
+							return;
+					}
+				}
+			}
 		}
 
 		public void DownloadFile(string serverPath, Stream contentStream, CancellationToken cancellationToken)
@@ -833,6 +929,34 @@ namespace DQD.RealTimeBackup.Storage
 			{
 				if (!IsNotFoundException(e))
 					_errorLogger.LogError("Error while deleting path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+			}
+
+			int partNumber = 1;
+
+			try
+			{
+				while (DeleteFileDirect(contentKey + "-" + partNumber, cancellationToken))
+					partNumber++;
+			}
+			catch (Exception e)
+			{
+				if (!IsNotFoundException(e))
+					_errorLogger.LogError("Error while deleting part " + partNumber + " for path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+			}
+		}
+
+		public void DeleteFilePart(string serverPath, int partNumber, CancellationToken cancellationToken)
+		{
+			var contentKey = DownloadFileString(serverPath, cancellationToken);
+
+			try
+			{
+				DeleteFileDirect(contentKey + "-" + partNumber, cancellationToken);
+			}
+			catch (Exception e)
+			{
+				if (!IsNotFoundException(e))
+					_errorLogger.LogError("Error while deleting part number " + partNumber + " for path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
 			}
 		}
 

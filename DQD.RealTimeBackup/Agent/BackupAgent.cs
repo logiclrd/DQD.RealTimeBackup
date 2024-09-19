@@ -1565,15 +1565,114 @@ namespace DQD.RealTimeBackup.Agent
 										BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 									});
 
-								if (fileToUpload.Path.IndexOf(".biglybt") >= 0)
-									Console.WriteLine("[{0:yyyy-MM-dd HH:mm:ss.ttttttt}] UPLOAD PATH {1}", DateTime.Now, fileToUpload.Path);
+								int partCount = (int)((fileToUpload.FileSize + _parameters.FilePartSize - 1) / _parameters.FilePartSize);
 
-								_storage.UploadFile(
-									PlaceInContentPath(fileToUpload.Path),
-									stream,
-									out newFileState.ContentKey,
-									progress => _uploadThreadStatus[threadIndex]!.Progress = progress,
-									cancellationToken);
+								if (partCount == 1)
+								{
+									_storage.UploadFile(
+										PlaceInContentPath(fileToUpload.Path),
+										stream,
+										out newFileState.ContentKey,
+										progress =>
+										{
+											progress.TotalBytes = stream.Length;
+											_uploadThreadStatus[threadIndex]!.Progress = progress;
+										},
+										cancellationToken);
+								}
+								else
+								{
+									var partsOnServer = _remoteFileStateCache.EnumerateFileParts(fileToUpload.Path).ToList();
+
+									var partByPartNumber = partsOnServer.ToDictionary(part => part.PartNumber);
+
+									var partsToUpload = new List<int>();
+
+									long totalBytesToUpload = 0;
+
+									for (int partNumber = 1; partNumber <= partCount; partNumber++)
+									{
+										long partOffset = (partNumber - 1) * _parameters.FilePartSize;
+										int partLength = (int)Math.Min(stream.Length - partOffset, _parameters.FilePartSize);
+
+										var partStream = new Substream(stream, partOffset, partLength);
+
+										if (!partByPartNumber.TryGetValue(partNumber, out var partState)
+										 || (partState.Checksum != _checksum.ComputeChecksum(partStream)))
+										{
+											partsToUpload.Add(partNumber);
+											totalBytesToUpload += partLength;
+										}
+										else
+										{
+											// Remove this part number, since it doesn't need to be uploaded, otherwise the
+											// cleanup code after the upload loop will delete the part.
+											partByPartNumber.Remove(partNumber);
+										}
+									}
+
+									long totalBytesTransferred = 0;
+
+									string contentPath = PlaceInContentPath(fileToUpload.Path);
+
+									foreach (int partNumber in partsToUpload)
+									{
+										long partOffset = (partNumber - 1) * _parameters.FilePartSize;
+										int partLength = (int)Math.Min(stream.Length - partOffset, _parameters.FilePartSize);
+
+										var partStream = new Substream(stream, partOffset, partLength);
+
+										VerboseDiagnosticOutput("[UP{0}] Uploading part {0} of file {1}", partNumber, fileToUpload.Path);
+
+										_storage.UploadFilePart(
+											contentPath,
+											partStream,
+											partNumber,
+											newContentKey =>
+											{
+												newFileState.ContentKey = newContentKey;
+											},
+											progress =>
+											{
+												progress.BytesTransferred += totalBytesTransferred;
+
+												if (progress.BytesTransferred > totalBytesToUpload)
+													totalBytesToUpload = progress.BytesTransferred;
+
+												progress.TotalBytes = totalBytesToUpload;
+
+												_uploadThreadStatus[threadIndex]!.Progress = progress;
+											},
+											cancellationToken);
+
+										if (!partByPartNumber.TryGetValue(partNumber, out var partState))
+											partState = newFileState.CreatePartState(partNumber);
+
+										partStream.Position = 0;
+
+										partState.Checksum = _checksum.ComputeChecksum(partStream);
+
+										_remoteFileStateCache.UpdateFileState(
+											fileToUpload.Path,
+											partState);
+
+										partByPartNumber.Remove(partNumber);
+
+										totalBytesTransferred += partLength;
+									}
+
+									foreach (var unneededPartNumber in partByPartNumber.Keys)
+									{
+										VerboseDiagnosticOutput("[UP{0}] Deleting part {0} of file {1}", unneededPartNumber, fileToUpload.Path);
+
+										_storage.DeleteFilePart(
+											contentPath,
+											unneededPartNumber,
+											cancellationToken);
+
+										_remoteFileStateCache.RemoveFileStateForPart(fileToUpload.Path, unneededPartNumber);
+									}
+								}
 
 								_uploadThreadStatus[threadIndex]!.MarkCompleted();
 							}

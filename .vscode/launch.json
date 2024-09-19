@@ -13,6 +13,13 @@
 			"args": [ "/INITIALBACKUPTHENEXIT", "/VERBOSE" ],
 		},
 		{
+			"type": "coreclr",
+			"request": "launch",
+			"name": "Run Daemon",
+			"program": "${workspaceFolder}/DQD.RealTimeBackup/bin/Debug/net8.0/DQD.RealTimeBackup.dll",
+			"args": [ "/VERBOSE" ],
+		},
+		{
 			"type": "dotnet",
 			"request": "launch",
 			"name": "Start File Activity Trace",

@@ -89,6 +89,11 @@ namespace DQD.RealTimeBackup
 		// Specifies filesystem types that should be monitored.
 		public List<string> MonitorFileSystemTypes = new List<string>() { "zfs" };
 
+		// Size of chunks of a file to be processed independently. This allows an incremental update
+		// when the middle of a file changes. This value must not be changed once files have been
+		// uploaded in parts, or the backup set will need to be rebuilt from scratch.
+		public int FilePartSize = 10 * 1024 * 1024;
+
 		// When submitting a file, if its size is less than this then it will be copied to /tmp and
 		// the ZFS snapshot released. If its size is greater than or equal to this, then the ZFS
 		// snapshot will be retained and used as the source for the upload.

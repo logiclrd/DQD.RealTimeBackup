@@ -13,12 +13,28 @@ namespace DQD.RealTimeBackup.StateCache
 		public long FileSize;
 		public DateTime LastModifiedUTC;
 		public string Checksum;
+		public bool IsInParts;
+		public int PartNumber;
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public FileState()
 		{
 			// Dummy constructor.
 			Path = ContentKey = Checksum = "";
+		}
+
+		public FileState CreatePartState(int partNumber)
+		{
+			this.IsInParts = true;
+
+			return
+				new FileState()
+				{
+					Path = this.Path,
+					ContentKey = this.ContentKey,
+					IsInParts = true,
+					PartNumber = partNumber,
+				};
 		}
 
 		public static FileState FromFile(string path, IChecksum checksum)
@@ -58,9 +74,20 @@ namespace DQD.RealTimeBackup.StateCache
 
 		public static FileState Parse(string serialized)
 		{
-			string[] parts = serialized.Split(' ', 5);
-
 			var ret = new FileState();
+
+			if (serialized.StartsWith("*"))
+			{
+				ret.IsInParts = true;
+
+				int separator = serialized.IndexOf(' ');
+
+				ret.PartNumber = int.Parse(serialized.Substring(1, separator - 1));
+
+				serialized = serialized.Substring(separator + 1);
+			}
+
+			string[] parts = serialized.Split(' ', 5);
 
 			ret.Path = parts[4];
 			ret.ContentKey = parts[3];
@@ -84,7 +111,10 @@ namespace DQD.RealTimeBackup.StateCache
 			if (string.IsNullOrWhiteSpace(contentKeySerialized))
 				contentKeySerialized = EmptyContentKeyToken;
 
-			return $"{Checksum} {FileSize} {LastModifiedUTC.Ticks} {contentKeySerialized} {Path}";
+			if (PartNumber == 0)
+				return $"{(IsInParts ? $"*0 " : "")}{Checksum} {FileSize} {LastModifiedUTC.Ticks} {contentKeySerialized} {Path}";
+			else
+				return $"{(IsInParts ? $"*{PartNumber} " : "")}{Checksum} 0 0 0 {Path}";
 		}
 	}
 }

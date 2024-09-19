@@ -170,7 +170,15 @@ namespace DQD.RealTimeBackup.Restore
 							{
 								using (var outputStream = Console.OpenStandardOutput(bufferSize: 1048576))
 								{
-									storage.DownloadFileDirect(fileState.ContentKey, outputStream, CancellationToken.None);
+									if (!fileState.IsInParts)
+										storage.DownloadFileDirect(fileState.ContentKey, outputStream, CancellationToken.None);
+									else
+									{
+										int filePartCount = (int)((fileState.FileSize + parameters.FilePartSize - 1) / parameters.FilePartSize);
+
+										for (int partNumber=1; partNumber <= filePartCount; partNumber++)
+											storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, outputStream, CancellationToken.None);
+									}
 								}
 							}
 						}
@@ -336,7 +344,17 @@ namespace DQD.RealTimeBackup.Restore
 									if (args.UseFileState && fileStatesMap.TryGetValue(filePath, out var fileState))
 									{
 										using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
-											storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
+										{
+											if (!fileState.IsInParts)
+												storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
+											else
+											{
+												int filePartCount = (int)((fileState.FileSize + parameters.FilePartSize - 1) / parameters.FilePartSize);
+
+												for (int partNumber=1; partNumber <= filePartCount; partNumber++)
+													storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, stream, CancellationToken.None);
+											}
+										}
 									}
 									else
 									{
@@ -396,7 +414,17 @@ namespace DQD.RealTimeBackup.Restore
 												string toFilePath = Path.Combine(toDirectory, relativePath.TrimStart('/'));
 
 												using (var stream = File.Open(toFilePath, FileMode.Create, FileAccess.ReadWrite))
-													storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
+												{
+													if (!fileState.IsInParts)
+														storage.DownloadFileDirect(fileState.ContentKey, stream, CancellationToken.None);
+													else
+													{
+														int filePartCount = (int)((fileState.FileSize + parameters.FilePartSize - 1) / parameters.FilePartSize);
+
+														for (int partNumber=1; partNumber <= filePartCount; partNumber++)
+															storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, stream, CancellationToken.None);
+													}
+												}
 
 												list.EmitFile(toFilePath);
 											}

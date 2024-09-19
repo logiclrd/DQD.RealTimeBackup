@@ -8,5 +8,7 @@ namespace DQD.RealTimeBackup.Storage
 		public long BytesPerSecond;
 		[FieldOrder(1)]
 		public long BytesTransferred;
+		[FieldOrder(2)]
+		public long TotalBytes;
 	}
 }

@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
@@ -235,7 +235,7 @@ namespace DQD.RealTimeBackup.Web
 
 				var fileState = session.GetFileByIndex(fileIndex);
 
-				return new SingleFileDownloadResult(_remoteStorage, fileState);
+				return new SingleFileDownloadResult(_parameters, _remoteStorage, fileState);
 			}
 			catch (Exception e)
 			{
@@ -262,7 +262,7 @@ namespace DQD.RealTimeBackup.Web
 
 				var fileStates = fileIndices.Select(fileIndex => session.GetFileByIndex(fileIndex)).ToList();
 
-				return new MultipleFileDownloadResult(_remoteStorage, fileStates);
+				return new MultipleFileDownloadResult(_parameters, _remoteStorage, fileStates);
 			}
 			catch (Exception e)
 			{
@@ -276,11 +276,13 @@ namespace DQD.RealTimeBackup.Web
 
 		class SingleFileDownloadResult : IActionResult
 		{
+			OperatingParameters _parameters;
 			IRemoteStorage _remoteStorage;
 			FileState _file;
 
-			public SingleFileDownloadResult(IRemoteStorage remoteStorage, FileState file)
+			public SingleFileDownloadResult(OperatingParameters parameters, IRemoteStorage remoteStorage, FileState file)
 			{
+				_parameters = parameters;
 				_remoteStorage = remoteStorage;
 				_file = file;
 			}
@@ -300,20 +302,39 @@ namespace DQD.RealTimeBackup.Web
 
 				var serverPath = BackupAgent.PlaceInContentPath(_file.Path);
 
-				return _remoteStorage.DownloadFileAsync(
-					serverPath,
-					response.Body,
-					context.HttpContext.RequestAborted);
+				if (_file.IsInParts)
+					return DownloadFileParts(response.Body, context.HttpContext.RequestAborted);
+				else
+					return _remoteStorage.DownloadFileAsync(
+						serverPath,
+						response.Body,
+						context.HttpContext.RequestAborted);
+			}
+
+			async Task DownloadFileParts(Stream bodyStream, CancellationToken cancellationToken)
+			{
+				int partCount = (int)((_file.FileSize + _parameters.FilePartSize - 1) / _parameters.FilePartSize);
+
+				for (int partNumber = 1; partNumber <= partCount; partNumber++)
+				{
+					await _remoteStorage.DownloadFilePartDirectAsync(
+						_file.ContentKey,
+						partNumber,
+						bodyStream,
+						cancellationToken);
+				}
 			}
 		}
 
 		class MultipleFileDownloadResult : IActionResult
 		{
+			OperatingParameters _parameters;
 			IRemoteStorage _remoteStorage;
 			IEnumerable<FileState> _files;
 
-			public MultipleFileDownloadResult(IRemoteStorage remoteStorage, IEnumerable<FileState> files)
+			public MultipleFileDownloadResult(OperatingParameters parameters, IRemoteStorage remoteStorage, IEnumerable<FileState> files)
 			{
+				_parameters = parameters;
 				_remoteStorage = remoteStorage;
 				_files = files;
 			}
@@ -344,10 +365,26 @@ namespace DQD.RealTimeBackup.Web
 
 						var serverPath = BackupAgent.PlaceInContentPath(file.Path);
 
-						await _remoteStorage.DownloadFileAsync(
-							serverPath,
-							tar,
-							context.HttpContext.RequestAborted);
+						if (!file.IsInParts)
+						{
+							await _remoteStorage.DownloadFileAsync(
+								serverPath,
+								tar,
+								context.HttpContext.RequestAborted);
+						}
+						else
+						{
+							int partCount = (int)((file.FileSize + _parameters.FilePartSize - 1) / _parameters.FilePartSize);
+
+							for (int partNumber = 1; partNumber <= partCount; partNumber++)
+							{
+								await _remoteStorage.DownloadFilePartDirectAsync(
+									file.ContentKey,
+									partNumber,
+									tar,
+									context.HttpContext.RequestAborted);
+							}
+						}
 
 						tar.CloseEntry();
 					}

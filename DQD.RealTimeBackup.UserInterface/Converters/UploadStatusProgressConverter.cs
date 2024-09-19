@@ -14,7 +14,7 @@ namespace DQD.RealTimeBackup.UserInterface.Converters
 		{
 			if (value is UploadStatus uploadStatus)
 				if (uploadStatus.Progress is UploadProgress uploadProgress)
-					return uploadProgress.BytesTransferred / (double)uploadStatus.FileSize;
+					return uploadProgress.BytesTransferred / (double)uploadProgress.TotalBytes;
 
 			return 0.0;
 		}

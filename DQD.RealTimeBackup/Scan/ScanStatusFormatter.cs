@@ -115,25 +115,25 @@ namespace DQD.RealTimeBackup.Scan
 			string byteFormat;
 			string byteUnit;
 
-			if (status.FileSize < 1024)
+			if (status.Progress.TotalBytes < 1024)
 			{
 				byteScale = 1.0;
 				byteFormat = "  #,##0";
 				byteUnit = "  b";
 			}
-			else if (status.FileSize < 1024 * 1024)
+			else if (status.Progress.TotalBytes < 1024 * 1024)
 			{
 				byteScale = 1024.0;
 				byteFormat = "#,##0.0";
 				byteUnit = " kb";
 			}
-			else if (status.FileSize < 800 * 1024 * 1024)
+			else if (status.Progress.TotalBytes < 800 * 1024 * 1024)
 			{
 				byteScale = 1024 * 1024.0;
 				byteFormat = "#,##0.0";
 				byteUnit = " mb";
 			}
-			else if (status.FileSize < 800 * 1024 * 1024 * 1024L)
+			else if (status.Progress.TotalBytes < 800 * 1024 * 1024 * 1024L)
 			{
 				byteScale = 1024 * 1024 * 1024.0;
 				byteFormat = "#,##0.0";
@@ -147,7 +147,7 @@ namespace DQD.RealTimeBackup.Scan
 			}
 
 			string bytesTransferred = (status.Progress.BytesTransferred / byteScale).ToString(byteFormat).PadLeft(byteFormat.Length);
-			string fileSize = (status.FileSize / byteScale).ToString(byteFormat).PadLeft(byteFormat.Length);
+			string fileSize = (status.Progress.TotalBytes / byteScale).ToString(byteFormat).PadLeft(byteFormat.Length);
 
 			string bytes = bytesTransferred + "/" + fileSize + byteUnit;
 

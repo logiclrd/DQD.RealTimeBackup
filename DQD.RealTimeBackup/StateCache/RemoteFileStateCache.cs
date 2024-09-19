@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-
+using DQD.RealTimeBackup.Agent;
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.Storage;
 using DQD.RealTimeBackup.Utility;
@@ -32,7 +32,8 @@ namespace DQD.RealTimeBackup.StateCache
 		IRemoteStorage _remoteStorage;
 
 		object _sync = new object();
-		Dictionary<string, FileState> _cache = new Dictionary<string, FileState>();
+		Dictionary<string, FileState> _filesCache = new Dictionary<string, FileState>();
+		Dictionary<string, List<FileState>> _partsCache = new Dictionary<string, List<FileState>>();
 		bool _cacheLoaded = false;
 		List<FileState> _currentBatch = new List<FileState>();
 		int _currentBatchNumber;
@@ -173,7 +174,7 @@ namespace DQD.RealTimeBackup.StateCache
 			}
 		}
 
-		internal Dictionary<string, FileState> GetCacheForTest() => _cache;
+		internal Dictionary<string, FileState> GetCacheForTest() => _filesCache;
 		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
 		internal List<FileState> GetCurrentBatchForTest() => _currentBatch;
 
@@ -197,7 +198,7 @@ namespace DQD.RealTimeBackup.StateCache
 			{
 				EnsureCacheIsLoaded();
 
-				return _cache.ContainsKey(path);
+				return _filesCache.ContainsKey(path);
 			}
 		}
 
@@ -207,7 +208,7 @@ namespace DQD.RealTimeBackup.StateCache
 			{
 				EnsureCacheIsLoaded();
 
-				return _cache.Keys.ToList();
+				return _filesCache.Keys.ToList();
 			}
 		}
 
@@ -220,7 +221,31 @@ namespace DQD.RealTimeBackup.StateCache
 			{
 				EnsureCacheIsLoaded(progressCallback);
 
-				return _cache.Values.ToList();
+				return _filesCache.Values.ToList();
+			}
+		}
+
+		public IEnumerable<FileState> EnumerateFileParts(string path)
+		{
+			lock (_sync)
+			{
+				EnsureCacheIsLoaded();
+
+				if (!_partsCache.TryGetValue(path, out var parts))
+					return Array.Empty<FileState>();
+
+				var fileCacheEntry = GetFileState(path);
+
+				if (fileCacheEntry == null)
+				{
+					_errorLogger.LogError("Internal error: Part info found for path that does not have a main file cache entry: " + path);
+					_partsCache.Remove(path);
+					return Array.Empty<FileState>();
+				}
+
+				parts.Sort((left, right) => left.PartNumber.CompareTo(right.PartNumber));
+
+				return parts;
 			}
 		}
 
@@ -230,7 +255,7 @@ namespace DQD.RealTimeBackup.StateCache
 			{
 				EnsureCacheIsLoaded();
 
-				_cache.TryGetValue(path, out var state);
+				_filesCache.TryGetValue(path, out var state);
 
 				return state;
 			}
@@ -244,7 +269,22 @@ namespace DQD.RealTimeBackup.StateCache
 
 				DebugLog("updating file state for: {0}", path);
 
-				_cache[path] = newFileState;
+				if (newFileState.PartNumber == 0)
+					_filesCache[path] = newFileState;
+				else
+				{
+					DebugLog("=> part number: {0}", newFileState.PartNumber);
+
+					if (!_partsCache.TryGetValue(path, out var parts))
+						parts = _partsCache[path] = new List<FileState>();
+
+					int existingPartIndex = parts.FindIndex(part => part.PartNumber == newFileState.PartNumber);
+
+					if (existingPartIndex >= 0)
+						parts[existingPartIndex] = newFileState;
+					else
+						parts.Add(newFileState);
+				}
 
 				newFileState.Path = path; // Just in case.
 
@@ -260,14 +300,47 @@ namespace DQD.RealTimeBackup.StateCache
 
 				DebugLog("removing file state for: {0}", path);
 
-				if (_cache.TryGetValue(path, out var fileState))
+				if (_filesCache.TryGetValue(path, out var fileState)
+				 || _partsCache.TryGetValue(path, out var partFileStates))
 				{
-					_cache.Remove(path);
+					_filesCache.Remove(path);
+					_partsCache.Remove(path);
 
 					AppendNewFileStateToCurrentBatch(
 						new FileState()
 						{
-							Path = fileState.Path,
+							Path = path,
+							FileSize = DeletedFileSize,
+							Checksum = DeletedChecksum,
+						});
+
+					return true;
+				}
+
+				return false;
+			}
+		}
+
+		public bool RemoveFileStateForPart(string path, int partNumber)
+		{
+			if (partNumber <= 0)
+				throw new ArgumentOutOfRangeException(nameof(partNumber));
+
+			lock (_sync)
+			{
+				EnsureCacheIsLoaded();
+
+				DebugLog("removing file state for part {0} of: {1}", partNumber, path);
+
+				if (_partsCache.TryGetValue(path, out var fileStates))
+				{
+					fileStates.RemoveAll(item => item.PartNumber == partNumber);
+
+					AppendNewFileStateToCurrentBatch(
+						new FileState()
+						{
+							Path = path,
+							PartNumber = partNumber,
 							FileSize = DeletedFileSize,
 							Checksum = DeletedChecksum,
 						});
@@ -367,11 +440,33 @@ namespace DQD.RealTimeBackup.StateCache
 						var fileState = FileState.Parse(line);
 
 						if (fileState.FileSize == DeletedFileSize)
-							_cache.Remove(fileState.Path);
-						else
+						{
+							if (fileState.PartNumber == 0)
+							{
+								_filesCache.Remove(fileState.Path);
+								_partsCache.Remove(fileState.Path);
+							}
+							else if (_partsCache.TryGetValue(fileState.Path, out var parts))
+							{
+								parts.RemoveAll(part => part.PartNumber == fileState.PartNumber);
+							}
+						}
+						else if (fileState.PartNumber == 0)
 						{
 							// Overwrite if already present, as the one we just loaded will be newer.
-							_cache[fileState.Path] = fileState;
+							_filesCache[fileState.Path] = fileState;
+						}
+						else
+						{
+							if (!_partsCache.TryGetValue(fileState.Path, out var parts))
+								parts = _partsCache[fileState.Path] = new List<FileState>();
+
+							int index = parts.FindIndex(part => part.PartNumber == fileState.PartNumber);
+
+							if (index >= 0)
+								parts[index] = fileState;
+							else
+								parts.Add(fileState);
 						}
 					}
 				}
@@ -539,6 +634,8 @@ namespace DQD.RealTimeBackup.StateCache
 
 				DebugLog("=> found {0} batch numbers", batchNumbers.Count);
 
+				batchNumbers.Sort();
+
 				int requiredConsolidationBatchCount = ConsolidationBatchCountMinimum;
 				int consolidationBatchCount = 0;
 				int totalBatchSizes = 0;
@@ -566,8 +663,6 @@ namespace DQD.RealTimeBackup.StateCache
 					return;
 				}
 
-				batchNumbers.Sort();
-
 				if (batchNumbers.Count > consolidationBatchCount)
 					batchNumbers.RemoveRange(consolidationBatchCount, batchNumbers.Count - consolidationBatchCount);
 
@@ -582,7 +677,7 @@ namespace DQD.RealTimeBackup.StateCache
 				var batchDeletionActions = new List<Action>();
 
 				// Apply the batches in order.
-				var mergedBatch = new Dictionary<string, FileState>();
+				var mergedBatch = new Dictionary<string, Dictionary<(bool IsInParts, int PartNumber), FileState>>();
 
 				foreach (var mergeFromBatchNumber in batchNumbers)
 				{
@@ -600,9 +695,22 @@ namespace DQD.RealTimeBackup.StateCache
 							var fileState = FileState.Parse(line);
 
 							if (fileState.FileSize == DeletedFileSize)
-								mergedBatch.Remove(fileState.Path);
+							{
+								if (fileState.PartNumber == 0)
+									mergedBatch.Remove(fileState.Path);
+								else
+								{
+									if (mergedBatch.TryGetValue(fileState.Path, out var allFileStatesForPath))
+										allFileStatesForPath.Remove((fileState.IsInParts, fileState.PartNumber));
+								}
+							}
 							else
-								mergedBatch[fileState.Path] = fileState;
+							{
+								if (!mergedBatch.TryGetValue(fileState.Path, out var allFileStatesForPath))
+									allFileStatesForPath = mergedBatch[fileState.Path] = new Dictionary<(bool IsInParts, int PartNumber), FileState>();
+
+								allFileStatesForPath[(fileState.IsInParts, fileState.PartNumber)] = fileState;
+							}
 						}
 					}
 				}
@@ -615,7 +723,7 @@ namespace DQD.RealTimeBackup.StateCache
 				// batch file path is atomic and cannot possibly contain an incomplete file in the event of an error
 				// or power loss or whatnot.
 				using (var writer = _cacheStorage.OpenNewBatchFileWriter(mergeIntoBatchNumber))
-					foreach (var fileState in mergedBatch.Values)
+					foreach (var fileState in mergedBatch.Values.SelectMany(allFileStatesForPath => allFileStatesForPath.Values))
 						writer.WriteLine(fileState);
 
 				DebugLog("switching to consolidated file");
