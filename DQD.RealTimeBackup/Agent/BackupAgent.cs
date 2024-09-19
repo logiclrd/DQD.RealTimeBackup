@@ -1621,6 +1621,8 @@ namespace DQD.RealTimeBackup.Agent
 
 									try
 									{
+										newFileState.IsInParts = true;
+
 										_remoteFileStateCache.UpdateFileState(
 											fileToUpload.Path,
 											newFileState);
