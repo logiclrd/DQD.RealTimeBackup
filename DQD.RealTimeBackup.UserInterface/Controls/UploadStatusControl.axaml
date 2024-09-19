@@ -4,7 +4,7 @@
              x:Class="DQD.RealTimeBackup.UserInterface.Controls.UploadStatusControl"
              HorizontalAlignment="Stretch"
              Height="20"
-             FontSize="8">
+             FontSize="12">
 
     <UserControl.Resources>
         <converters:UploadStatusSpeedConverter x:Key="UploadStatusSpeedConverter" />
@@ -15,9 +15,9 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="65" />
-            <ColumnDefinition Width="130" />
-            <ColumnDefinition Width="65" />
+            <ColumnDefinition Width="75" />
+            <ColumnDefinition Width="140" />
+            <ColumnDefinition Width="95" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
