@@ -1547,7 +1547,7 @@ namespace DQD.RealTimeBackup.Agent
 						NonQuietDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
 						VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
 
-						VerboseDiagnosticOutput("[UP{0}] Building File State structure");
+						VerboseDiagnosticOutput("[UP{0}] Building File State structure", threadIndex);
 
 						var newFileState =
 							new FileState()
@@ -1590,6 +1590,11 @@ namespace DQD.RealTimeBackup.Agent
 								}
 								else
 								{
+									var existingFileState = _remoteFileStateCache.GetFileState(fileToUpload.Path);
+
+									if (existingFileState != null)
+										newFileState.ContentKey = existingFileState.ContentKey;
+
 									var partsOnServer = _remoteFileStateCache.EnumerateFileParts(fileToUpload.Path).ToList();
 
 									var partByPartNumber = partsOnServer.ToDictionary(part => part.PartNumber);
@@ -1619,22 +1624,6 @@ namespace DQD.RealTimeBackup.Agent
 										}
 									}
 
-									VerboseDiagnosticOutput("[UP{0}] Adding main file cache entry for file in preparation for uploading parts", threadIndex);
-
-									try
-									{
-										newFileState.IsInParts = true;
-
-										_remoteFileStateCache.UpdateFileState(
-											fileToUpload.Path,
-											newFileState);
-									}
-									catch (TaskCanceledException exception)
-									{
-										_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
-										throw;
-									}
-
 									long totalBytesTransferred = 0;
 
 									string contentPath = PlaceInContentPath(fileToUpload.Path);
@@ -1646,7 +1635,7 @@ namespace DQD.RealTimeBackup.Agent
 
 										var partStream = new Substream(stream, partOffset, partLength);
 
-										VerboseDiagnosticOutput("[UP{0}] Uploading part {0} of file {1}", partNumber, fileToUpload.Path);
+										VerboseDiagnosticOutput("[UP{0}] Uploading part {1} of file {2}", threadIndex, partNumber, fileToUpload.Path);
 
 										_storage.UploadFilePart(
 											contentPath,
@@ -1654,7 +1643,26 @@ namespace DQD.RealTimeBackup.Agent
 											partNumber,
 											newContentKey =>
 											{
-												newFileState.ContentKey = newContentKey;
+												if (newFileState.ContentKey != newContentKey)
+												{
+													VerboseDiagnosticOutput("[UP{0}] Received content key for file: {1}", threadIndex, newContentKey);
+													VerboseDiagnosticOutput("[UP{0}] => {1}", threadIndex, newContentKey);
+
+													try
+													{
+														newFileState.ContentKey = newContentKey;
+														newFileState.IsInParts = true;
+
+														_remoteFileStateCache.UpdateFileState(
+															fileToUpload.Path,
+															newFileState);
+													}
+													catch (TaskCanceledException exception)
+													{
+														_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
+														throw;
+													}
+												}
 											},
 											progress =>
 											{

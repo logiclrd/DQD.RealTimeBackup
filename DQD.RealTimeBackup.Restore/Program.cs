@@ -352,7 +352,14 @@ namespace DQD.RealTimeBackup.Restore
 												int filePartCount = (int)((fileState.FileSize + parameters.FilePartSize - 1) / parameters.FilePartSize);
 
 												for (int partNumber=1; partNumber <= filePartCount; partNumber++)
-													storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, stream, CancellationToken.None);
+												{
+													long partOffset = (partNumber - 1) * (long)parameters.FilePartSize;
+													int partLength = (int)Math.Min(fileState.FileSize - partOffset, parameters.FilePartSize);
+
+													var partSubstream = new Substream(stream, partOffset, partLength);
+
+													storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, partSubstream, CancellationToken.None);
+												}
 											}
 										}
 									}
@@ -422,7 +429,14 @@ namespace DQD.RealTimeBackup.Restore
 														int filePartCount = (int)((fileState.FileSize + parameters.FilePartSize - 1) / parameters.FilePartSize);
 
 														for (int partNumber=1; partNumber <= filePartCount; partNumber++)
-															storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, stream, CancellationToken.None);
+														{
+															long partOffset = (partNumber - 1) * (long)parameters.FilePartSize;
+															int partLength = (int)Math.Min(fileState.FileSize - partOffset, parameters.FilePartSize);
+
+															var partSubstream = new Substream(stream, partOffset, partLength);
+
+															storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, partSubstream, CancellationToken.None);
+														}
 													}
 												}
 

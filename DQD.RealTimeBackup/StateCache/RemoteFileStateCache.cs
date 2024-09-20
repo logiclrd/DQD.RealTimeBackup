@@ -769,19 +769,31 @@ namespace DQD.RealTimeBackup.StateCache
 
 		void WakeActionThread(bool hardCancel)
 		{
+			DebugLog("waking action thread (hard cancel? {0})", hardCancel);
+
 			if (hardCancel)
 				_cancellationTokenSource.Cancel();
 
+			DebugLog("=> entering mutex");
 			lock (_actionThreadSync)
+			{
+				DebugLog("=> have mutex, pulsing sync object");
 				Monitor.PulseAll(_actionThreadSync);
+			}
 		}
 
 		void QueueAction(CacheAction action)
 		{
+			DebugLog("queuing action for PCA");
+
 			_cacheActionLog.LogAction(action);
 
+			DebugLog("=> entering mutex");
 			lock (_actionThreadSync)
+			{
+				DebugLog("=> appending to queue");
 				_actionQueue.Enqueue(action);
+			}
 		}
 
 		internal void DrainActionQueue()
@@ -808,6 +820,7 @@ namespace DQD.RealTimeBackup.StateCache
 						{
 							DebugLog("[AT] action thread waiting");
 							Monitor.Wait(_actionThreadSync);
+							DebugLog("[AT] action thread woken up");
 							continue;
 						}
 
@@ -849,7 +862,9 @@ namespace DQD.RealTimeBackup.StateCache
 							}
 							finally
 							{
+								DebugLog("[AT] action thread re-entering mutex");
 								Monitor.Enter(_actionThreadSync);
+								DebugLog("[AT] action thread has re-entered mutex");
 							}
 
 							if (_stopping && !action.IsComplete)
@@ -882,6 +897,8 @@ namespace DQD.RealTimeBackup.StateCache
 			}
 			catch (Exception e)
 			{
+				DebugLog("[AT] Action Thread has crashed: {0}", e);
+
 				_errorLogger.LogError(
 					"The Remote File State Cache Action Queue has crashed",
 					"The thread in charge of pushing updates to the Remote File State Cache to remote storage has crashed. The thread will " +

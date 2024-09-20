@@ -777,9 +777,9 @@ namespace DQD.RealTimeBackup.Storage
 					new MemoryStream(Encoding.UTF8.GetBytes(contentKey)),
 					progressCallback: null,
 					cancellationToken);
-
-				newContentKeyCallback(contentKey);
 			}
+
+			newContentKeyCallback(contentKey);
 
 			VerboseDiagnosticOutput("[B2] => Uploading {0:#,##0} bytes to part {1} of content path: {2}", partContentStream.Length, partNumber, serverPath);
 
