@@ -317,11 +317,14 @@ namespace DQD.RealTimeBackup.Web
 
 				for (int partNumber = 1; partNumber <= partCount; partNumber++)
 				{
-					await _remoteStorage.DownloadFilePartDirectAsync(
+					bool succeeded = await _remoteStorage.DownloadFilePartDirectAsync(
 						_file.ContentKey,
 						partNumber,
 						bodyStream,
 						cancellationToken);
+
+					if (!succeeded)
+						break;
 				}
 			}
 		}
@@ -355,6 +358,8 @@ namespace DQD.RealTimeBackup.Web
 				using (var compressor = await BZip2AsyncOutputStream.CreateAsync(response.Body, context.HttpContext.RequestAborted))
 				using (var tar = new TarOutputStream(compressor, Encoding.UTF8))
 				{
+					var incompleteEntriesMessage = new StringWriter();
+
 					foreach (var file in _files)
 					{
 						var tarEntry = TarEntry.CreateTarEntry(file.Path.TrimStart('/'));
@@ -378,15 +383,38 @@ namespace DQD.RealTimeBackup.Web
 
 							for (int partNumber = 1; partNumber <= partCount; partNumber++)
 							{
-								await _remoteStorage.DownloadFilePartDirectAsync(
+								bool succeeded = await _remoteStorage.DownloadFilePartDirectAsync(
 									file.ContentKey,
 									partNumber,
 									tar,
 									context.HttpContext.RequestAborted);
+
+								if (!succeeded)
+								{
+									incompleteEntriesMessage.WriteLine("File is incomplete: {0}", file.Path);
+									incompleteEntriesMessage.WriteLine();
+									if (partNumber > 1)
+										incompleteEntriesMessage.WriteLine("Read parts 1 through {0} successfully", partNumber - 1);
+									incompleteEntriesMessage.WriteLine("Part number {0} could not be retrieved from remote storage", partNumber);
+									incompleteEntriesMessage.WriteLine();
+								}
 							}
 						}
 
-						tar.CloseEntry();
+						await tar.CloseEntryAsync(context.HttpContext.RequestAborted);
+					}
+
+					byte[] incompleteEntriesMessageBytes = Encoding.UTF8.GetBytes(incompleteEntriesMessage.ToString());
+
+					if (incompleteEntriesMessageBytes.Length > 0)
+					{
+						var tarEntry = TarEntry.CreateTarEntry("INCOMPLETE");
+
+						tarEntry.Size = incompleteEntriesMessageBytes.Length;
+
+						await tar.PutNextEntryAsync(tarEntry, context.HttpContext.RequestAborted);
+						await tar.WriteAsync(incompleteEntriesMessageBytes, 0, incompleteEntriesMessageBytes.Length, context.HttpContext.RequestAborted);
+						await tar.CloseEntryAsync(context.HttpContext.RequestAborted);
 					}
 				}
 			}

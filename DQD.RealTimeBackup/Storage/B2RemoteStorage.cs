@@ -824,16 +824,18 @@ namespace DQD.RealTimeBackup.Storage
 			Wait(DownloadFileDirectAsync(serverPath, contentStream, cancellationToken));
 		}
 
-		public Task DownloadFilePartDirectAsync(string contentKey, int partNumber, Stream contentStream, CancellationToken cancellationToken)
+		public async Task<bool> DownloadFilePartDirectAsync(string contentKey, int partNumber, Stream contentStream, CancellationToken cancellationToken)
 		{
 			var request = new DownloadFileByNameRequest(FindAndCacheBucketName(), contentKey + "-" + partNumber);
 
-			return _b2Client.DownloadAsync(request, contentStream, default, cancellationToken);
+			var result = await _b2Client.DownloadAsync(request, contentStream, default, cancellationToken);
+
+			return result.IsSuccessStatusCode;
 		}
 
-		public void DownloadFilePartDirect(string contentKey, int partNumber, Stream contentStream, CancellationToken cancellationToken)
+		public bool DownloadFilePartDirect(string contentKey, int partNumber, Stream contentStream, CancellationToken cancellationToken)
 		{
-			Wait(DownloadFilePartDirectAsync(contentKey, partNumber, contentStream, cancellationToken));
+			return Wait(DownloadFilePartDirectAsync(contentKey, partNumber, contentStream, cancellationToken));
 		}
 
 		public void DownloadFileByID(string remoteFileID, Stream contentStream, CancellationToken cancellationToken)

@@ -208,7 +208,13 @@ namespace DQD.RealTimeBackup.Restore
 										int filePartCount = (int)((fileState.FileSize + parameters.FilePartSize - 1) / parameters.FilePartSize);
 
 										for (int partNumber=1; partNumber <= filePartCount; partNumber++)
-											storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, outputStream, CancellationToken.None);
+										{
+											if (!storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, outputStream, CancellationToken.None))
+											{
+												Console.Error.WriteLine("File is not complete in remote storage: " + fileState.Path);
+												return 1;
+											}
+										}
 									}
 								}
 							}
@@ -389,7 +395,11 @@ namespace DQD.RealTimeBackup.Restore
 
 													var partSubstream = new Substream(stream, partOffset, partLength);
 
-													storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, partSubstream, CancellationToken.None);
+													if (!storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, partSubstream, CancellationToken.None))
+													{
+														Console.Error.WriteLine("File is not complete in remote storage: " + fileState.Path);
+														return 1;
+													}
 												}
 											}
 										}
@@ -466,7 +476,11 @@ namespace DQD.RealTimeBackup.Restore
 
 															var partSubstream = new Substream(stream, partOffset, partLength);
 
-															storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, partSubstream, CancellationToken.None);
+															if (!storage.DownloadFilePartDirect(fileState.ContentKey, partNumber, partSubstream, CancellationToken.None))
+															{
+																Console.Error.WriteLine("File is not complete in remote storage: " + fileState.Path);
+																return 1;
+															}
 														}
 													}
 												}

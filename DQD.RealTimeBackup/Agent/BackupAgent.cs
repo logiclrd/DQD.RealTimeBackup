@@ -1603,6 +1603,8 @@ namespace DQD.RealTimeBackup.Agent
 
 									long totalBytesToUpload = 0;
 
+									string contentPath = PlaceInContentPath(fileToUpload.Path);
+
 									for (int partNumber = 1; partNumber <= partCount; partNumber++)
 									{
 										long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
@@ -1615,6 +1617,11 @@ namespace DQD.RealTimeBackup.Agent
 										{
 											partsToUpload.Add(partNumber);
 											totalBytesToUpload += partLength;
+
+											_storage.DeleteFilePart(
+												contentPath,
+												partNumber,
+												cancellationToken);
 										}
 										else
 										{
@@ -1625,8 +1632,6 @@ namespace DQD.RealTimeBackup.Agent
 									}
 
 									long totalBytesTransferred = 0;
-
-									string contentPath = PlaceInContentPath(fileToUpload.Path);
 
 									foreach (int partNumber in partsToUpload)
 									{
