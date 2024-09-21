@@ -126,9 +126,40 @@ namespace DQD.RealTimeBackup.Restore
 						() =>
 						{
 							if (!args.UseFileState)
-								EnsureStorageAuthenticated();
+							{
+								if (args.CatFile == null)
+								{
+									Console.WriteLine("Retrieving file state from remote storage");
+									Console.WriteLine("=> To use local file state, ^C and run again with /USEFILESTATE");
+								}
 
-							return remoteFileStateCache.EnumerateFileStates().ToDictionary(
+								EnsureStorageAuthenticated();
+							}
+
+							DateTime suppressOutputUntil = DateTime.MinValue;
+
+							void ShowProgress(double progress)
+							{
+								if ((progress < 1.0) && (DateTime.UtcNow < suppressOutputUntil))
+									return;
+
+								Console.Write("{0:##0.0%}", progress);
+
+								if (Console.IsOutputRedirected)
+									suppressOutputUntil = DateTime.UtcNow.AddSeconds(0.75);
+								else
+									Console.CursorLeft = 0;
+							}
+
+							void DontShowProgress(double progress)
+							{
+								// Do nothing
+							}
+
+							Action<double> progressCallback =
+								(args.CatFile == null) ? ShowProgress : DontShowProgress;
+
+							return remoteFileStateCache.EnumerateFileStates(progressCallback).ToDictionary(
 								keySelector: fileState => fileState.Path,
 								elementSelector: fileState => fileState);
 						});
