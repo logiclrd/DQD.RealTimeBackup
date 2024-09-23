@@ -1182,7 +1182,7 @@ namespace DQD.RealTimeBackup.Agent
 					var currentLocalFileChecksum = _checksum.ComputeChecksum(stream);
 
 					if ((backedUpFileState != null)
-					 && (stream.Length <= _parameters.FilePartSize) // if the file is uploaded in parts, each part needs to be checked separately
+					 && !backedUpFileState.IsInParts // if the file is uploaded in parts, each part needs to be checked separately
 					 && (currentLocalFileChecksum == backedUpFileState.Checksum))
 					{
 						VerboseDiagnosticOutput("[BQ] Remote File State Cache says this exact file is already uploaded, releasing & skipping");
