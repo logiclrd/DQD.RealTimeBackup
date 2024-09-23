@@ -1778,6 +1778,34 @@ namespace DQD.RealTimeBackup.Agent
 
 			_zfsInstanceByMountPoint.Sort((left, right) => right.MountPoint.Length - left.MountPoint.Length);
 
+			NonQuietDiagnosticOutput("Searching for stale ZFS snapshots");
+
+			foreach (var snapshot in _zfs.EnumerateSnapshots())
+			{
+				if (snapshot.DeviceName != null)
+				{
+					NonQuietDiagnosticOutput("* {0}", snapshot.DeviceName);
+
+					var parts = snapshot.DeviceName.Split('@', count: 2);
+
+					string deviceName = parts.First();
+					string snapshotName = parts.Last();
+
+					if (snapshotName.StartsWith("RTB-") && long.TryParse(snapshotName.Substring(4), out var timestampValue))
+					{
+						var volumeZFS = _zfsInstanceByMountPoint.FirstOrDefault(item => item.ZFS.DeviceName == deviceName).ZFS;
+
+						if (volumeZFS != null)
+						{
+							NonQuietDiagnosticOutput("  => This looks like one of ours");
+
+							using (volumeZFS.AttachToSnapshot(snapshotName))
+								NonQuietDiagnosticOutput("  => Requesting deletion");;
+						}
+					}
+				}
+			}
+
 			using (var output = new DiagnosticOutputHook(_surfaceArea, NonQuietDiagnosticOutput))
 			{
 				output.WriteLine("Building surface area");

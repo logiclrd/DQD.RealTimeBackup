@@ -13,13 +13,14 @@ namespace DQD.RealTimeBackup.FileSystem
 		ITimer _timer;
 
 		string _snapshotName;
+		bool _disposing;
 		bool _disposed;
 
 		public event EventHandler? Disposed;
 
 		public string SnapshotName => _snapshotName;
 
-		public ZFSSnapshot(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, string deviceName, string snapshotName, IZFS? rootInstance)
+		public ZFSSnapshot(OperatingParameters parameters, IErrorLogger errorLogger, ITimer timer, string deviceName, string snapshotName, IZFS? rootInstance, bool attachExisting = false)
 			: base(parameters, errorLogger, timer, deviceName, rootInstance)
 		{
 			_errorLogger = errorLogger;
@@ -27,18 +28,25 @@ namespace DQD.RealTimeBackup.FileSystem
 
 			_snapshotName = snapshotName;
 
-			ExecuteZFSCommand($"snapshot {_deviceName}@{_snapshotName}");
+			if (!attachExisting)
+				ExecuteZFSCommand($"snapshot {_deviceName}@{_snapshotName}");
 		}
 
 		public void Dispose()
 		{
-			DisposeRetry(0);
+			lock (this)
+			{
+				if (!_disposed && !_disposing)
+				{
+					_disposing = true;
+					DisposeRetry(0, 5);
+				}
+			}
 		}
 
-		const int MaximumDisposeRetries = 5;
 		const int RetryIntervalSeconds = 10;
 
-		void DisposeRetry(int failedAttempts)
+		void DisposeRetry(int failedAttempts, int nextWarningFailedAttempts)
 		{
 			ZFSDebugLog.WriteLine($"Destroying snapshot {_deviceName}@{_snapshotName} (previous failed attempts {failedAttempts})");
 
@@ -48,31 +56,34 @@ namespace DQD.RealTimeBackup.FileSystem
 
 				ZFSDebugLog.WriteLine("Exit code: {0}", exitCode);
 
-				if (exitCode != 0)
+				if (exitCode == 0)
+				{
+					Disposed?.Invoke(this, EventArgs.Empty);
+					_disposed = true;
+					_disposing = false;
+				}
+				else
 				{
 					failedAttempts++;
 
-					if (failedAttempts < MaximumDisposeRetries)
-					{
-						ZFSDebugLog.WriteLine("=> Scheduling retry in {0} seconds", RetryIntervalSeconds);
-
-						_timer.ScheduleAction(
-							TimeSpan.FromSeconds(RetryIntervalSeconds),
-							() => DisposeRetry(failedAttempts));
-
-						return;
-					}
-					else
+					if (failedAttempts == nextWarningFailedAttempts)
 					{
 						_errorLogger.LogError(
 							"Failed to remove ZFS snapshot",
 							$"ZFS snapshot named '{_deviceName}@{_snapshotName}' could not be removed. " +
-							"Retries have been exhausted, it will need to be removed manually.");
-					}
-				}
+							$"Removal has been attempted {failedAttempts} times. If it cannot be removed " +
+							"automatically, it may need to be removed manually. DQD.RealTimeBackup will " +
+							"continue to try removing this ZFS snapshot.");
 
-				Disposed?.Invoke(this, EventArgs.Empty);
-				_disposed = true;
+						nextWarningFailedAttempts += failedAttempts + 5;
+					}
+
+					ZFSDebugLog.WriteLine("=> Scheduling retry in {0} seconds", RetryIntervalSeconds);
+
+					_timer.ScheduleAction(
+						TimeSpan.FromSeconds(RetryIntervalSeconds),
+						() => DisposeRetry(failedAttempts, nextWarningFailedAttempts));
+				}
 			}
 		}
 

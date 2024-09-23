@@ -140,6 +140,41 @@ namespace DQD.RealTimeBackup.FileSystem
 			}
 		}
 
+		public IEnumerable<ZFSVolume> EnumerateSnapshots()
+		{
+			ZFSDebugLog.WriteLine("Enumerating snapshots");
+
+			foreach (string line in ExecuteZFSCommandOutput("list -Hp -t snapshot"))
+			{
+				string[] parts = line.Split('\t');
+
+				// 'zfs list' yields an entry for the pool itself, which includes a mount point but which isn't
+				// the actual volume. No error is given creating snapshots on this device (named simply "bpool"
+				// or "rpool") but the snapshot isn't meaningful and doesn't appear in /.zfs or /boot/.zfs.
+				//
+				// As far as I can tell, the only way to distinguish these entries is by the presence of
+				// path separator characters in the device name. "bpool" and "rpool" and the like are to be
+				// avoided.
+
+				if (parts[0].IndexOf('/') < 0)
+					continue;
+
+				var volume =
+					new ZFSVolume()
+					{
+						DeviceName = parts[0],
+						UsedBytes = long.Parse(parts[1]),
+						AvailableBytes = -1,
+						ReferencedBytes = long.Parse(parts[3]),
+						MountPoint = null,
+					};
+
+				ZFSDebugLog.WriteLine("- {0}", volume.DeviceName);
+
+				yield return volume;
+			}
+		}
+
 		void AddSnapshot(IZFSSnapshot snapshot)
 		{
 			lock (_currentSnapshotsSync)
@@ -182,6 +217,22 @@ namespace DQD.RealTimeBackup.FileSystem
 			ZFSDebugLog.WriteLine("Creating new snapshot {0} of device {1}", snapshotName, _deviceName);
 
 			var snapshot = new ZFSSnapshot(_parameters, _errorLogger, _timer, _deviceName, snapshotName, _rootInstance);
+
+			AddSnapshot(snapshot);
+
+			snapshot.Disposed += (_, _) => RemoveSnapshot(snapshot);
+
+			return snapshot;
+		}
+
+		public IZFSSnapshot AttachToSnapshot(string snapshotName)
+		{
+			if (_deviceName == Dummy)
+				throw new InvalidOperationException("This ZFS instance is not attached to a specific device name.");
+
+			ZFSDebugLog.WriteLine("Attaching to existing snapshot {0} of device {1}", snapshotName, _deviceName);
+
+			var snapshot = new ZFSSnapshot(_parameters, _errorLogger, _timer, _deviceName, snapshotName, _rootInstance, attachExisting: true);
 
 			AddSnapshot(snapshot);
 
