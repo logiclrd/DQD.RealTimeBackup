@@ -177,7 +177,7 @@ namespace DQD.RealTimeBackup.Storage
 		static char[] B2ProblematicFileNameCharacters = { ',', '[', ']', '&', '_' };
 
 		// This method is intended for small resources.
-		string DownloadFileString(string serverPath, CancellationToken cancellationToken)
+		string? DownloadFileString(string serverPath, CancellationToken cancellationToken)
 		{
 			// BUGS IN BACKBLAZE B2 API: Not all supported filenames work with the b2_download_file_by_name
 			// endpoint.
@@ -243,6 +243,10 @@ namespace DQD.RealTimeBackup.Storage
 						throw new Exception("The operation did not complete successfully.");
 
 					return Encoding.UTF8.GetString(buffer.ToArray());
+				}
+				catch (Exception ex) when (IsNotFoundException(ex))
+				{
+					return null;
 				}
 				catch when (haveRetries)
 				{
@@ -849,6 +853,9 @@ namespace DQD.RealTimeBackup.Storage
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
+			if (contentKey == null)
+				throw new FileNotFoundException("File not found in remote storage: " + serverPath);
+
 			if (GetFileIDByName(contentKey, throwIfNotFound: false) is string fileId)
 				await _b2Client.DownloadByIdAsync(fileId, contentStream);
 			else
@@ -862,7 +869,7 @@ namespace DQD.RealTimeBackup.Storage
 					else
 					{
 						if (partNumber == 1)
-							throw new Exception("File not found in remote storage: " + serverPath);
+							throw new FileNotFoundException("File not found in remote storage: " + serverPath);
 						else
 							return;
 					}
@@ -913,43 +920,49 @@ namespace DQD.RealTimeBackup.Storage
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
-			try
+			if (contentKey != null)
 			{
-				DeleteFileDirect(serverPath, cancellationToken);
-			}
-			catch (Exception e)
-			{
-				if (!IsNotFoundException(e))
-					_errorLogger.LogError("Error while deleting path from which a content key was just retrieved: " + serverPath, ErrorLogger.Summary.SystemError, e);
-			}
+				try
+				{
+					DeleteFileDirect(serverPath, cancellationToken);
+				}
+				catch (Exception e)
+				{
+					if (!IsNotFoundException(e))
+						_errorLogger.LogError("Error while deleting path from which a content key was just retrieved: " + serverPath, ErrorLogger.Summary.SystemError, e);
+				}
 
-			try
-			{
-				DeleteFileDirect(contentKey, cancellationToken);
-			}
-			catch (Exception e)
-			{
-				if (!IsNotFoundException(e))
-					_errorLogger.LogError("Error while deleting path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
-			}
+				try
+				{
+					DeleteFileDirect(contentKey, cancellationToken);
+				}
+				catch (Exception e)
+				{
+					if (!IsNotFoundException(e))
+						_errorLogger.LogError("Error while deleting path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+				}
 
-			int partNumber = 1;
+				int partNumber = 1;
 
-			try
-			{
-				while (DeleteFileDirect(contentKey + "-" + partNumber, cancellationToken))
-					partNumber++;
-			}
-			catch (Exception e)
-			{
-				if (!IsNotFoundException(e))
-					_errorLogger.LogError("Error while deleting part " + partNumber + " for path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+				try
+				{
+					while (DeleteFileDirect(contentKey + "-" + partNumber, cancellationToken))
+						partNumber++;
+				}
+				catch (Exception e)
+				{
+					if (!IsNotFoundException(e))
+						_errorLogger.LogError("Error while deleting part " + partNumber + " for path: " + serverPath + "\nPointed at by path: " + serverPath, ErrorLogger.Summary.SystemError, e);
+				}
 			}
 		}
 
 		public void DeleteFilePart(string serverPath, int partNumber, CancellationToken cancellationToken)
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
+
+			if (contentKey == null)
+				throw new FileNotFoundException("File not found in remote storage: " + serverPath);
 
 			try
 			{

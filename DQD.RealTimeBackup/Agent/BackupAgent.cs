@@ -1618,10 +1618,14 @@ namespace DQD.RealTimeBackup.Agent
 											partsToUpload.Add(partNumber);
 											totalBytesToUpload += partLength;
 
-											_storage.DeleteFilePart(
-												contentPath,
-												partNumber,
-												cancellationToken);
+											try
+											{
+												_storage.DeleteFilePart(
+													contentPath,
+													partNumber,
+													cancellationToken);
+											}
+											catch (FileNotFoundException) { }
 										}
 										else
 										{
