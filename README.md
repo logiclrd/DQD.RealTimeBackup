@@ -297,4 +297,5 @@ This library uses a couple of external libraries in its implementation:
 
 The icon image used by DQD.RealTimeBackup.UserInterface is based on the following free icon:
 
+<a href="https://www.flaticon.com/free-icon/backup_5322156" title="backup icon">Backup free icon created by Freepik - Flaticon</a>
 <a href="https://www.flaticon.com/free-icons/backup" title="backup icons">Backup icons created by Freepik - Flaticon</a>
