@@ -13,7 +13,8 @@ namespace DQD.RealTimeBackup.Agent
 		int UploadThreadCount { get; }
 
 		BackupAgentQueueSizes GetQueueSizes();
-		public UploadStatus?[] GetUploadThreads();
+		UploadStatus?[] GetUploadThreads();
+		void CancelUpload(int uploadThreadIndex);
 
 		int OpenFilesCount { get; }
 

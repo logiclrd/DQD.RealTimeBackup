@@ -1402,6 +1402,7 @@ namespace DQD.RealTimeBackup.Agent
 		List<FileReference> _uploadQueue = new List<FileReference>();
 		int _uploadThreadCount;
 		UploadStatus?[]? _uploadThreadStatus;
+		CancellationTokenSource?[]? _uploadThreadCancellation;
 		Semaphore? _uploadThreadsExited;
 
 		public int UploadThreadCount => _uploadThreadCount;
@@ -1412,11 +1413,14 @@ namespace DQD.RealTimeBackup.Agent
 			_uploadThreadsExited = new Semaphore(initialCount: 0, maximumCount: _uploadThreadCount);
 
 			_cancelUploadsCancellationTokenSource = new CancellationTokenSource();
+			_uploadThreadCancellation = new CancellationTokenSource[_uploadThreadCount];
 
 			_uploadThreadStatus = new UploadStatus[_parameters.UploadThreadCount];
 
 			for (int i = 0; i < _parameters.UploadThreadCount; i++)
+			{
 				new Thread(idx => UploadThreadProc((int)idx!, _cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start(i);
+			}
 		}
 
 		void WakeUploadThreads()
@@ -1501,6 +1505,13 @@ namespace DQD.RealTimeBackup.Agent
 				throw new Exception("Internal error");
 			}
 
+			if (_uploadThreadCancellation == null)
+			{
+				// This shouldn't ever happen.
+				_errorLogger.LogError("Was started without the _uploadThreadCancellation array initialized", "DQD.RealTimeBackup: Upload Thread Internal Error");
+				throw new Exception("Internal error");
+			}
+
 			var exited = _uploadThreadsExited;
 
 			try
@@ -1563,6 +1574,10 @@ namespace DQD.RealTimeBackup.Agent
 							{
 								fileToUpload.FileSize = stream.Length;
 
+								_uploadThreadCancellation[threadIndex] = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+								var localCancellationToken = _uploadThreadCancellation[threadIndex]?.Token ?? cancellationToken;
+
 								_uploadThreadStatus[threadIndex] = new UploadStatus(
 									fileToUpload.Path,
 									fileToUpload.FileSize,
@@ -1586,7 +1601,7 @@ namespace DQD.RealTimeBackup.Agent
 											progress.TotalBytes = fileToUpload.FileSize;
 											_uploadThreadStatus[threadIndex]!.Progress = progress;
 										},
-										cancellationToken);
+										localCancellationToken);
 								}
 								else
 								{
@@ -1623,7 +1638,7 @@ namespace DQD.RealTimeBackup.Agent
 												_storage.DeleteFilePart(
 													contentPath,
 													partNumber,
-													cancellationToken);
+													localCancellationToken);
 											}
 											catch (FileNotFoundException) { }
 										}
@@ -1684,7 +1699,7 @@ namespace DQD.RealTimeBackup.Agent
 
 												_uploadThreadStatus[threadIndex]!.Progress = progress;
 											},
-											cancellationToken);
+											localCancellationToken);
 
 										if (!partByPartNumber.TryGetValue(partNumber, out var partState))
 											partState = newFileState.CreatePartState(partNumber);
@@ -1709,7 +1724,7 @@ namespace DQD.RealTimeBackup.Agent
 										_storage.DeleteFilePart(
 											contentPath,
 											unneededPartNumber,
-											cancellationToken);
+											localCancellationToken);
 
 										_remoteFileStateCache.RemoveFileStateForPart(fileToUpload.Path, unneededPartNumber);
 									}
@@ -1730,6 +1745,14 @@ namespace DQD.RealTimeBackup.Agent
 						finally
 						{
 							_uploadThreadStatus[threadIndex] = null;
+
+							try
+							{
+								_uploadThreadCancellation[threadIndex]?.Dispose();
+							}
+							catch {}
+
+							_uploadThreadCancellation[threadIndex] = null;
 						}
 
 						VerboseDiagnosticOutput("[UP{0}] Registering file state change", threadIndex);
@@ -1751,6 +1774,18 @@ namespace DQD.RealTimeBackup.Agent
 			{
 				exited?.Release();
 			}
+		}
+
+		public void CancelUpload(int uploadThreadIndex)
+		{
+			if (_uploadThreadCancellation == null)
+				return;
+
+			try
+			{
+				_uploadThreadCancellation[uploadThreadIndex]?.Cancel();
+			}
+			catch {}
 		}
 
 		public void Start()

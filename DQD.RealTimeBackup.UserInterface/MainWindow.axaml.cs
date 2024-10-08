@@ -183,24 +183,48 @@ namespace DQD.RealTimeBackup.UserInterface
 
 		void cmdPerformRescan_Click(object? sender, RoutedEventArgs e)
 		{
-			using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+			try
 			{
-				var request = new BridgeMessage_PerformRescan_Request();
+				using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+				{
+					var request = new BridgeMessage_PerformRescan_Request();
 
-				client.SendRequestAndReceiveResponse(request);
+					client.SendRequestAndReceiveResponse(request);
 
-				IncludePeriodicRescansInNotificationList = true;
+					IncludePeriodicRescansInNotificationList = true;
+				}
 			}
+			catch { }
 		}
 
 		void cmdCancelRescan_Click(object? sender, RoutedEventArgs e)
 		{
-			using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+			try
 			{
-				var request = new BridgeMessage_CancelRescan_Request();
+				using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+				{
+					var request = new BridgeMessage_CancelRescan_Request();
 
-				client.SendRequestAndReceiveResponse(request);
+					client.SendRequestAndReceiveResponse(request);
+				}
 			}
+			catch { }
+		}
+
+		void RequestCancelUpload(int uploadThreadIndex)
+		{
+			try
+			{
+				using (var client = BridgeClient.ConnectTo(Path.Combine(OperatingParameters.DefaultIPCPath, BridgeServer.UNIXSocketName)))
+				{
+					var request = new BridgeMessage_CancelUpload_Request();
+
+					request.UploadThreadIndex = uploadThreadIndex;
+
+					client.SendRequestAndReceiveResponse(request);
+				}
+			}
+			catch { }
 		}
 
 		protected override void OnClosing(WindowClosingEventArgs e)
@@ -361,9 +385,12 @@ namespace DQD.RealTimeBackup.UserInterface
 								spUploads.Children.RemoveAt(spUploads.Children.Count - 1);
 							while (spUploads.Children.Count < uploadStatuses.Length)
 							{
+								int uploadThreadIndex = spUploads.Children.Count;
+
 								var uploadStatusControl = new UploadStatusControl();
 
 								uploadStatusControl.CopyPath += (_, path) => Clipboard?.SetTextAsync(path).Wait();
+								uploadStatusControl.CancelUpload += (_, _) => RequestCancelUpload(uploadThreadIndex);
 
 								spUploads.Children.Add(uploadStatusControl);
 							}

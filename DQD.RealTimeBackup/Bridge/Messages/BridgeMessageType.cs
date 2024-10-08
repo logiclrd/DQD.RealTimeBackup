@@ -27,5 +27,8 @@ namespace DQD.RealTimeBackup.Bridge.Messages
 
 		GetRescanStatus_Request,
 		GetRescanStatus_Response,
+
+		CancelUpload_Request,
+		CancelUpload_Response,
 	}
 }
