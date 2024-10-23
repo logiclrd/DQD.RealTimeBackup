@@ -12,6 +12,7 @@ using DQD.RealTimeBackup.Tests.Support;
 
 using DQD.RealTimeBackup.StateCache;
 using DQD.RealTimeBackup.Utility;
+using Bogus;
 
 namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 {
@@ -151,7 +152,13 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 		public void ToString_and_Parse_should_roundtrip_instances()
 		{
 			// Arrange
-			var fileState = AutoFaker.Generate<FileState>();
+			var faker = new Faker();
+
+			var autoFaker = AutoFaker.Create(builder => builder.WithFakerHub(faker));
+
+			var fileState = autoFaker.Generate<FileState>();
+
+			fileState.ContentKey = faker.Random.Hash();
 
 			var checksumBuilder = new StringBuilder();
 
@@ -161,6 +168,16 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				checksumBuilder.Append("0123456789abcdef"[random.Next(16)]);
 
 			fileState.Checksum = checksumBuilder.ToString();
+
+			if (!fileState.IsInParts)
+				fileState.PartNumber = 0;
+			else
+			{
+				// These fields are not serialized for parts as it would be unnecessary repetition.
+				fileState.FileSize = 0;
+				fileState.LastModifiedUTC = DateTime.MinValue;
+				fileState.ContentKey = "0";
+			}
 
 			// Act
 			string serialized = fileState.ToString();
