@@ -502,9 +502,9 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			var newFileStates = new List<FileState>();
 
 			for (int i=0; i < 10; i++)
-				fileStates.Add(faker.Generate<FileState>());
+				fileStates.Add(FileState.Parse(faker.Generate<FileState>().ToString()));
 			for (int i=0; i < 15; i++)
-				newFileStates.Add(faker.Generate<FileState>());
+				newFileStates.Add(FileState.Parse(faker.Generate<FileState>().ToString()));
 
 			dummyStorage.InitializeWithBatches(fileStates);
 
