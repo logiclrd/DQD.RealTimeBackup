@@ -174,7 +174,8 @@ namespace DQD.RealTimeBackup.StateCache
 			}
 		}
 
-		internal Dictionary<string, FileState> GetCacheForTest() => _filesCache;
+		internal Dictionary<string, FileState> GetFilesCacheForTest() => _filesCache;
+		internal Dictionary<string, List<FileState>> GetPartsCacheForTest() => _partsCache;
 		internal int GetCurrentBatchNumberForTest() => _currentBatchNumber;
 		internal List<FileState> GetCurrentBatchForTest() => _currentBatch;
 

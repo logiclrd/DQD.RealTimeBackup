@@ -136,16 +136,40 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			var batch3FileStates = new List<FileState>();
 
 			for (int i=0; i < 10; i++)
-				batch1FileStates.Add(faker.Generate<FileState>());
+				batch1FileStates.Add(FileState.Parse(faker.Generate<FileState>().ToString()));
 			for (int i=0; i < 20; i++)
-				batch2FileStates.Add(faker.Generate<FileState>());
+				batch2FileStates.Add(FileState.Parse(faker.Generate<FileState>().ToString()));
 			for (int i=0; i < 5; i++)
-				batch3FileStates.Add(faker.Generate<FileState>());
+				batch3FileStates.Add(FileState.Parse(faker.Generate<FileState>().ToString()));
 
-			var expectedCache = new Dictionary<string, FileState>();
+			var expectedFilesCache = new Dictionary<string, FileState>();
+			var expectedPartsCache = new Dictionary<string, List<FileState>>();
 
 			foreach (var fileState in batch1FileStates.Concat(batch2FileStates).Concat(batch3FileStates))
-				expectedCache[fileState.Path] = fileState;
+			{
+				if (!fileState.IsInParts)
+					expectedFilesCache[fileState.Path] = fileState;
+				else
+				{
+					if (!expectedPartsCache.TryGetValue(fileState.Path, out var partsList))
+						partsList = expectedPartsCache[fileState.Path] = new List<FileState>();
+
+					bool found = false;
+
+					for (int i=0; i < partsList.Count; i++)
+					{
+						if (partsList[i].PartNumber == fileState.PartNumber)
+						{
+							partsList[i] = fileState;
+							found = true;
+							break;
+						}
+					}
+
+					if (!found)
+						partsList.Add(fileState);
+				}
+			}
 
 			dummyStorage.InitializeWithBatches(
 				batch1FileStates,
@@ -172,7 +196,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			// Assert
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Exception>());
 
-			sut.GetCacheForTest().Should().BeEquivalentTo(expectedCache);
+			sut.GetFilesCacheForTest().Should().BeEquivalentTo(expectedFilesCache);
+			sut.GetPartsCacheForTest().Should().BeEquivalentTo(expectedPartsCache);
 		}
 
 		[Test]
@@ -255,8 +280,14 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			// Arrange
 			var faker = CreateAutoFaker();
 
-			var fileState = FileState.Parse(faker.Generate<FileState>().ToString());
-			var newFileState = FileState.Parse(faker.Generate<FileState>().ToString());
+			var fileState = faker.Generate<FileState>();
+			var newFileState = faker.Generate<FileState>();
+
+			fileState.IsInParts = false;
+			newFileState.IsInParts = false;
+
+			fileState = FileState.Parse(fileState.ToString());
+			newFileState = FileState.Parse(newFileState.ToString());
 
 			var dummyStorage = new DummyStorage();
 
