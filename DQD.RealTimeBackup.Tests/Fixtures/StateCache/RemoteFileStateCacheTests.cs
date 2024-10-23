@@ -255,8 +255,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			// Arrange
 			var faker = CreateAutoFaker();
 
-			var fileState = faker.Generate<FileState>();
-			var newFileState = faker.Generate<FileState>();
+			var fileState = FileState.Parse(faker.Generate<FileState>().ToString());
+			var newFileState = FileState.Parse(faker.Generate<FileState>().ToString());
 
 			var dummyStorage = new DummyStorage();
 
@@ -296,8 +296,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			// Arrange
 			var faker = CreateAutoFaker();
 
-			var fileState = faker.Generate<FileState>();
-			var newFileState = faker.Generate<FileState>();
+			var fileState = FileState.Parse(faker.Generate<FileState>().ToString());
+			var newFileState = FileState.Parse(faker.Generate<FileState>().ToString());
 
 			var dummyStorage = new DummyStorage();
 

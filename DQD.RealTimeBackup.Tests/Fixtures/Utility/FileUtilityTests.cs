@@ -92,8 +92,12 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Utility
 
 				File.WriteAllBytes(file1.Path, content);
 
-				for (int i = 0; i < differenceLength; i++)
-					content[differenceStart + i] = faker.Random.Byte();
+				byte[] originalContent = (byte[])content.Clone();
+
+				do
+					for (int i = 0; i < differenceLength; i++)
+						content[differenceStart + i] = faker.Random.Byte();
+				while (Enumerable.SequenceEqual(content, originalContent));
 
 				File.WriteAllBytes(file2.Path, content);
 
