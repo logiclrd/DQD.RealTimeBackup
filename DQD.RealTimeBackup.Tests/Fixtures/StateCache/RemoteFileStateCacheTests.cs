@@ -593,7 +593,13 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				var batchFileStates = new List<FileState>();
 
 				for (int j=0, l=faker.Random.Number(10, 20); j < l; j++)
-					batchFileStates.Add(autoFaker.Generate<FileState>());
+				{
+					var state = autoFaker.Generate<FileState>();
+
+					state = FileState.Parse(state.ToString());
+
+					batchFileStates.Add(state);
+				}
 
 				batches.Add(batchFileStates);
 			}
@@ -617,7 +623,13 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			var newFileStates = new List<FileState>();
 
 			for (int i=0; i < 15; i++)
-				newFileStates.Add(autoFaker.Generate<FileState>());
+			{
+				var state = autoFaker.Generate<FileState>();
+
+				state = FileState.Parse(state.ToString());
+
+				newFileStates.Add(state);
+			}
 
 			dummyStorage.InitializeWithBatches(batches);
 
@@ -718,7 +730,13 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				var batchFileStates = new List<FileState>();
 
 				for (int j=0, l=faker.Random.Number(10, 20); j < l; j++)
-					batchFileStates.Add(autoFaker.Generate<FileState>());
+				{
+					var state = autoFaker.Generate<FileState>();
+
+					state = FileState.Parse(state.ToString());
+
+					batchFileStates.Add(state);
+				}
 
 				batches.Add(batchFileStates);
 			}
@@ -752,13 +770,27 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 					{
 						if (expectedMergedFileStates[i].Path == fileState.Path)
 						{
-							expectedMergedFileStates[i] = fileState;
-							found = true;
-							break;
+							if (fileState.FileSize == RemoteFileStateCache.DeletedFileSize)
+							{
+								if ((fileState.PartNumber == 0)
+								 || ((expectedMergedFileStates[i].IsInParts == fileState.IsInParts)
+								  && (expectedMergedFileStates[i].PartNumber == fileState.PartNumber)))
+								{
+									expectedMergedFileStates.RemoveAt(i);
+									i--;
+								}
+							}
+							else if ((expectedMergedFileStates[i].IsInParts == fileState.IsInParts)
+							      && (expectedMergedFileStates[i].PartNumber == fileState.PartNumber))
+							{
+								expectedMergedFileStates[i] = fileState;
+								found = true;
+								break;
+							}
 						}
 					}
 
-					if (!found)
+					if (!found && (fileState.FileSize != RemoteFileStateCache.DeletedFileSize))
 						expectedMergedFileStates.Add(fileState);
 				}
 			}
@@ -873,7 +905,13 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 				var batchFileStates = new List<FileState>();
 
 				for (int j=0, l=faker.Random.Number(10, 20); j < l; j++)
-					batchFileStates.Add(autoFaker.Generate<FileState>());
+				{
+					var state = autoFaker.Generate<FileState>();
+
+					state = FileState.Parse(state.ToString());
+
+					batchFileStates.Add(state);
+				}
 
 				batches.Add(batchFileStates);
 			}
@@ -896,6 +934,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 			{
 				entry.FileSize = RemoteFileStateCache.DeletedFileSize;
 				entry.Checksum = RemoteFileStateCache.DeletedChecksum;
+				entry.IsInParts = false;
+				entry.PartNumber = 0;
 			}
 
 			// Ensure that some of the deleted files get recreated in future batches.
@@ -905,7 +945,11 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 				var candidates = batches.Skip(indexOfBatchContainingDeletion + 1).SelectMany(item => item).Except(entriesToDelete);
 
-				faker.PickRandom(candidates).Path = entry.Path;
+				var selected = faker.PickRandom(candidates);
+
+				selected.Path = entry.Path;
+				selected.IsInParts = false;
+				selected.PartNumber = 0;
 			}
 
 			var expectedMergedFileStates = new List<FileState>();
@@ -1062,6 +1106,8 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 					while (!usedPaths.Add(item.Path))
 						item.Path = faker.System.FilePath();
+
+					item = FileState.Parse(item.ToString());
 
 					batch.Add(item);
 					batchStreamWriter.WriteLine(item);
