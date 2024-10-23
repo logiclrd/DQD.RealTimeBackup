@@ -800,12 +800,13 @@ namespace DQD.RealTimeBackup.StateCache
 		internal void DrainActionQueue()
 		{
 			lock (_actionThreadSync)
-				while (_actionQueue.Count > 0)
+				while ((_actionQueue.Count > 0) || _actionInFlight)
 					Monitor.Wait(_actionThreadSync, TimeSpan.FromSeconds(5));
 		}
 
 		object _actionThreadSync = new object();
 		Queue<CacheAction> _actionQueue = new Queue<CacheAction>();
+		bool _actionInFlight = false;
 
 		void ActionThreadProc()
 		{
@@ -854,6 +855,8 @@ namespace DQD.RealTimeBackup.StateCache
 						{
 							DebugLog("[AT] processing action");
 
+							_actionInFlight = true;
+
 							Monitor.Exit(_actionThreadSync);
 
 							try
@@ -866,6 +869,8 @@ namespace DQD.RealTimeBackup.StateCache
 								DebugLog("[AT] action thread re-entering mutex");
 								Monitor.Enter(_actionThreadSync);
 								DebugLog("[AT] action thread has re-entered mutex");
+
+								_actionInFlight = false;
 							}
 
 							if (_stopping && !action.IsComplete)
