@@ -353,7 +353,17 @@ namespace DQD.RealTimeBackup
 
 					if (!parameters.Quiet)
 						Output("Authenticating with remote storage");
-					storage.Authenticate();
+
+					try
+					{
+						storage.Authenticate();
+					}
+					catch (Exception e)
+					{
+						OutputError("Authentication with remote storage failed:");
+						OutputError(e);
+						Output("Authentication deferred to first communication");
+					}
 
 					if (!parameters.Quiet)
 						Output("Starting backup agent...");
