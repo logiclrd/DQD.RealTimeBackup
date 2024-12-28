@@ -64,11 +64,16 @@ namespace DQD.RealTimeBackup.StateCache
 			var pipeOut = new AnonymousPipeServerStream(PipeDirection.Out);
 			var pipeIn = new AnonymousPipeClientStream(PipeDirection.In, pipeOut.ClientSafePipeHandle);
 
-			_remoteStorage.DownloadFileDirectAsync(batchFileName, pipeOut, CancellationToken.None)
+			var wrapper = new SequentialStream(pipeOut);
+
+			_remoteStorage.DownloadFileDirectAsync(batchFileName, wrapper, CancellationToken.None)
 				.ContinueWith(
-					_ =>
+					task =>
 					{
 						pipeOut.Close();
+
+						if (task.IsFaulted)
+							wrapper.SetException(task.Exception);
 					});
 
 			return pipeIn;
