@@ -20,6 +20,13 @@
 			"args": [ "/VERBOSE" ],
 		},
 		{
+			"type": "coreclr",
+			"request": "launch",
+			"name": "Run Daemon without fanotify",
+			"program": "${workspaceFolder}/DQD.RealTimeBackup/bin/Debug/net8.0/DQD.RealTimeBackup.dll",
+			"args": [ "/VERBOSE", "/DISABLEFAN" ],
+		},
+		{
 			"type": "dotnet",
 			"request": "launch",
 			"name": "Start File Activity Trace",
@@ -37,7 +44,7 @@
 			"request": "launch",
 			"name": "Restore: Restore File",
 			"program": "${workspaceFolder}/DQD.RealTimeBackup.Restore/bin/Debug/net8.0/DQD.RealTimeBackup.Restore.dll",
-			"args": [ "/RESTOREFILE", "/DrBuffy/8-Cameo/Source/Cameo-Retimed.mkv" ],
+			"args": [ "/RESTOREFILE", "/home/logiclrd/VirtualBox VMs/Windows/Windows.vdi", "/USEFILESTATE" ],
 		},
 		{
 			"type": "coreclr",
