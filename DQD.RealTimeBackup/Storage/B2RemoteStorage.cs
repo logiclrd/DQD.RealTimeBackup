@@ -151,6 +151,9 @@ namespace DQD.RealTimeBackup.Storage
 		{
 			if (_bucketName == null)
 			{
+				if (string.IsNullOrEmpty(_b2Client.AccountId))
+					Authenticate();
+
 				var request = new ListBucketsRequest(_b2Client.AccountId);
 
 				request.BucketId = _parameters.RemoteStorageBucketID;
