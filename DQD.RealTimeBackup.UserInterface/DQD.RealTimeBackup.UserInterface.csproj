@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="DQD.RealTimeBackup.ico" />
+    <AvaloniaResource Include="DQD.RealTimeBackup-Disconnected.ico" />
     <None Update="Icon.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

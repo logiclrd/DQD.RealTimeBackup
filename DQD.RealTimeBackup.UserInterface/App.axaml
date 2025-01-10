@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:DQD.RealTimeBackup.UserInterface.Converters"
              x:Class="DQD.RealTimeBackup.UserInterface.App"
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
@@ -20,11 +21,12 @@
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
+        <converters:IconConverter x:Key="IconConverter" />
     </Application.Resources>
 
     <TrayIcon.Icons>
         <TrayIcons>
-            <TrayIcon Icon="DQD.RealTimeBackup.ico" ToolTipText="DeltaQ Real-Time Backup" Command="{Binding ShowWindowCommand}">
+            <TrayIcon Icon="{Binding IsConnected, Converter={StaticResource IconConverter}}" ToolTipText="DeltaQ Real-Time Backup" Command="{Binding ShowWindowCommand}">
                 <TrayIcon.Menu>
                     <NativeMenu>
                         <NativeMenuItem Header="_Show Status Window" Command="{Binding ShowWindowCommand}" />

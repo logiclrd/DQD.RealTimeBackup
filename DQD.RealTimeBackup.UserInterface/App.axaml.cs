@@ -8,6 +8,7 @@ using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 
 using ReactiveUI;
 
@@ -22,7 +23,18 @@ namespace DQD.RealTimeBackup.UserInterface
 	{
 		public override void Initialize()
 		{
+			DataContext = this;
+
 			AvaloniaXamlLoader.Load(this);
+		}
+
+		public static readonly StyledProperty<bool> IsConnectedProperty =
+			AvaloniaProperty.Register<App, bool>(nameof(IsConnected));
+
+		public bool IsConnected
+		{
+			get => GetValue(IsConnectedProperty);
+			set => SetValue(IsConnectedProperty, value);
 		}
 
 		public App()
@@ -158,51 +170,70 @@ namespace DQD.RealTimeBackup.UserInterface
 
 		void NotificationsThreadProc(object? state)
 		{
-			var bridgeClient = (BridgeClient)state!;
-
-			long lastMessageID = long.MinValue;
-
-			while (ReferenceEquals(bridgeClient, _bridgeClient))
+			try
 			{
-				try
-				{
-					var request = new BridgeMessage_ReceiveNotifications_Request();
-
-					request.LastMessageID = lastMessageID;
-					request.Timeout = TimeSpan.FromSeconds(30);
-
-					var response = bridgeClient.SendRequestAndReceiveResponse(request);
-
-					if (response is BridgeMessage_ReceiveNotifications_Response notificationsResponse)
+				// Asynchronously notify the UI thread that we're connected.
+				Dispatcher.UIThread.Post(
+					() =>
 					{
-						var messages = notificationsResponse.Messages;
+						IsConnected = true;
+					});
 
-						if (messages != null)
+				var bridgeClient = (BridgeClient)state!;
+
+				long lastMessageID = long.MinValue;
+
+				while (ReferenceEquals(bridgeClient, _bridgeClient))
+				{
+					try
+					{
+						var request = new BridgeMessage_ReceiveNotifications_Request();
+
+						request.LastMessageID = lastMessageID;
+						request.Timeout = TimeSpan.FromSeconds(30);
+
+						var response = bridgeClient.SendRequestAndReceiveResponse(request);
+
+						if (response is BridgeMessage_ReceiveNotifications_Response notificationsResponse)
 						{
-							lock (_queuedNotificationsSync)
+							var messages = notificationsResponse.Messages;
+
+							if (messages != null)
 							{
-								foreach (var notification in messages)
+								lock (_queuedNotificationsSync)
 								{
-									ShowNotificationToast(notification);
+									foreach (var notification in messages)
+									{
+										ShowNotificationToast(notification);
 
-									if (MainWindow != null)
-										AddNotificationToMainWindow(notification);
-									else
-										_queuedNotifications.Add(notification);
+										if (MainWindow != null)
+											AddNotificationToMainWindow(notification);
+										else
+											_queuedNotifications.Add(notification);
 
-									if (notification.MessageID > lastMessageID)
-										lastMessageID = notification.MessageID;
+										if (notification.MessageID > lastMessageID)
+											lastMessageID = notification.MessageID;
+									}
 								}
 							}
 						}
 					}
+					catch (Exception e)
+					{
+						Console.WriteLine("Notifications pump thread exception: {0}: {1}", e.GetType().Name, e.Message);
+						bridgeClient.Dispose();
+						break;
+					}
 				}
-				catch (Exception e)
-				{
-					Console.WriteLine("Notifications pump thread exception: {0}: {1}", e.GetType().Name, e.Message);
-					bridgeClient.Dispose();
-					break;
-				}
+			}
+			finally
+			{
+				// Synchronously force the UI state to reflect disconnection.
+				Dispatcher.UIThread.Invoke(
+					() =>
+					{
+						IsConnected = false;
+					});
 			}
 
 			if (_shuttingDown)
