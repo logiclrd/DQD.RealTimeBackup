@@ -492,8 +492,41 @@ namespace DQD.RealTimeBackup.Agent
 
 		internal void QueuePathForOpenFilesCheck(SnapshotReference reference)
 		{
+			VerboseDiagnosticOutput("[->OF] Queuing path for open files check: {0} ({1})", reference.Path, reference.SnapshottedPath);
+
 			lock (_openFilesSync)
 			{
+				// Check if we're already polling this path. If the path has been resubmitted and the
+				// filesize has changed, then we should reset the timeout window. We don't want to
+				// repeatedly upload partial versions of a file that is actively in the process of
+				// being created/downloaded. We only want to time out and upload files anyway if they
+				// are either sitting stagnant or being modified in-place (e.g. a database).
+				for (int i=0; i < _openFiles.Count; i++)
+				{
+					if (_openFiles[i].SnapshotReference.Path == reference.Path)
+					{
+						VerboseDiagnosticOutput("[->OF] => Path is already being polled for open files");
+
+						// Reset the timeout if the file has grown.
+						if (_openFiles[i].SnapshotReference.FileSize < reference.FileSize)
+						{
+							VerboseDiagnosticOutput("[->OF]    * File is growing, resetting timeout");
+							_openFiles[i].TimeoutUTC = DateTime.UtcNow + _parameters.MaximumTimeToWaitForNoOpenFileHandles;
+						}
+
+						// Switch to the new snapshot.
+						VerboseDiagnosticOutput("[->OF] => Switching to new snapshot: {0}", reference.SnapshottedPath);
+
+						_openFiles[i].SnapshotReference.Dispose();
+						_openFiles[i].SnapshotReference = reference;
+
+						return;
+					}
+				}
+
+				// Not found; add to the set.
+				VerboseDiagnosticOutput("[->OF] => Path is not already being monitored, adding");
+
 				var withTimeout = new SnapshotReferenceWithTimeout(reference);
 
 				withTimeout.TimeoutUTC = DateTime.UtcNow + _parameters.MaximumTimeToWaitForNoOpenFileHandles;
@@ -1226,7 +1259,9 @@ namespace DQD.RealTimeBackup.Agent
 
 					if (existingUploadOfPath != null)
 					{
-						NonQuietDiagnosticOutput("[BQ] => DeleteAction: Ignoring because an upload thread is already uploading this path: {0}", existingUploadOfPath.Path);
+						NonQuietDiagnosticOutput("[BQ] => MoveAction: An upload thread is already uploading this path: {0}", existingUploadOfPath.Path);
+						NonQuietDiagnosticOutput("[BQ] => MoveAction: Will reprocess move action after the upload completes");
+						existingUploadOfPath.RecheckFunctor = () => ProcessBackupQueueAction(action);
 						existingUploadOfPath.RecheckAfterUploadCompletes();
 						break;
 					}
@@ -1301,13 +1336,19 @@ namespace DQD.RealTimeBackup.Agent
 				}
 				case DeleteAction deleteAction:
 				{
-					var existingUploadOfPath = _uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == deleteAction.Path));
-
-					if (existingUploadOfPath != null)
+					if (_uploadThreadStatus != null)
 					{
-						NonQuietDiagnosticOutput("[BQ] => DeleteAction: Ignoring because an upload thread is already uploading this path: {0}", deleteAction.Path);
-						existingUploadOfPath.RecheckAfterUploadCompletes();
-						break;
+						int existingUploadOfPathIndex = Array.FindIndex(
+							_uploadThreadStatus,
+							status => (status != null) && (status.Path == deleteAction.Path));
+
+						if (existingUploadOfPathIndex >= 0)
+						{
+							NonQuietDiagnosticOutput("[BQ] => DeleteAction: Cancelling an ongoing upload of this path: {0}", deleteAction.Path);
+							_uploadThreadStatus[existingUploadOfPathIndex]?.RecheckAfterUploadCompletes();
+							CancelUpload(existingUploadOfPathIndex);
+							break;
+						}
 					}
 
 					VerboseDiagnosticOutput("[BQ] => DeleteAction:");
@@ -1472,13 +1513,32 @@ namespace DQD.RealTimeBackup.Agent
 		{
 			lock (_uploadQueueSync)
 			{
-				// Ensure we don't upload the same file multiple times.
-				foreach (var queueEntry in _uploadQueue)
+				// If we are already uploading an older version of this path, cancel that upload.
+				if (_uploadThreadStatus != null)
 				{
+					for (int i = 0; i < _uploadThreadStatus.Length; i++)
+					{
+						if (_uploadThreadStatus[i]?.Path == fileReference.Path)
+						{
+							NonQuietDiagnosticOutput("[BQ] AddFileReferenceToUploadQueue: Cancelling existing upload for path: {0}", fileReference.Path);
+							CancelUpload(i);
+						}
+					}
+				}
+
+				// Ensure we don't upload the same file multiple times.
+				for (int i = 0; i < _uploadQueue.Count; i++)
+				{
+					var queueEntry = _uploadQueue[i];
+
 					if (queueEntry.Path == fileReference.Path)
 					{
-						// Already set to upload this file.
-						fileReference.Dispose();
+						// Already set to upload this file. But, our source is probably a newer version.
+						// So, let's replace the existing entry with the new one.
+						_uploadQueue[i] = fileReference;
+
+						queueEntry.Dispose();
+
 						return _uploadQueue.Count;
 					}
 				}
@@ -1732,6 +1792,15 @@ namespace DQD.RealTimeBackup.Agent
 
 								_uploadThreadStatus[threadIndex]!.MarkCompleted();
 							}
+						}
+						catch (TaskCanceledException)
+						{
+							OnDiagnosticOutput("Upload action was cancelled for path: {0}", fileToUpload.Path);
+
+							// Trigger recheck if requested.
+							_uploadThreadStatus[threadIndex]?.MarkCompleted();
+
+							break;
 						}
 						catch (Exception exception)
 						{

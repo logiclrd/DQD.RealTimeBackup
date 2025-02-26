@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 using DQD.RealTimeBackup.Diagnostics;
 
@@ -24,6 +25,8 @@ namespace DQD.RealTimeBackup.FileSystem
 			_tracker?.Release(this);
 			_tracker = null;
 		}
+
+		public long FileSize => new FileInfo(SnapshottedPath).Length;
 
 		public string Path => _path;
 		public string SnapshottedPath
