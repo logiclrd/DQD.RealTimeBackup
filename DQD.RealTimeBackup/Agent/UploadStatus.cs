@@ -20,6 +20,8 @@ namespace DQD.RealTimeBackup.Agent
 		bool _isCompleted;
 		bool _recheckAfterUploadCompletes;
 
+		public bool IsCompleted => _isCompleted;
+
 		public void RecheckAfterUploadCompletes()
 		{
 			lock (this)

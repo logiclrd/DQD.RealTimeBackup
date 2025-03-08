@@ -1254,8 +1254,8 @@ namespace DQD.RealTimeBackup.Agent
 				case MoveAction moveAction:
 				{
 					var existingUploadOfPath =
-						_uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == moveAction.FromPath)) ??
-						_uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == moveAction.ToPath));
+						_uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == moveAction.FromPath) && !status.IsCompleted) ??
+						_uploadThreadStatus?.FirstOrDefault(status => (status != null) && (status.Path == moveAction.ToPath) && !status.IsCompleted);
 
 					if (existingUploadOfPath != null)
 					{
