@@ -1340,7 +1340,7 @@ namespace DQD.RealTimeBackup.Agent
 					{
 						int existingUploadOfPathIndex = Array.FindIndex(
 							_uploadThreadStatus,
-							status => (status != null) && (status.Path == deleteAction.Path));
+							status => (status != null) && (status.Path == deleteAction.Path) && !status.IsCompleted);
 
 						if (existingUploadOfPathIndex >= 0)
 						{
@@ -1606,7 +1606,7 @@ namespace DQD.RealTimeBackup.Agent
 
 					using (fileToUpload)
 					{
-						var existingUploadOfPath = _uploadThreadStatus.FirstOrDefault(status => (status != null) && (status.Path == fileToUpload.Path));
+						var existingUploadOfPath = _uploadThreadStatus.FirstOrDefault(status => (status != null) && (status.Path == fileToUpload.Path) && !status.IsCompleted);
 
 						if (existingUploadOfPath != null)
 						{
