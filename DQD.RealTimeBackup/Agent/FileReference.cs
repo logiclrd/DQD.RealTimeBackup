@@ -37,6 +37,16 @@ namespace DQD.RealTimeBackup.Agent
 			this.Checksum = checksum;
 		}
 
+		public override string ToString()
+		{
+			if (StagedFile != null)
+				return Path + " (staged at: " + StagedFile.Path + ")";
+			else if (SnapshotReference != null)
+				return Path + " (from snapshot at: " + SnapshotReference.SnapshottedPath + ")";
+			else
+				return Path + " (?)";
+		}
+
 		public void Dispose()
 		{
 			SnapshotReference?.Dispose();

@@ -13,6 +13,11 @@ namespace DQD.RealTimeBackup.Agent
 			this.ToPath = toPath;
 		}
 
+		public override string ToString()
+		{
+			return "UPLOAD: " + ToPath + " from " + Source;
+		}
+
 		public override void Dispose()
 		{
 			Source.Dispose();

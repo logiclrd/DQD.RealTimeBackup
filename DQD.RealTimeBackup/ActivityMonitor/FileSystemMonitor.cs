@@ -46,79 +46,89 @@ namespace DQD.RealTimeBackup.ActivityMonitor
 
 		internal void ProcessEvent(FileAccessNotifyEvent @event)
 		{
-			bool lostEvents = @event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.LostEvents);
-
-			if (lostEvents)
+			try
 			{
-				Console.Error.WriteLine("  *** Received notification of lost fanotify events");
-				_errorLogger.LogError("Some filesystem notification events were lost. The backup of one or more files may be out-of-date until the next rescan.", ErrorLogger.Summary.SystemError);
-			}
+				RunningState.Instance.FileSystemMonitor.State = FileSystemMonitorState.ProcessEvent;
+				RunningState.Instance.FileSystemMonitor.Event = @event;
 
-			if (!@event.InformationStructures.Any())
-			{
-				if (!lostEvents)
+				bool lostEvents = @event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.LostEvents);
+
+				if (lostEvents)
 				{
-					Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
-					_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures", ErrorLogger.Summary.InternalError);
+					Console.Error.WriteLine("  *** Received notification of lost fanotify events");
+					_errorLogger.LogError("Some filesystem notification events were lost. The backup of one or more files may be out-of-date until the next rescan.", ErrorLogger.Summary.SystemError);
 				}
 
-				return;
-			}
-
-			string? ResolvePath(FileAccessNotifyEventInfoType type)
-			{
-				foreach (var info in @event.InformationStructures)
+				if (!@event.InformationStructures.Any())
 				{
-					if (info.Type == type)
+					if (!lostEvents)
 					{
-						if (!string.IsNullOrEmpty(info.FileName))
+						Console.Error.WriteLine("  *** No fanotify info structures received with event with mask " + @event.Metadata.Mask);
+						_errorLogger.LogError("fanotify event with mask " + @event.Metadata.Mask + " was received with no info structures", ErrorLogger.Summary.InternalError);
+					}
+
+					return;
+				}
+
+				string? ResolvePath(FileAccessNotifyEventInfoType type)
+				{
+					foreach (var info in @event.InformationStructures)
+					{
+						if (info.Type == type)
 						{
-							string path = info.FileName!;
-
-							if (info.FileHandle != null)
+							if (!string.IsNullOrEmpty(info.FileName))
 							{
-								if (!MountDescriptorByFileSystemID.TryGetValue(info.FileSystemID, out var mountDescriptor))
-								{
-									Console.Error.WriteLine("Using file system mount fallback");
-									_errorLogger.LogError("fanotify event was received with a FileSystemID that could not be resolved to a mount fd", ErrorLogger.Summary.InternalError);
-									mountDescriptor = NativeMethods.AT_FDCWD;
-								}
+								string path = info.FileName!;
 
-								using (var openHandle = _openByHandleAt.Open(mountDescriptor, info.FileHandle!))
+								if (info.FileHandle != null)
 								{
-									if (openHandle != null)
+									if (!MountDescriptorByFileSystemID.TryGetValue(info.FileSystemID, out var mountDescriptor))
 									{
-										string containerPath = openHandle.ReadLink();
+										Console.Error.WriteLine("Using file system mount fallback");
+										_errorLogger.LogError("fanotify event was received with a FileSystemID that could not be resolved to a mount fd", ErrorLogger.Summary.InternalError);
+										mountDescriptor = NativeMethods.AT_FDCWD;
+									}
 
-										path = Path.Combine(containerPath, path);
+									using (var openHandle = _openByHandleAt.Open(mountDescriptor, info.FileHandle!))
+									{
+										if (openHandle != null)
+										{
+											string containerPath = openHandle.ReadLink();
 
-										return path;
+											path = Path.Combine(containerPath, path);
+
+											return path;
+										}
 									}
 								}
 							}
 						}
 					}
+
+					return null;
 				}
 
-				return null;
+				string? path = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName);
+				string? pathFrom = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From);
+				string? pathTo = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To);
+
+				if (path != null)
+				{
+					if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.ChildDeleted))
+						PathDelete?.Invoke(this, new PathDelete(path));
+					if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.Modified))
+						PathUpdate?.Invoke(this, new PathUpdate(path));
+				}
+
+				if ((pathFrom != null) && (pathTo != null))
+				{
+					if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.ChildMoved))
+						PathMove?.Invoke(this, new PathMove(pathFrom, pathTo));
+				}
 			}
-
-			string? path = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName);
-			string? pathFrom = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_From);
-			string? pathTo = ResolvePath(FileAccessNotifyEventInfoType.ContainerIdentifierAndFileName_To);
-
-			if (path != null)
+			finally
 			{
-				if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.ChildDeleted))
-					PathDelete?.Invoke(this, new PathDelete(path));
-				if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.Modified))
-					PathUpdate?.Invoke(this, new PathUpdate(path));
-			}
-
-			if ((pathFrom != null) && (pathTo != null))
-			{
-				if (@event.Metadata.Mask.HasFlag(FileAccessNotifyEventMask.ChildMoved))
-					PathMove?.Invoke(this, new PathMove(pathFrom, pathTo));
+				RunningState.Instance.FileSystemMonitor.State = FileSystemMonitorState.Idle;
 			}
 		}
 

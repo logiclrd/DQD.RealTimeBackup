@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DQD.RealTimeBackup.Agent;
+
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.Storage;
 using DQD.RealTimeBackup.Utility;
@@ -814,6 +814,8 @@ namespace DQD.RealTimeBackup.StateCache
 			{
 				while (!_stopping)
 				{
+					RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.Idle;
+
 					CacheAction action;
 
 					lock (_actionThreadSync)
@@ -827,6 +829,9 @@ namespace DQD.RealTimeBackup.StateCache
 						}
 
 						action = _actionQueue.Dequeue();
+
+						RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.HaveAction_CheckIfRedundant;
+						RunningState.Instance.RemoteFileStateCacheActionThread.Action = action;
 
 						DebugLog("[AT] checking if this action is redundant");
 
@@ -843,6 +848,8 @@ namespace DQD.RealTimeBackup.StateCache
 
 						if (isRedundant)
 						{
+							RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.HaveAction_IsRedundant;
+
 							if (File.Exists(action.SourcePath))
 							{
 								DebugLog("[AT] deleting source file: {0}", action.SourcePath);
@@ -853,6 +860,8 @@ namespace DQD.RealTimeBackup.StateCache
 						}
 						else
 						{
+							RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.HaveAction_Processing;
+
 							DebugLog("[AT] processing action");
 
 							_actionInFlight = true;
@@ -871,6 +880,11 @@ namespace DQD.RealTimeBackup.StateCache
 								DebugLog("[AT] action thread has re-entered mutex");
 
 								_actionInFlight = false;
+
+								if (action.IsComplete)
+									RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.HaveAction_FinishedProcessing;
+								else
+									RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.HaveAction_Aborted;
 							}
 
 							if (_stopping && !action.IsComplete)
@@ -882,7 +896,10 @@ namespace DQD.RealTimeBackup.StateCache
 
 						try
 						{
+							RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.DeletingActionFile;
+
 							DebugLog("[AT] deleting action file");
+
 							if (action.ActionFileName != null)
 							{
 								File.Delete(action.ActionFileName);
@@ -903,6 +920,8 @@ namespace DQD.RealTimeBackup.StateCache
 			}
 			catch (Exception e)
 			{
+				RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.Crashed;
+
 				DebugLog("[AT] Action Thread has crashed: {0}", e);
 
 				_errorLogger.LogError(
@@ -914,6 +933,11 @@ namespace DQD.RealTimeBackup.StateCache
 				Thread.Sleep(TimeSpan.FromSeconds(30));
 
 				StartActionThread();
+			}
+			finally
+			{
+				if (RunningState.Instance.RemoteFileStateCacheActionThread.State != RemoteFileStateCacheActionThreadState.Crashed)
+					RunningState.Instance.RemoteFileStateCacheActionThread.State = RemoteFileStateCacheActionThreadState.Stopped;
 			}
 		}
 
@@ -949,14 +973,21 @@ namespace DQD.RealTimeBackup.StateCache
 
 								try
 								{
+									RunningState.Instance.RemoteFileStateCacheActionThread.PerformingUpload = true;
+
 									using (var stream = File.OpenRead(action.SourcePath!))
 										_remoteStorage.UploadFileDirect(action.Path!, stream, _cancellationTokenSource.Token);
+
 									break;
 								}
 								catch (Exception e) when (retry < 4)
 								{
 									DebugLog("[PCA] => upload failed: {0}: {1}", e.GetType().Name, e.Message);
 									Thread.Sleep(TimeSpan.FromSeconds(0.5));
+								}
+								finally
+								{
+									RunningState.Instance.RemoteFileStateCacheActionThread.PerformingUpload = false;
 								}
 							}
 
@@ -977,6 +1008,7 @@ namespace DQD.RealTimeBackup.StateCache
 						{
 							try
 							{
+								RunningState.Instance.RemoteFileStateCacheActionThread.PerformingDeletion = true;
 								_remoteStorage.DeleteFileDirect(action.Path!, CancellationToken.None);
 								break;
 							}
@@ -989,6 +1021,10 @@ namespace DQD.RealTimeBackup.StateCache
 									DebugLog("[PCA] => because the file already doesn't exist server-side");
 									break;
 								}
+							}
+							finally
+							{
+								RunningState.Instance.RemoteFileStateCacheActionThread.PerformingDeletion = false;
 							}
 						}
 

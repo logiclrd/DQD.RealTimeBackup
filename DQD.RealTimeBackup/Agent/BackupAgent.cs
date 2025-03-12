@@ -274,6 +274,24 @@ namespace DQD.RealTimeBackup.Agent
 			}
 		}
 
+		public void InspectQueues(Action<QueueType, IEnumerable<object>> inspector)
+		{
+			lock (_snapshotSharingDelaySync)
+				inspector(QueueType.PendingIntake, _snapshotSharingBatch);
+
+			lock (_openFilesSync)
+				inspector(QueueType.OpenFiles, _openFiles);
+
+			lock (_longPollingSync)
+				inspector(QueueType.LongPolling, _longPollingQueue);
+
+			lock (_backupQueueSync)
+				inspector(QueueType.BackupQueue, _backupQueue);
+
+			lock (_uploadQueueSync)
+				inspector(QueueType.UploadQueue, _uploadQueue);
+		}
+
 		public int CheckPath(string path)
 		{
 			if (File.Exists(path))
@@ -476,17 +494,6 @@ namespace DQD.RealTimeBackup.Agent
 			}
 		}
 
-		class SnapshotReferenceWithTimeout
-		{
-			public SnapshotReference SnapshotReference;
-			public DateTime TimeoutUTC;
-
-			public SnapshotReferenceWithTimeout(SnapshotReference snapshotReference)
-			{
-				this.SnapshotReference = snapshotReference;
-			}
-		}
-
 		object _openFilesSync = new object();
 		List<SnapshotReferenceWithTimeout> _openFiles = new List<SnapshotReferenceWithTimeout>();
 
@@ -572,178 +579,193 @@ namespace DQD.RealTimeBackup.Agent
 			var openFilesCached = new List<SnapshotReferenceWithTimeout>();
 			var filesToPromote = new List<SnapshotReferenceWithTimeout>();
 
-			while (!_stopping)
+			try
 			{
-				bool haveOpenFiles = false;
-
-				lock (_openFilesSync)
+				while (!_stopping)
 				{
-					haveOpenFiles = (_openFiles.Count != 0);
+					bool haveOpenFiles = false;
 
-					// If we don't have any open files, wait indefinitely but break as soon as open files become available.
-					if (!haveOpenFiles)
+					lock (_openFilesSync)
 					{
-						VerboseDiagnosticOutput("[OF] Going to sleep");
+						haveOpenFiles = (_openFiles.Count != 0);
 
-						Monitor.Wait(_openFilesSync);
+						// If we don't have any open files, wait indefinitely but break as soon as open files become available.
+						if (!haveOpenFiles)
+						{
+							VerboseDiagnosticOutput("[OF] Going to sleep");
 
-						VerboseDiagnosticOutput("[OF] Woken up");
+							RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.Idle;
 
-						if (_stopping)
-							return;
+							Monitor.Wait(_openFilesSync);
+
+							VerboseDiagnosticOutput("[OF] Woken up");
+
+							if (_stopping)
+								return;
+
+							openFilesCached.Clear();
+							openFilesCached.AddRange(_openFiles);
+						}
+					}
+
+					// As long as we have open files, always wait for the interval between checks.
+					if (haveOpenFiles)
+					{
+						RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.CollectingWait;
+
+						var deadline = DateTime.UtcNow + _parameters.OpenFileHandlePollingInterval;
+
+						while (DateTime.UtcNow < deadline)
+						{
+							lock (_openFileHandlePollingSync)
+							{
+								VerboseDiagnosticOutput("[OF] Waiting until next check: {0}", _parameters.OpenFileHandlePollingInterval);
+								Monitor.Wait(_openFileHandlePollingSync, _parameters.OpenFileHandlePollingInterval);
+							}
+
+							if (_stopping)
+								return;
+						}
 
 						openFilesCached.Clear();
-						openFilesCached.AddRange(_openFiles);
-					}
-				}
 
-				// As long as we have open files, always wait for the interval between checks.
-				if (haveOpenFiles)
-				{
-					var deadline = DateTime.UtcNow + _parameters.OpenFileHandlePollingInterval;
-
-					while (DateTime.UtcNow < deadline)
-					{
-						lock (_openFileHandlePollingSync)
-						{
-							VerboseDiagnosticOutput("[OF] Waiting until next check: {0}", _parameters.OpenFileHandlePollingInterval);
-							Monitor.Wait(_openFileHandlePollingSync, _parameters.OpenFileHandlePollingInterval);
-						}
-
-						if (_stopping)
-							return;
+						lock (_openFilesSync)
+							openFilesCached.AddRange(_openFiles);
 					}
 
-					openFilesCached.Clear();
+					VerboseDiagnosticOutput("[OF] Collecting open file handles");
 
-					lock (_openFilesSync)
-						openFilesCached.AddRange(_openFiles);
-				}
+					RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.EnumeratingHandles;
 
-				VerboseDiagnosticOutput("[OF] Collecting open file handles");
+					var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
+						.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
+						.Select(handle => handle.FileName)
+						.ToHashSet();
 
-				var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
-					.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
-					.Select(handle => handle.FileName)
-					.ToHashSet();
+					RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.InspectingFiles;
 
-				VerboseDiagnosticOutput("[OF] Inspecting {0} file(s)", openFilesCached.Count);
+					VerboseDiagnosticOutput("[OF] Inspecting {0} file(s)", openFilesCached.Count);
 
-				var deadlineUTC = DateTime.UtcNow.AddSeconds(5);
+					var deadlineUTC = DateTime.UtcNow.AddSeconds(5);
 
-				for (int i = openFilesCached.Count - 1; i >= 0; i--)
-				{
-					var fileReference = openFilesCached[i];
-
-					if (!openWriteFileHandleSet.Contains(fileReference.SnapshotReference.Path))
+					for (int i = openFilesCached.Count - 1; i >= 0; i--)
 					{
-						VerboseDiagnosticOutput("[OF] => Ready: {0}", fileReference.SnapshotReference.Path);
+						var fileReference = openFilesCached[i];
 
-						filesToPromote.Add(fileReference);
-						openFilesCached.RemoveAt(i);
+						RunningState.Instance.PollOpenFilesThread.CurrentFile = fileReference.SnapshotReference;
 
-						if (DateTime.UtcNow >= deadlineUTC)
+						if (!openWriteFileHandleSet.Contains(fileReference.SnapshotReference.Path))
 						{
-							VerboseDiagnosticOutput("[OF] Passing {0} files off to the backup queue", filesToPromote.Count);
-							break;
-						}
-					}
+							VerboseDiagnosticOutput("[OF] => Ready: {0}", fileReference.SnapshotReference.Path);
 
-					if (_stopping)
-						break;
-				}
+							filesToPromote.Add(fileReference);
+							openFilesCached.RemoveAt(i);
 
-				if (filesToPromote.Any())
-				{
-					VerboseDiagnosticOutput("[OF] Promoting {0} file(s)", filesToPromote.Count);
-
-					lock (_openFilesSync)
-					{
-						// _openFiles is just a List<>, making a naive implementation of this O(n^2). This is fine until an initial backup dumps 700,000 files on us all at once. Then,
-						// this statement begins to take rather a long time to complete:
-						//
-						// foreach (var reference in filesToPromote)
-						//   _openFiles.Remove(reference);
-						//
-						// In addition, we are typically removing a bunch of files from the start of the list but may have literally hundreds of thousands at the end. Repeatedly
-						// removing one element at a time means copying those hundreds of thousands of keepers over and over. So, instead, we compact the list intelligently, by
-						// maintaining a pointer to the insertion point of the last element we want to keep, and then as we walk through, when we find further keepers, we copy
-						// them directly to their final position, and when we find ones to remove, we simply skip over them. When we get to the end, we now have a bunch of
-						// garbage data (redundant references and references that should be removed) after that final index, but we can simply truncate the list to length.
-						var filesToPromoteSet = filesToPromote.ToHashSet();
-
-						int keepIndex = 0;
-
-						for (int i = 0; i < _openFiles.Count; i++)
-						{
-							if (!filesToPromoteSet.Contains(_openFiles[i]))
+							if (DateTime.UtcNow >= deadlineUTC)
 							{
-								_openFiles[keepIndex] = _openFiles[i];
-								keepIndex++;
+								VerboseDiagnosticOutput("[OF] Passing {0} files off to the backup queue", filesToPromote.Count);
+								break;
 							}
 						}
 
-						if (keepIndex < _openFiles.Count)
-							_openFiles.RemoveRange(keepIndex, _openFiles.Count - keepIndex);
+						if (_stopping)
+							break;
 					}
 
-					AddActionsToBackupQueue(filesToPromote
-						.Select(reference => reference.SnapshotReference)
-						.Select(reference => new UploadAction(reference, reference.Path)));
+					RunningState.Instance.PollOpenFilesThread.CurrentFile = null;
 
-					lock (_backupQueueSync)
+					if (filesToPromote.Any())
 					{
-						if (_backupQueue.Count >= _parameters.QueueHighWaterMark)
+						VerboseDiagnosticOutput("[OF] Promoting {0} file(s)", filesToPromote.Count);
+
+						RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.PromotingFiles;
+
+						lock (_openFilesSync)
 						{
-							VerboseDiagnosticOutput("[OF] Throttle");
+							// _openFiles is just a List<>, making a naive implementation of this O(n^2). This is fine until an initial backup dumps 700,000 files on us all at once. Then,
+							// this statement begins to take rather a long time to complete:
+							//
+							// foreach (var reference in filesToPromote)
+							//   _openFiles.Remove(reference);
+							//
+							// In addition, we are typically removing a bunch of files from the start of the list but may have literally hundreds of thousands at the end. Repeatedly
+							// removing one element at a time means copying those hundreds of thousands of keepers over and over. So, instead, we compact the list intelligently, by
+							// maintaining a pointer to the insertion point of the last element we want to keep, and then as we walk through, when we find further keepers, we copy
+							// them directly to their final position, and when we find ones to remove, we simply skip over them. When we get to the end, we now have a bunch of
+							// garbage data (redundant references and references that should be removed) after that final index, but we can simply truncate the list to length.
+							var filesToPromoteSet = filesToPromote.ToHashSet();
 
-							while (_backupQueue.Count >= _parameters.QueueLowWaterMark)
-								Monitor.Wait(_backupQueueSync, TimeSpan.FromSeconds(10));
+							int keepIndex = 0;
 
-							VerboseDiagnosticOutput("[OF] Resuming");
-						}
-					}
-
-					filesToPromote.Clear();
-				}
-
-				bool haveTimedOutFiles = false;
-
-				var now = DateTime.UtcNow;
-
-				foreach (var file in openFilesCached)
-					if (file.TimeoutUTC < now)
-					{
-						haveTimedOutFiles = true;
-						break;
-					}
-
-				if (haveTimedOutFiles)
-				{
-					lock (_openFilesSync)
-					{
-						for (int i = _openFiles.Count - 1; i >= 0; i--)
-						{
-							if (_openFiles[i].TimeoutUTC < now)
+							for (int i = 0; i < _openFiles.Count; i++)
 							{
-								AddLongPollingItem(_openFiles[i].SnapshotReference);
-								_openFiles.RemoveAt(i);
+								if (!filesToPromoteSet.Contains(_openFiles[i]))
+								{
+									_openFiles[keepIndex] = _openFiles[i];
+									keepIndex++;
+								}
+							}
+
+							if (keepIndex < _openFiles.Count)
+								_openFiles.RemoveRange(keepIndex, _openFiles.Count - keepIndex);
+						}
+
+						AddActionsToBackupQueue(filesToPromote
+							.Select(reference => reference.SnapshotReference)
+							.Select(reference => new UploadAction(reference, reference.Path)));
+
+						lock (_backupQueueSync)
+						{
+							if (_backupQueue.Count >= _parameters.QueueHighWaterMark)
+							{
+								VerboseDiagnosticOutput("[OF] Throttle");
+
+								while (_backupQueue.Count >= _parameters.QueueLowWaterMark)
+									Monitor.Wait(_backupQueueSync, TimeSpan.FromSeconds(10));
+
+								VerboseDiagnosticOutput("[OF] Resuming");
+							}
+						}
+
+						filesToPromote.Clear();
+					}
+
+					bool haveTimedOutFiles = false;
+
+					var now = DateTime.UtcNow;
+
+					foreach (var file in openFilesCached)
+						if (file.TimeoutUTC < now)
+						{
+							haveTimedOutFiles = true;
+							break;
+						}
+
+					if (haveTimedOutFiles)
+					{
+						lock (_openFilesSync)
+						{
+							for (int i = _openFiles.Count - 1; i >= 0; i--)
+							{
+								if (_openFiles[i].TimeoutUTC < now)
+								{
+									AddLongPollingItem(_openFiles[i].SnapshotReference);
+									_openFiles.RemoveAt(i);
+								}
 							}
 						}
 					}
 				}
 			}
-		}
-
-		class LongPollingItem
-		{
-			public SnapshotReference CurrentSnapshotReference;
-			public DateTime DeadlineUTC; // Upload anyway after this has elapsed.
-
-			public LongPollingItem(SnapshotReference snapshotReference, TimeSpan timeout)
+			catch (Exception e)
 			{
-				this.CurrentSnapshotReference = snapshotReference;
-				this.DeadlineUTC = DateTime.UtcNow + timeout;
+				RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.Crashed;
+				RunningState.Instance.PollOpenFilesThread.Exception = e;
+			}
+			finally
+			{
+				if (RunningState.Instance.PollOpenFilesThread.State != PollOpenFilesThreadState.Crashed)
+					RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.Stopped;
 			}
 		}
 
@@ -797,201 +819,237 @@ namespace DQD.RealTimeBackup.Agent
 
 			List<LongPollingItem> queueCopy = new List<LongPollingItem>();
 
-			while (!_stopping)
+			try
 			{
-				List<BackupAction>? actions = null;
-
-				VerboseDiagnosticOutput("[LP] Obtaining sync");
-
-				queueCopy.Clear();
-
-				lock (_longPollingSync)
+				while (!_stopping)
 				{
-					if (_longPollingQueue.Count == 0)
-					{
-						VerboseDiagnosticOutput("[LP] => Queue is empty, waiting on sync");
-						Monitor.Wait(_longPollingSync);
-						continue;
-					}
+					List<BackupAction>? actions = null;
 
-					var maximumDeadLineUTC = DateTime.UtcNow + _parameters.LongPollingInterval;
+					VerboseDiagnosticOutput("[LP] Obtaining sync");
 
-					VerboseDiagnosticOutput("[LP] Have {0} items for long polling, set deadline limit to {1}", _longPollingQueue.Count, maximumDeadLineUTC);
-
-					if (_longPollingQueue.Count == 0)
-						intervalEndUTC = maximumDeadLineUTC;
-					else
-					{
-						intervalEndUTC = _longPollingQueue.Select(entry => entry.DeadlineUTC).Min();
-
-						VerboseDiagnosticOutput("[LP] => latest deadline in queue: {0}", intervalEndUTC);
-
-						if (intervalEndUTC > maximumDeadLineUTC)
-						{
-							VerboseDiagnosticOutput("[LP] => clamping to limit");
-							intervalEndUTC = maximumDeadLineUTC;
-						}
-					}
-
-					var waitDuration = intervalEndUTC - DateTime.UtcNow;
-
-					while ((waitDuration > TimeSpan.Zero) && !_stopping)
-					{
-						VerboseDiagnosticOutput("[LP] Waiting for {0}", waitDuration);
-						Monitor.Wait(_longPollingSync, waitDuration);
-						waitDuration = intervalEndUTC - DateTime.UtcNow;
-					}
-
-					VerboseDiagnosticOutput("[LP] Wait loop finished");
-
-					if (_stopping)
-					{
-						VerboseDiagnosticOutput("[LP] STOPPING");
-						break;
-					}
-
-					queueCopy.AddRange(_longPollingQueue);
-
-					VerboseDiagnosticOutput("[LP] Releasing sync, will process {0} items", queueCopy.Count);
-				}
-
-				var now = DateTime.UtcNow;
-
-				var newZFSSnapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
-				var removeFromQueue = new List<LongPollingItem>();
-
-				VerboseDiagnosticOutput("[LP] Collecting open file handles");
-
-				var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
-					.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
-					.Select(handle => handle.FileName)
-					.ToHashSet();
-
-				VerboseDiagnosticOutput("[LP] Processing {0} items", queueCopy.Count);
-
-				foreach (var item in queueCopy)
-				{
-					VerboseDiagnosticOutput("[LP] - {0}", item.CurrentSnapshotReference.Path);
-
-					var zfs = FindZFSVolumeForPath(item.CurrentSnapshotReference.Path);
-
-					if (zfs == null)
-					{
-						Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
-						_errorLogger.LogError("The Backup Agent was asked to consider the path:\n\n" + item.CurrentSnapshotReference.Path + "\n\nThe Long Polling thread can't find the ZFS volume for this path.", ErrorLogger.Summary.InternalError);
-						item.CurrentSnapshotReference.Dispose();
-						removeFromQueue.Add(item);
-						continue;
-					}
-
-					if (!newZFSSnapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
-					{
-						VerboseDiagnosticOutput("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
-
-						var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
-
-						snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, _errorLogger);
-
-						newZFSSnapshots[zfs] = snapshotReferenceTracker;
-					}
-
-					var newSnapshotReference = snapshotReferenceTracker.AddReference(item.CurrentSnapshotReference.Path);
-
-					if (!File.Exists(newSnapshotReference.SnapshottedPath))
-					{
-						VerboseDiagnosticOutput("[LP]   File does not exist in new snapshot, removing from consideration");
-
-						// Looks like the file got deleted.
-						item.CurrentSnapshotReference.Dispose();
-						newSnapshotReference.Dispose();
-						removeFromQueue.Add(item);
-						continue;
-					}
-
-					bool promoteFile = false;
-
-					bool haveWriteHandles = openWriteFileHandleSet.Contains(newSnapshotReference.Path);
-
-					if ((item.DeadlineUTC < now)
-					 || !haveWriteHandles)
-					{
-						if (!haveWriteHandles)
-							VerboseDiagnosticOutput("[LP]   File no longer has any writers, promoting");
-						else
-							VerboseDiagnosticOutput("[LP]   File has been busy for too long, promoting anyway");
-
-						item.CurrentSnapshotReference.Dispose();
-						item.CurrentSnapshotReference = newSnapshotReference;
-
-						promoteFile = true;
-					}
-					else
-					{
-						VerboseDiagnosticOutput("[LP]   Comparing file content between old and new snapshots");
-						VerboseDiagnosticOutput("[LP]   * {0}", item.CurrentSnapshotReference.SnapshottedPath);
-						VerboseDiagnosticOutput("[LP]   * {0}", newSnapshotReference.SnapshottedPath);
-
-						bool fileLooksStable = FileUtility.FilesAreEqual(
-							item.CurrentSnapshotReference.SnapshottedPath,
-							newSnapshotReference.SnapshottedPath,
-							_longPollingCancellationTokenSource?.Token ?? CancellationToken.None);
-
-						VerboseDiagnosticOutput("[LP]   Switching to new snapshot, releasing old snapshot");
-
-						item.CurrentSnapshotReference.Dispose();
-						item.CurrentSnapshotReference = newSnapshotReference;
-
-						if (fileLooksStable)
-						{
-							VerboseDiagnosticOutput("[LP]   File looks stable, promoting");
-							promoteFile = true;
-						}
-					}
-
-					if (promoteFile)
-					{
-						removeFromQueue.Add(item);
-
-						if (actions == null)
-							actions = new List<BackupAction>();
-
-						actions.Add(new UploadAction(newSnapshotReference, newSnapshotReference.Path));
-					}
-				}
-
-				if ((actions != null) && !_stopping)
-				{
-					VerboseDiagnosticOutput("[LP] Adding {0} actions to the backup queue", actions.Count);
-					AddActionsToBackupQueue(actions);
-				}
-
-				if (removeFromQueue.Count > 0)
-				{
-					VerboseDiagnosticOutput("[LP] Removing {0} items from the long polling queue", removeFromQueue.Count);
+					queueCopy.Clear();
 
 					lock (_longPollingSync)
 					{
-						// If we ever end up with a large number of items in this list, we need to make sure we
-						// use a performant method for removing items. We use the method of compaction, copying
-						// items to be kept directly to their new indices.
+						RunningState.Instance.LongPollingThread.State = LongPollingThreadState.Idle;
 
-						var removeFromQueueSet = removeFromQueue.ToHashSet();
-
-						int keepIndex = 0;
-
-						for (int i = 0; i < _longPollingQueue.Count; i++)
+						if (_longPollingQueue.Count == 0)
 						{
-							if (!removeFromQueueSet.Contains(_longPollingQueue[i]))
+							VerboseDiagnosticOutput("[LP] => Queue is empty, waiting on sync");
+							Monitor.Wait(_longPollingSync);
+							continue;
+						}
+
+						var maximumDeadLineUTC = DateTime.UtcNow + _parameters.LongPollingInterval;
+
+						VerboseDiagnosticOutput("[LP] Have {0} items for long polling, set deadline limit to {1}", _longPollingQueue.Count, maximumDeadLineUTC);
+
+						if (_longPollingQueue.Count == 0)
+							intervalEndUTC = maximumDeadLineUTC;
+						else
+						{
+							intervalEndUTC = _longPollingQueue.Select(entry => entry.DeadlineUTC).Min();
+
+							VerboseDiagnosticOutput("[LP] => latest deadline in queue: {0}", intervalEndUTC);
+
+							if (intervalEndUTC > maximumDeadLineUTC)
 							{
-								_longPollingQueue[keepIndex] = _longPollingQueue[i];
-								keepIndex++;
+								VerboseDiagnosticOutput("[LP] => clamping to limit");
+								intervalEndUTC = maximumDeadLineUTC;
 							}
 						}
 
-						if (keepIndex < _longPollingQueue.Count)
-							_longPollingQueue.RemoveRange(keepIndex, _longPollingQueue.Count - keepIndex);
+						var waitDuration = intervalEndUTC - DateTime.UtcNow;
+
+						while ((waitDuration > TimeSpan.Zero) && !_stopping)
+						{
+							VerboseDiagnosticOutput("[LP] Waiting for {0}", waitDuration);
+							Monitor.Wait(_longPollingSync, waitDuration);
+							waitDuration = intervalEndUTC - DateTime.UtcNow;
+						}
+
+						VerboseDiagnosticOutput("[LP] Wait loop finished");
+
+						if (_stopping)
+						{
+							VerboseDiagnosticOutput("[LP] STOPPING");
+							break;
+						}
+
+						queueCopy.AddRange(_longPollingQueue);
+
+						VerboseDiagnosticOutput("[LP] Releasing sync, will process {0} items", queueCopy.Count);
+					}
+
+					var now = DateTime.UtcNow;
+
+					var newZFSSnapshots = new Dictionary<IZFS, SnapshotReferenceTracker>();
+					var removeFromQueue = new List<LongPollingItem>();
+
+					RunningState.Instance.LongPollingThread.State = LongPollingThreadState.EnumeratingHandles;
+
+					VerboseDiagnosticOutput("[LP] Collecting open file handles");
+
+					var openWriteFileHandleSet = _openFileHandles.EnumerateAll()
+						.Where(handle => handle.FileAccess.HasFlag(FileAccess.Write))
+						.Select(handle => handle.FileName)
+						.ToHashSet();
+
+					RunningState.Instance.LongPollingThread.State = LongPollingThreadState.ProcessingItems;
+
+					VerboseDiagnosticOutput("[LP] Processing {0} items", queueCopy.Count);
+
+					foreach (var item in queueCopy)
+					{
+						RunningState.Instance.LongPollingThread.CurrentFile = item.CurrentSnapshotReference;
+
+						VerboseDiagnosticOutput("[LP] - {0}", item.CurrentSnapshotReference.Path);
+
+						var zfs = FindZFSVolumeForPath(item.CurrentSnapshotReference.Path);
+
+						if (zfs == null)
+						{
+							Console.Error.WriteLine("[LP] Can't process file because it doesn't appear to be on a ZFS volume: {0}", item.CurrentSnapshotReference.Path);
+							_errorLogger.LogError("The Backup Agent was asked to consider the path:\n\n" + item.CurrentSnapshotReference.Path + "\n\nThe Long Polling thread can't find the ZFS volume for this path.", ErrorLogger.Summary.InternalError);
+							item.CurrentSnapshotReference.Dispose();
+							removeFromQueue.Add(item);
+							continue;
+						}
+
+						if (!newZFSSnapshots.TryGetValue(zfs, out var snapshotReferenceTracker))
+						{
+							VerboseDiagnosticOutput("[LP] ZFS snapshot needed on volume {0}", zfs.MountPoint);
+
+							var snapshot = zfs.CreateSnapshot("RTB-" + DateTime.UtcNow.Ticks);
+
+							snapshotReferenceTracker = new SnapshotReferenceTracker(snapshot, _errorLogger);
+
+							newZFSSnapshots[zfs] = snapshotReferenceTracker;
+						}
+
+						var newSnapshotReference = snapshotReferenceTracker.AddReference(item.CurrentSnapshotReference.Path);
+
+						if (!File.Exists(newSnapshotReference.SnapshottedPath))
+						{
+							VerboseDiagnosticOutput("[LP]   File does not exist in new snapshot, removing from consideration");
+
+							// Looks like the file got deleted.
+							item.CurrentSnapshotReference.Dispose();
+							newSnapshotReference.Dispose();
+							removeFromQueue.Add(item);
+							continue;
+						}
+
+						bool promoteFile = false;
+
+						bool haveWriteHandles = openWriteFileHandleSet.Contains(newSnapshotReference.Path);
+
+						if ((item.DeadlineUTC < now)
+						|| !haveWriteHandles)
+						{
+							if (!haveWriteHandles)
+								VerboseDiagnosticOutput("[LP]   File no longer has any writers, promoting");
+							else
+								VerboseDiagnosticOutput("[LP]   File has been busy for too long, promoting anyway");
+
+							item.CurrentSnapshotReference.Dispose();
+							item.CurrentSnapshotReference = newSnapshotReference;
+
+							promoteFile = true;
+						}
+						else
+						{
+							VerboseDiagnosticOutput("[LP]   Comparing file content between old and new snapshots");
+							VerboseDiagnosticOutput("[LP]   * {0}", item.CurrentSnapshotReference.SnapshottedPath);
+							VerboseDiagnosticOutput("[LP]   * {0}", newSnapshotReference.SnapshottedPath);
+
+							bool fileLooksStable;
+
+							try
+							{
+								RunningState.Instance.LongPollingThread.ComparingFiles = true;
+
+								fileLooksStable = FileUtility.FilesAreEqual(
+									item.CurrentSnapshotReference.SnapshottedPath,
+									newSnapshotReference.SnapshottedPath,
+									_longPollingCancellationTokenSource?.Token ?? CancellationToken.None);
+							}
+							finally
+							{
+								RunningState.Instance.LongPollingThread.ComparingFiles = false;
+							}
+
+							VerboseDiagnosticOutput("[LP]   Switching to new snapshot, releasing old snapshot");
+
+							item.CurrentSnapshotReference.Dispose();
+							item.CurrentSnapshotReference = newSnapshotReference;
+
+							if (fileLooksStable)
+							{
+								VerboseDiagnosticOutput("[LP]   File looks stable, promoting");
+								promoteFile = true;
+							}
+						}
+
+						if (promoteFile)
+						{
+							removeFromQueue.Add(item);
+
+							if (actions == null)
+								actions = new List<BackupAction>();
+
+							actions.Add(new UploadAction(newSnapshotReference, newSnapshotReference.Path));
+						}
+					}
+
+					if ((actions != null) && !_stopping)
+					{
+						RunningState.Instance.LongPollingThread.State = LongPollingThreadState.QueuingActions;
+
+						VerboseDiagnosticOutput("[LP] Adding {0} actions to the backup queue", actions.Count);
+						AddActionsToBackupQueue(actions);
+					}
+
+					if (removeFromQueue.Count > 0)
+					{
+						RunningState.Instance.LongPollingThread.State = LongPollingThreadState.TrimmingQueue;
+
+						VerboseDiagnosticOutput("[LP] Removing {0} items from the long polling queue", removeFromQueue.Count);
+
+						lock (_longPollingSync)
+						{
+							// If we ever end up with a large number of items in this list, we need to make sure we
+							// use a performant method for removing items. We use the method of compaction, copying
+							// items to be kept directly to their new indices.
+
+							var removeFromQueueSet = removeFromQueue.ToHashSet();
+
+							int keepIndex = 0;
+
+							for (int i = 0; i < _longPollingQueue.Count; i++)
+							{
+								if (!removeFromQueueSet.Contains(_longPollingQueue[i]))
+								{
+									_longPollingQueue[keepIndex] = _longPollingQueue[i];
+									keepIndex++;
+								}
+							}
+
+							if (keepIndex < _longPollingQueue.Count)
+								_longPollingQueue.RemoveRange(keepIndex, _longPollingQueue.Count - keepIndex);
+						}
 					}
 				}
+			}
+			catch (Exception e)
+			{
+				RunningState.Instance.LongPollingThread.State = LongPollingThreadState.Crashed;
+				RunningState.Instance.LongPollingThread.Exception = e;
+			}
+			finally
+			{
+				if (RunningState.Instance.LongPollingThread.State != LongPollingThreadState.Crashed)
+					RunningState.Instance.LongPollingThread.State = LongPollingThreadState.Stopped;
 			}
 		}
 
@@ -1098,6 +1156,11 @@ namespace DQD.RealTimeBackup.Agent
 					{
 						while ((_backupQueue.Count == 0) || _networkThreadsPaused)
 						{
+							if (_networkThreadsPaused)
+								RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.Paused;
+							else
+								RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.Idle;
+
 							if (_stopping)
 								return;
 
@@ -1129,7 +1192,7 @@ namespace DQD.RealTimeBackup.Agent
 									break;
 								}
 
-								listNode = listNode.Next;
+							listNode = listNode.Next;
 							}
 
 							if (backupAction == null)
@@ -1159,14 +1222,34 @@ namespace DQD.RealTimeBackup.Agent
 
 					if (backupAction != null)
 					{
-						VerboseDiagnosticOutput("[BQ] Dispatching: {0}", backupAction);
+						try
+						{
+							RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction;
+							RunningState.Instance.ProcessBackupQueueThread.Action = backupAction;
 
-						ProcessBackupQueueAction(backupAction);
+							VerboseDiagnosticOutput("[BQ] Dispatching: {0}", backupAction);
+
+							ProcessBackupQueueAction(backupAction);
+						}
+						finally
+						{
+							RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.Idle;
+							RunningState.Instance.ProcessBackupQueueThread.Path = null;
+							RunningState.Instance.ProcessBackupQueueThread.FromPath = null;
+						}
 					}
 				}
 			}
+			catch (Exception e)
+			{
+				RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.Crashed;
+				RunningState.Instance.ProcessBackupQueueThread.Exception = e;
+			}
 			finally
 			{
+				if (RunningState.Instance.ProcessBackupQueueThread.State != ProcessBackupQueueThreadState.Crashed)
+					RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.Stopped;
+
 				_backupQueueExited?.Set();
 			}
 		}
@@ -1188,6 +1271,9 @@ namespace DQD.RealTimeBackup.Agent
 
 					try
 					{
+						RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_OpeningFile;
+						RunningState.Instance.ProcessBackupQueueThread.Path = uploadAction.Source.SnapshottedPath;
+
 						stream = File.OpenRead(uploadAction.Source.SnapshottedPath);
 					}
 					catch (Exception exception)
@@ -1232,6 +1318,8 @@ namespace DQD.RealTimeBackup.Agent
 						}
 						else
 						{
+							RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_StagingFile;
+
 							VerboseDiagnosticOutput("[BQ] Small file, staging file and releasing snapshot");
 
 							var stagedCopy = _staging.StageFile(stream);
@@ -1240,8 +1328,12 @@ namespace DQD.RealTimeBackup.Agent
 
 							fileReference = new FileReference(uploadAction.Source.Path, stagedCopy, currentLastModifiedUTC, currentLocalFileChecksum);
 
+							RunningState.Instance.ProcessBackupQueueThread.Path = stagedCopy.Path;
+
 							uploadAction.Source.Dispose();
 						}
+
+						RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_QueuingUpload;
 
 						if (AddFileReferenceToUploadQueue(fileReference) >= _parameters.QueueHighWaterMark)
 						{
@@ -1301,6 +1393,10 @@ namespace DQD.RealTimeBackup.Agent
 
 						try
 						{
+							RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_MovingFile;
+							RunningState.Instance.ProcessBackupQueueThread.Path = moveAction.ToPath;
+							RunningState.Instance.ProcessBackupQueueThread.FromPath = moveAction.FromPath;
+
 							_storage.MoveFile(
 								PlaceInContentPath(moveAction.FromPath),
 								PlaceInContentPath(moveAction.ToPath),
@@ -1325,6 +1421,8 @@ namespace DQD.RealTimeBackup.Agent
 
 							break;
 						}
+
+						RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_RegisteringFileMove;
 
 						VerboseDiagnosticOutput("[BQ] Registering file move in Remote File State Cache");
 
@@ -1351,6 +1449,9 @@ namespace DQD.RealTimeBackup.Agent
 						}
 					}
 
+					RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_RegisteringFileDeletion;
+					RunningState.Instance.ProcessBackupQueueThread.Path = deleteAction.Path;
+
 					VerboseDiagnosticOutput("[BQ] => DeleteAction:");
 					NonQuietDiagnosticOutput("[BQ] File deleted locally, deleting from server: {0}", deleteAction.Path);
 					VerboseDiagnosticOutput("[BQ] Removing from Remote File State Cache");
@@ -1364,6 +1465,7 @@ namespace DQD.RealTimeBackup.Agent
 
 					try
 					{
+						RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_DeletingFile;
 						_storage.DeleteFile(
 							PlaceInContentPath(deleteAction.Path),
 							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
@@ -1574,6 +1676,7 @@ namespace DQD.RealTimeBackup.Agent
 
 			var exited = _uploadThreadsExited;
 
+			using (var runningState = RunningState.Instance.UploadThreads.Register(threadIndex))
 			try
 			{
 				while (!cancellationToken.IsCancellationRequested && !_stopping)
@@ -1585,6 +1688,11 @@ namespace DQD.RealTimeBackup.Agent
 					{
 						while ((_uploadQueue.Count == 0) || _networkThreadsPaused)
 						{
+							if (_networkThreadsPaused)
+								runningState.State = UploadThreadState.Paused;
+							else
+								runningState.State = UploadThreadState.Idle;
+
 							Monitor.Wait(_uploadQueueSync);
 
 							if (_stopping)
@@ -1606,6 +1714,9 @@ namespace DQD.RealTimeBackup.Agent
 
 					using (fileToUpload)
 					{
+						runningState.State = UploadThreadState.ProcessingUpload;
+						runningState.File = fileToUpload;
+
 						var existingUploadOfPath = _uploadThreadStatus.FirstOrDefault(status => (status != null) && (status.Path == fileToUpload.Path) && !status.IsCompleted);
 
 						if (existingUploadOfPath != null)
@@ -1630,6 +1741,8 @@ namespace DQD.RealTimeBackup.Agent
 
 						try
 						{
+							runningState.State = UploadThreadState.ProcessingUpload_OpeningFile;
+
 							using (var stream = File.OpenRead(fileToUpload.SourcePath))
 							{
 								fileToUpload.FileSize = stream.Length;
@@ -1652,19 +1765,32 @@ namespace DQD.RealTimeBackup.Agent
 
 								if (partCount == 1)
 								{
-									_storage.UploadFile(
-										PlaceInContentPath(fileToUpload.Path),
-										stream,
-										out newFileState.ContentKey,
-										progress =>
-										{
-											progress.TotalBytes = fileToUpload.FileSize;
-											_uploadThreadStatus[threadIndex]!.Progress = progress;
-										},
-										localCancellationToken);
+									runningState.State = UploadThreadState.ProcessingUpload_UploadingEntireFile;
+
+									try
+									{
+										runningState.PerformingUpload = true;
+
+										_storage.UploadFile(
+											PlaceInContentPath(fileToUpload.Path),
+											stream,
+											out newFileState.ContentKey,
+											progress =>
+											{
+												progress.TotalBytes = fileToUpload.FileSize;
+												_uploadThreadStatus[threadIndex]!.Progress = progress;
+											},
+											localCancellationToken);
+									}
+									finally
+									{
+										runningState.PerformingUpload = false;
+									}
 								}
 								else
 								{
+									runningState.State = UploadThreadState.ProcessingUpload_UploadingFileInParts;
+
 									var existingFileState = _remoteFileStateCache.GetFileState(fileToUpload.Path);
 
 									if (existingFileState != null)
@@ -1695,12 +1821,20 @@ namespace DQD.RealTimeBackup.Agent
 
 											try
 											{
+												runningState.PerformingDeletion = true;
+												runningState.PartNumber = partNumber;
+
 												_storage.DeleteFilePart(
 													contentPath,
 													partNumber,
 													localCancellationToken);
 											}
 											catch (FileNotFoundException) { }
+											finally
+											{
+												runningState.PerformingDeletion = false;
+												runningState.PartNumber = 0;
+											}
 										}
 										else
 										{
@@ -1714,6 +1848,8 @@ namespace DQD.RealTimeBackup.Agent
 
 									foreach (int partNumber in partsToUpload)
 									{
+										runningState.PartNumber = partNumber;
+
 										long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
 										int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
 
@@ -1721,45 +1857,54 @@ namespace DQD.RealTimeBackup.Agent
 
 										VerboseDiagnosticOutput("[UP{0}] Uploading part {1} of file {2}", threadIndex, partNumber, fileToUpload.Path);
 
-										_storage.UploadFilePart(
-											contentPath,
-											partStream,
-											partNumber,
-											newContentKey =>
-											{
-												if (newFileState.ContentKey != newContentKey)
+										try
+										{
+											runningState.PerformingUpload = true;
+
+											_storage.UploadFilePart(
+												contentPath,
+												partStream,
+												partNumber,
+												newContentKey =>
 												{
-													VerboseDiagnosticOutput("[UP{0}] Received content key for file: {1}", threadIndex, newContentKey);
-													VerboseDiagnosticOutput("[UP{0}] => {1}", threadIndex, newContentKey);
-
-													try
+													if (newFileState.ContentKey != newContentKey)
 													{
-														newFileState.ContentKey = newContentKey;
-														newFileState.IsInParts = true;
+														VerboseDiagnosticOutput("[UP{0}] Received content key for file: {1}", threadIndex, newContentKey);
+														VerboseDiagnosticOutput("[UP{0}] => {1}", threadIndex, newContentKey);
 
-														_remoteFileStateCache.UpdateFileState(
-															fileToUpload.Path,
-															newFileState);
+														try
+														{
+															newFileState.ContentKey = newContentKey;
+															newFileState.IsInParts = true;
+
+															_remoteFileStateCache.UpdateFileState(
+																fileToUpload.Path,
+																newFileState);
+														}
+														catch (TaskCanceledException exception)
+														{
+															_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
+															throw;
+														}
 													}
-													catch (TaskCanceledException exception)
-													{
-														_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
-														throw;
-													}
-												}
-											},
-											progress =>
-											{
-												progress.BytesTransferred += totalBytesTransferred;
+												},
+												progress =>
+												{
+													progress.BytesTransferred += totalBytesTransferred;
 
-												if (progress.BytesTransferred > totalBytesToUpload)
-													totalBytesToUpload = progress.BytesTransferred;
+													if (progress.BytesTransferred > totalBytesToUpload)
+														totalBytesToUpload = progress.BytesTransferred;
 
-												progress.TotalBytes = totalBytesToUpload;
+													progress.TotalBytes = totalBytesToUpload;
 
-												_uploadThreadStatus[threadIndex]!.Progress = progress;
-											},
-											localCancellationToken);
+													_uploadThreadStatus[threadIndex]!.Progress = progress;
+												},
+												localCancellationToken);
+										}
+										finally
+										{
+											runningState.PerformingUpload = false;
+										}
 
 										if (!partByPartNumber.TryGetValue(partNumber, out var partState))
 											partState = newFileState.CreatePartState(partNumber);
@@ -1777,14 +1922,27 @@ namespace DQD.RealTimeBackup.Agent
 										totalBytesTransferred += partLength;
 									}
 
+									runningState.State = UploadThreadState.ProcessingUpload_DeletingUnneededParts;
+
 									foreach (var unneededPartNumber in partByPartNumber.Keys)
 									{
+										runningState.PartNumber = unneededPartNumber;
+
 										VerboseDiagnosticOutput("[UP{0}] Deleting part {0} of file {1}", unneededPartNumber, fileToUpload.Path);
 
-										_storage.DeleteFilePart(
-											contentPath,
-											unneededPartNumber,
-											localCancellationToken);
+										try
+										{
+											runningState.PerformingDeletion = true;
+
+											_storage.DeleteFilePart(
+												contentPath,
+												unneededPartNumber,
+												localCancellationToken);
+										}
+										finally
+										{
+											runningState.PerformingDeletion = false;
+										}
 
 										_remoteFileStateCache.RemoveFileStateForPart(fileToUpload.Path, unneededPartNumber);
 									}
@@ -1813,6 +1971,8 @@ namespace DQD.RealTimeBackup.Agent
 						}
 						finally
 						{
+							runningState.PartNumber = 0;
+
 							_uploadThreadStatus[threadIndex] = null;
 
 							try
@@ -1823,6 +1983,8 @@ namespace DQD.RealTimeBackup.Agent
 
 							_uploadThreadCancellation[threadIndex] = null;
 						}
+
+						runningState.State = UploadThreadState.ProcessingUpload_RegisteringFileStateChange;
 
 						VerboseDiagnosticOutput("[UP{0}] Registering file state change", threadIndex);
 
@@ -1839,8 +2001,18 @@ namespace DQD.RealTimeBackup.Agent
 					}
 				}
 			}
+			catch (Exception e)
+			{
+				runningState.State = UploadThreadState.Crashed;
+				runningState.Exception = e;
+
+				throw;
+			}
 			finally
 			{
+				if (runningState.State != UploadThreadState.Crashed)
+					runningState.State = UploadThreadState.Stopped;
+
 				exited?.Release();
 			}
 		}

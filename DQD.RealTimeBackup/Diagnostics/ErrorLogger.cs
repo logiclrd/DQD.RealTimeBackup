@@ -86,7 +86,7 @@ namespace DQD.RealTimeBackup.Diagnostics
 				_notificationBus?.Post(
 						new Notification()
 						{
-							ErrorMessage = context,
+							Message = context,
 							Summary = summary ?? "Important Backup Error",
 							Error = (exception == null) ? null : new ErrorInfo(exception),
 						});

@@ -10,5 +10,10 @@ namespace DQD.RealTimeBackup.Agent
 			this.FromPath = fromPath;
 			this.ToPath = toPath;
 		}
+
+		public override string ToString()
+		{
+			return "MOVE: from " + FromPath + " to " + ToPath;
+		}
 	}
 }

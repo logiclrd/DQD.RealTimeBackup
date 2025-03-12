@@ -8,5 +8,6 @@ namespace DQD.RealTimeBackup.Bridge.Notifications
 		InitialBackupCompleted,
 		RescanStarted,
 		RescanCompleted,
+		DiagnosticOutputEvent,
 	}
 }

@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Xml.Serialization;
 
@@ -221,6 +222,39 @@ namespace DQD.RealTimeBackup
 			EmitOutput(Console.Error, string.Format(format, args));
 		}
 
+		const PosixSignal PosixSignal_SIGUSR1 = (PosixSignal)10;
+		const PosixSignal PosixSignal_SIGUSR2 = (PosixSignal)12;
+
+		static void EmitRunningStateDump()
+		{
+			Output("Generating running state dump");
+			Output(RunningState.Instance.ToString());
+		}
+
+		static string EmitQueuesDump(IBackupAgent agent, IZFS zfs)
+		{
+			string path = "/tmp/DQD.RealTimeBackup_queues_" + DateTime.UtcNow.Ticks;
+
+			Output("Dumping queues to {0}", path);
+
+			Directory.CreateDirectory(path);
+
+			agent.InspectQueues(
+				(queueType, queue) =>
+				{
+					using (var writer = new StreamWriter(Path.Combine(path, queueType.ToString())))
+					foreach (var item in queue)
+						writer.WriteLine(item);
+				});
+
+			using (var writer = new StreamWriter(Path.Combine(path, "ZFSSnapshots")))
+			foreach (var snapshot in zfs.CurrentSnapshots)
+				writer.WriteLine(snapshot);
+
+
+			return path;
+		}
+
 		static int Main()
 		{
 			if (!Console.IsOutputRedirected)
@@ -317,6 +351,7 @@ namespace DQD.RealTimeBackup
 					var notificationBus = container.Resolve<INotificationBus>();
 
 					var storage = container.Resolve<IRemoteStorage>();
+					var zfs = container.Resolve<IZFS>();
 					var backupAgent = container.Resolve<IBackupAgent>();
 					var remoteStorage = container.Resolve<IRemoteStorage>();
 					var remoteFileStateCache = container.Resolve<IRemoteFileStateCache>();
@@ -325,103 +360,253 @@ namespace DQD.RealTimeBackup
 					var periodicRescanOrchestrator = container.Resolve<IPeriodicRescanOrchestrator>();
 					var bridgeServer = container.Resolve<IBridgeServer>();
 
-					remoteFileStateCache.LoadCache();
-
-					object scrollWindowSync = new object();
-
-					EventHandler<DiagnosticMessage> DiagnosticOutputHandler =
-						(sender, e) =>
+					var usr1Registration = PosixSignalRegistration.Create(
+						PosixSignal_SIGUSR1,
+						ctx =>
 						{
-							if (e.IsVerbose && !parameters.Verbose)
-								return;
-							if (e.IsUnimportant && parameters.Quiet)
-								return;
+							ctx.Cancel = true;
 
-							lock (scrollWindowSync)
+							try
 							{
-								Output(e.Message);
-								Console.Out.Flush();
+								EmitRunningStateDump();
+
+								notificationBus.Post(
+									new Notification()
+									{
+										Event = StateEvent.DiagnosticOutputEvent,
+										Summary = "Diagnostic Output Event",
+										Message = "Running state has been written to the service log.",
+									});
 							}
-						};
-
-					errorLogger.DiagnosticOutput += DiagnosticOutputHandler;
-					backupAgent.DiagnosticOutput += DiagnosticOutputHandler;
-					remoteStorage.DiagnosticOutput += DiagnosticOutputHandler;
-					remoteFileStateCache.DiagnosticOutput += DiagnosticOutputHandler;
-					remoteFileStateCacheStorage.DiagnosticOutput += DiagnosticOutputHandler;
-					periodicRescanOrchestrator.DiagnosticOutput += DiagnosticOutputHandler;
-
-					if (!parameters.Quiet)
-						Output("Authenticating with remote storage");
-
-					try
-					{
-						storage.Authenticate();
-					}
-					catch (Exception e)
-					{
-						OutputError("Authentication with remote storage failed:");
-						OutputError(e);
-						Output("Authentication deferred to first communication");
-					}
-
-					if (!parameters.Quiet)
-						Output("Starting backup agent...");
-
-					backupAgent.Start();
-
-					if (!parameters.Quiet)
-						Output("Starting bridge server...");
-
-					bridgeServer.Start();
-
-					if (!parameters.Quiet)
-							Output("Processing manual submissions");
-
-					foreach (var move in args.PathsToMove)
-					{
-						if (!parameters.Quiet)
-							lock (scrollWindowSync)
-								Output("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
-
-						backupAgent.NotifyMove(move.FromPath, move.ToPath);
-					}
-
-					foreach (var pathToCheck in args.PathsToCheck)
-					{
-						if (!parameters.Quiet)
-							lock (scrollWindowSync)
-								Output("=> CHECK '{0}'", pathToCheck);
-
-						backupAgent.CheckPath(pathToCheck);
-					}
-
-					if (args.InitialBackupThenMonitor || args.InitialBackupThenExit)
-					{
-						notificationBus.Post(
-							new Notification()
+							catch (Exception e)
 							{
-								Event = StateEvent.InitialBackupStarted,
-							});
+								notificationBus.Post(
+									new Notification()
+									{
+										Event = StateEvent.DiagnosticOutputEvent,
+										Error = new Bridge.Messages.ErrorInfo(e),
+										Message = "An error occurred while writing running state to the service log.",
+									});
+							}
+						});
 
-						backupAgent.PauseMonitor();
-
-						var orchestrator = container.Resolve<IInitialBackupOrchestrator>();
-
-						string headings = scanStatusFormatter.Headings;
-						string separator = scanStatusFormatter.Separator;
-
-						// Clear the screen.
-						if (!Console.IsOutputRedirected)
-							Console.Write("\x1B[;r\x1B[2J");
-
-						int staticLineCount = 3 + backupAgent.UploadThreadCount;
-
-						using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 3 - backupAgent.UploadThreadCount))
+					var usr2Registration = PosixSignalRegistration.Create(
+						PosixSignal_SIGUSR2,
+						ctx =>
 						{
-							orchestrator.PerformInitialBackup(
-								statusUpdate =>
+							ctx.Cancel = true;
+
+							try
+							{
+								string path = EmitQueuesDump(backupAgent, zfs);
+
+								notificationBus.Post(
+									new Notification()
+									{
+										Event = StateEvent.DiagnosticOutputEvent,
+										Summary = "Diagnostic Output Event",
+										Message = "A snapshot of all queues has been written to " + path,
+									});
+							}
+							catch (Exception e)
+							{
+								notificationBus.Post(
+									new Notification()
+									{
+										Event = StateEvent.DiagnosticOutputEvent,
+										Error = new Bridge.Messages.ErrorInfo(e),
+										Message = "An error occurred while emitting a queue snapshot.",
+									});
+							}
+						});
+
+					using (usr1Registration)
+					using (usr2Registration)
+					{
+						remoteFileStateCache.LoadCache();
+
+						object scrollWindowSync = new object();
+
+						EventHandler<DiagnosticMessage> DiagnosticOutputHandler =
+							(sender, e) =>
+							{
+								if (e.IsVerbose && !parameters.Verbose)
+									return;
+								if (e.IsUnimportant && parameters.Quiet)
+									return;
+
+								lock (scrollWindowSync)
 								{
+									Output(e.Message);
+									Console.Out.Flush();
+								}
+							};
+
+						errorLogger.DiagnosticOutput += DiagnosticOutputHandler;
+						backupAgent.DiagnosticOutput += DiagnosticOutputHandler;
+						remoteStorage.DiagnosticOutput += DiagnosticOutputHandler;
+						remoteFileStateCache.DiagnosticOutput += DiagnosticOutputHandler;
+						remoteFileStateCacheStorage.DiagnosticOutput += DiagnosticOutputHandler;
+						periodicRescanOrchestrator.DiagnosticOutput += DiagnosticOutputHandler;
+
+						if (!parameters.Quiet)
+							Output("Authenticating with remote storage");
+
+						try
+						{
+							storage.Authenticate();
+						}
+						catch (Exception e)
+						{
+							OutputError("Authentication with remote storage failed:");
+							OutputError(e);
+							Output("Authentication deferred to first communication");
+						}
+
+						if (!parameters.Quiet)
+							Output("Starting backup agent...");
+
+						backupAgent.Start();
+
+						if (!parameters.Quiet)
+							Output("Starting bridge server...");
+
+						bridgeServer.Start();
+
+						if (!parameters.Quiet)
+								Output("Processing manual submissions");
+
+						foreach (var move in args.PathsToMove)
+						{
+							if (!parameters.Quiet)
+								lock (scrollWindowSync)
+									Output("=> MOVE '{0}' to {1}'", move.FromPath, move.ToPath);
+
+							backupAgent.NotifyMove(move.FromPath, move.ToPath);
+						}
+
+						foreach (var pathToCheck in args.PathsToCheck)
+						{
+							if (!parameters.Quiet)
+								lock (scrollWindowSync)
+									Output("=> CHECK '{0}'", pathToCheck);
+
+							backupAgent.CheckPath(pathToCheck);
+						}
+
+						if (args.InitialBackupThenMonitor || args.InitialBackupThenExit)
+						{
+							notificationBus.Post(
+								new Notification()
+								{
+									Event = StateEvent.InitialBackupStarted,
+								});
+
+							backupAgent.PauseMonitor();
+
+							var orchestrator = container.Resolve<IInitialBackupOrchestrator>();
+
+							string headings = scanStatusFormatter.Headings;
+							string separator = scanStatusFormatter.Separator;
+
+							// Clear the screen.
+							if (!Console.IsOutputRedirected)
+								Console.Write("\x1B[;r\x1B[2J");
+
+							int staticLineCount = 3 + backupAgent.UploadThreadCount;
+
+							using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 3 - backupAgent.UploadThreadCount))
+							{
+								orchestrator.PerformInitialBackup(
+									statusUpdate =>
+									{
+										lock (scrollWindowSync)
+										{
+											using (scrollWindow.Suspend())
+											{
+												if (!Console.IsOutputRedirected)
+												{
+													Console.CursorLeft = 0;
+													Console.CursorTop = Console.WindowHeight - staticLineCount;
+												}
+
+												Console.WriteLine(headings);
+												Console.WriteLine(separator);
+												Console.WriteLine(scanStatusFormatter.ToString(statusUpdate));
+
+												if ((statusUpdate.BackupAgentQueueSizes != null)
+												&& (statusUpdate.BackupAgentQueueSizes.UploadThreads != null))
+												{
+													for (int i=0; i < statusUpdate.BackupAgentQueueSizes.UploadThreads.Length; i++)
+													{
+														if (i > 0)
+															Console.WriteLine();
+
+														string statusLine = scanStatusFormatter.ToString(statusUpdate.BackupAgentQueueSizes.UploadThreads[i], Console.WindowWidth - 1, useANSIProgressBar: !Console.IsOutputRedirected);
+
+														Console.Write(statusLine);
+
+														for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
+															Console.Write(' ');
+													}
+												}
+
+												scrollWindow.LastRow = Console.WindowHeight - staticLineCount - 1;
+											}
+										}
+									},
+									cancellationTokenSource.Token);
+							}
+
+							if (!Console.IsOutputRedirected)
+								Console.Write("\x1B[2J");
+
+							if (args.InitialBackupThenExit)
+								stopEvent.Set();
+							else if (cancellationTokenSource.IsCancellationRequested)
+								Output("Not continuing with startup");
+							else
+							{
+								if (!parameters.Quiet)
+								{
+									Output();
+									Output("Initial backup complete, switching to realtime mode");
+								}
+
+								backupAgent.UnpauseMonitor(processBufferedPaths: true);
+							}
+
+							notificationBus.Post(
+								new Notification()
+								{
+									Event = StateEvent.InitialBackupCompleted,
+								});
+						}
+
+						if (!cancellationTokenSource.IsCancellationRequested)
+						{
+							if (!parameters.Quiet)
+								Output("Starting periodic rescan scheduler");
+							periodicRescanScheduler.Start(cancellationTokenSource.Token);
+
+							if (!parameters.Quiet)
+							{
+								// Clear the screen.
+								if (!Console.IsOutputRedirected)
+									Console.Write("\x1B[;r\x1B[2J");
+
+								Output("Waiting for stop signal");
+							}
+
+							using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 1 - backupAgent.UploadThreadCount))
+							{
+								while (!cancellationTokenSource.IsCancellationRequested)
+								{
+									bool signalled = stopEvent.WaitOne(TimeSpan.FromSeconds(0.5));
+
+									if (signalled)
+										break;
+
 									lock (scrollWindowSync)
 									{
 										using (scrollWindow.Suspend())
@@ -429,148 +614,60 @@ namespace DQD.RealTimeBackup
 											if (!Console.IsOutputRedirected)
 											{
 												Console.CursorLeft = 0;
-												Console.CursorTop = Console.WindowHeight - staticLineCount;
+												Console.CursorTop = Console.WindowHeight - backupAgent.UploadThreadCount;
 											}
 
-											Console.WriteLine(headings);
-											Console.WriteLine(separator);
-											Console.WriteLine(scanStatusFormatter.ToString(statusUpdate));
+											var uploadThreads = backupAgent.GetUploadThreads();
 
-											if ((statusUpdate.BackupAgentQueueSizes != null)
-											 && (statusUpdate.BackupAgentQueueSizes.UploadThreads != null))
+											for (int i=0; i < uploadThreads.Length; i++)
 											{
-												for (int i=0; i < statusUpdate.BackupAgentQueueSizes.UploadThreads.Length; i++)
-												{
-													if (i > 0)
-														Console.WriteLine();
+												if (i > 0)
+													Console.WriteLine();
 
-													string statusLine = scanStatusFormatter.ToString(statusUpdate.BackupAgentQueueSizes.UploadThreads[i], Console.WindowWidth - 1, useANSIProgressBar: !Console.IsOutputRedirected);
+												string statusLine = scanStatusFormatter.ToString(uploadThreads[i], Console.WindowWidth - 1, useANSIProgressBar: !Console.IsOutputRedirected);
 
-													Console.Write(statusLine);
+												Console.Write(statusLine);
 
-													for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
-														Console.Write(' ');
-												}
+												for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
+													Console.Write(' ');
 											}
 
-											scrollWindow.LastRow = Console.WindowHeight - staticLineCount - 1;
+											scrollWindow.LastRow = Console.WindowHeight - backupAgent.UploadThreadCount - 1;
 										}
-									}
-								},
-								cancellationTokenSource.Token);
-						}
-
-						if (!Console.IsOutputRedirected)
-							Console.Write("\x1B[2J");
-
-						if (args.InitialBackupThenExit)
-							stopEvent.Set();
-						else if (cancellationTokenSource.IsCancellationRequested)
-							Output("Not continuing with startup");
-						else
-						{
-							if (!parameters.Quiet)
-							{
-								Output();
-								Output("Initial backup complete, switching to realtime mode");
-							}
-
-							backupAgent.UnpauseMonitor(processBufferedPaths: true);
-						}
-
-						notificationBus.Post(
-							new Notification()
-							{
-								Event = StateEvent.InitialBackupCompleted,
-							});
-					}
-
-					if (!cancellationTokenSource.IsCancellationRequested)
-					{
-						if (!parameters.Quiet)
-							Output("Starting periodic rescan scheduler");
-						periodicRescanScheduler.Start(cancellationTokenSource.Token);
-
-						if (!parameters.Quiet)
-						{
-							// Clear the screen.
-							if (!Console.IsOutputRedirected)
-								Console.Write("\x1B[;r\x1B[2J");
-
-							Output("Waiting for stop signal");
-						}
-
-						using (var scrollWindow = new ConsoleScrollWindow(firstRow: 1, lastRow: Console.WindowHeight - 1 - backupAgent.UploadThreadCount))
-						{
-							while (!cancellationTokenSource.IsCancellationRequested)
-							{
-								bool signalled = stopEvent.WaitOne(TimeSpan.FromSeconds(0.5));
-
-								if (signalled)
-									break;
-
-								lock (scrollWindowSync)
-								{
-									using (scrollWindow.Suspend())
-									{
-										if (!Console.IsOutputRedirected)
-										{
-											Console.CursorLeft = 0;
-											Console.CursorTop = Console.WindowHeight - backupAgent.UploadThreadCount;
-										}
-
-										var uploadThreads = backupAgent.GetUploadThreads();
-
-										for (int i=0; i < uploadThreads.Length; i++)
-										{
-											if (i > 0)
-												Console.WriteLine();
-
-											string statusLine = scanStatusFormatter.ToString(uploadThreads[i], Console.WindowWidth - 1, useANSIProgressBar: !Console.IsOutputRedirected);
-
-											Console.Write(statusLine);
-
-											for (int j = statusLine.Length, l = Console.WindowWidth - 1; j < l; j++)
-												Console.Write(' ');
-										}
-
-										scrollWindow.LastRow = Console.WindowHeight - backupAgent.UploadThreadCount - 1;
 									}
 								}
 							}
+
+							// Move cursor to the bottom end of the screen, so that output doesn't interfere with
+							// what's left behind after the Backup Agent exits.
+							if (!Console.IsOutputRedirected)
+							{
+								Console.WriteLine("\x1B[{0};1H", Console.WindowHeight);
+								Console.WriteLine();
+							}
 						}
 
-						// Move cursor to the bottom end of the screen, so that output doesn't interfere with
-						// what's left behind after the Backup Agent exits.
-						if (!Console.IsOutputRedirected)
-						{
-							Console.WriteLine("\x1B[{0};1H", Console.WindowHeight);
-							Console.WriteLine();
-						}
+						if (!parameters.Quiet)
+							Output("Stopping periodic rescan scheduler");
+						periodicRescanScheduler.Stop();
+
+						if (!parameters.Quiet)
+							Output("Stopping backup agent...");
+						backupAgent.Stop();
+
+						if (!parameters.Quiet)
+							Output("Stopping bridge server...");
+						bridgeServer.Stop();
+
+						if (!parameters.Quiet)
+							Output("Removing ZFS snapshots...");
+
+						foreach (var snapshot in zfs.CurrentSnapshots)
+							snapshot.Dispose();
+
+						if (!parameters.Quiet)
+							Output("All done! Goodbye :-)");
 					}
-
-					if (!parameters.Quiet)
-						Output("Stopping periodic rescan scheduler");
-					periodicRescanScheduler.Stop();
-
-					if (!parameters.Quiet)
-						Output("Stopping backup agent...");
-					backupAgent.Stop();
-
-					if (!parameters.Quiet)
-						Output("Stopping bridge server...");
-					bridgeServer.Stop();
-
-					if (!parameters.Quiet)
-						Output("Removing ZFS snapshots...");
-
-					var zfs = container.Resolve<IZFS>();
-
-					foreach (var snapshot in zfs.CurrentSnapshots)
-						snapshot.Dispose();
-
-					if (!parameters.Quiet)
-						Output("All done! Goodbye :-)");
 				}
 				finally
 				{

@@ -32,6 +32,11 @@ namespace DQD.RealTimeBackup.FileSystem
 				ExecuteZFSCommand($"snapshot {_deviceName}@{_snapshotName}");
 		}
 
+		public override string ToString()
+		{
+			return _snapshotName + " on " + _deviceName + " mounted at " + _mountPoint;
+		}
+
 		public void Dispose()
 		{
 			lock (this)

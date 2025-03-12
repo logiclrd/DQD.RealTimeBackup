@@ -12,7 +12,7 @@ namespace DQD.RealTimeBackup.Bridge.Notifications
 		[FieldOrder(1)]
 		public DateTime TimestampUTC = DateTime.UtcNow;
 		[FieldOrder(2)]
-		public string? ErrorMessage;
+		public string? Message;
 		[FieldOrder(3)]
 		public string? Summary;
 		[FieldOrder(4)]

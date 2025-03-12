@@ -97,7 +97,7 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 			_useUTC = false;
 
 			this.SummaryText = notification.Summary ?? EventText.GetEventText(notification.Event);
-			this.NotificationText = notification.ErrorMessage ?? "";
+			this.NotificationText = notification.Message ?? "";
 
 			RenderTimestamp();
 
@@ -154,9 +154,9 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 					writer.WriteLine();
 				}
 
-				if (!string.IsNullOrWhiteSpace(_notification.ErrorMessage))
+				if (!string.IsNullOrWhiteSpace(_notification.Message))
 				{
-					writer.WriteLine(_notification.ErrorMessage);
+					writer.WriteLine(_notification.Message);
 					writer.WriteLine();
 				}
 

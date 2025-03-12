@@ -8,5 +8,10 @@ namespace DQD.RealTimeBackup.Agent
 		{
 			this.Path = path;
 		}
+
+		public override string ToString()
+		{
+			return "DELETE: " + Path;
+		}
 	}
 }

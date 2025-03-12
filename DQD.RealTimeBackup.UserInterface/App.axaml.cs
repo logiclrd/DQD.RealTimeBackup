@@ -271,7 +271,7 @@ namespace DQD.RealTimeBackup.UserInterface
 			var notifications = _notifications;
 
 			if (notifications != null)
-				notifications.PostNotification(notification.ErrorMessage ?? "", notification.Summary ?? EventText.GetEventText(notification.Event), notification.Error);
+				notifications.PostNotification(notification.Message ?? "", notification.Summary ?? EventText.GetEventText(notification.Event), notification.Error);
 		}
 	}
 }
