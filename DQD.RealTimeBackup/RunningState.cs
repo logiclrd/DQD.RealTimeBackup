@@ -71,6 +71,7 @@ public class RunningState
 		public BackupAction? Action;
 		public string? Path;
 		public string? FromPath;
+		public int LastPartNumber;
 		public Exception? Exception;
 	}
 

@@ -25,6 +25,7 @@ namespace DQD.RealTimeBackup.Storage
 		void DownloadFile(string serverPath, Stream content, CancellationToken cancellationToken);
 		void MoveFile(string serverPathFrom, string serverPathTo, CancellationToken cancellationToken);
 		void DeleteFile(string serverPath, CancellationToken cancellationToken);
+		void DeleteFile(string serverPath, CancellationToken cancellationToken, Action<int>? progressCallback);
 		void DeleteFilePart(string serverPath, int partNumber, CancellationToken cancellationToken);
 		void CancelUnfinishedFile(string serverPath, CancellationToken cancellationToken);
 

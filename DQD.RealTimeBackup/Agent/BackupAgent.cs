@@ -678,10 +678,12 @@ namespace DQD.RealTimeBackup.Agent
 					{
 						VerboseDiagnosticOutput("[OF] Promoting {0} file(s)", filesToPromote.Count);
 
-						RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.PromotingFiles;
+						RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.PromotingFiles_ObtainingLock;
 
 						lock (_openFilesSync)
 						{
+							RunningState.Instance.PollOpenFilesThread.State = PollOpenFilesThreadState.PromotingFiles;
+
 							// _openFiles is just a List<>, making a naive implementation of this O(n^2). This is fine until an initial backup dumps 700,000 files on us all at once. Then,
 							// this statement begins to take rather a long time to complete:
 							//
@@ -1466,9 +1468,11 @@ namespace DQD.RealTimeBackup.Agent
 					try
 					{
 						RunningState.Instance.ProcessBackupQueueThread.State = ProcessBackupQueueThreadState.ProcessingAction_DeletingFile;
+
 						_storage.DeleteFile(
 							PlaceInContentPath(deleteAction.Path),
-							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None);
+							_backupQueueCancellationTokenSource?.Token ?? CancellationToken.None,
+							deletedPartNumber => RunningState.Instance.ProcessBackupQueueThread.LastPartNumber = deletedPartNumber);
 					}
 					catch (Exception ex)
 					{
@@ -1561,9 +1565,15 @@ namespace DQD.RealTimeBackup.Agent
 			_uploadThreadStatus = new UploadStatus[_parameters.UploadThreadCount];
 
 			for (int i = 0; i < _parameters.UploadThreadCount; i++)
-			{
-				new Thread(idx => UploadThreadProc((int)idx!, _cancelUploadsCancellationTokenSource.Token)) { Name = "Upload Thread #" + i }.Start(i);
-			}
+				StartUploadThread(i);
+		}
+
+		void StartUploadThread(int threadIndex)
+		{
+			var thread = new Thread(() => UploadThreadProc(threadIndex, _cancelUploadsCancellationTokenSource!.Token));
+
+			thread.Name = "Upload Thread #" + threadIndex;
+			thread.Start();
 		}
 
 		void WakeUploadThreads()
@@ -1676,227 +1686,110 @@ namespace DQD.RealTimeBackup.Agent
 
 			var exited = _uploadThreadsExited;
 
-			using (var runningState = RunningState.Instance.UploadThreads.Register(threadIndex))
 			try
 			{
-				while (!cancellationToken.IsCancellationRequested && !_stopping)
+				using (var runningState = RunningState.Instance.UploadThreads.Register(threadIndex))
+				try
 				{
-					int uploadQueueSize;
-					FileReference fileToUpload;
-
-					lock (_uploadQueueSync)
+					while (!cancellationToken.IsCancellationRequested && !_stopping)
 					{
-						while ((_uploadQueue.Count == 0) || _networkThreadsPaused)
+						int uploadQueueSize;
+						FileReference fileToUpload;
+
+						lock (_uploadQueueSync)
 						{
-							if (_networkThreadsPaused)
-								runningState.State = UploadThreadState.Paused;
-							else
-								runningState.State = UploadThreadState.Idle;
-
-							Monitor.Wait(_uploadQueueSync);
-
-							if (_stopping)
-								return;
-						}
-
-						fileToUpload = _uploadQueue[_uploadQueue.Count - 1];
-						_uploadQueue.RemoveAt(_uploadQueue.Count - 1);
-
-						uploadQueueSize = _uploadQueue.Count;
-					}
-
-					if (_pauseQueuingUploads && (uploadQueueSize < _parameters.QueueLowWaterMark))
-					{
-						// Unthrottle.
-						lock (_backupQueueSync)
-							Monitor.PulseAll(_backupQueueSync);
-					}
-
-					using (fileToUpload)
-					{
-						runningState.State = UploadThreadState.ProcessingUpload;
-						runningState.File = fileToUpload;
-
-						var existingUploadOfPath = _uploadThreadStatus.FirstOrDefault(status => (status != null) && (status.Path == fileToUpload.Path) && !status.IsCompleted);
-
-						if (existingUploadOfPath != null)
-						{
-							NonQuietDiagnosticOutput("[UP{0}] Ignoring upload action because another thread is already uploading this path: {0}", fileToUpload.Path);
-							existingUploadOfPath.RecheckAfterUploadCompletes();
-							continue;
-						}
-
-						NonQuietDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
-						VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
-
-						VerboseDiagnosticOutput("[UP{0}] Building File State structure", threadIndex);
-
-						var newFileState =
-							new FileState()
+							while ((_uploadQueue.Count == 0) || _networkThreadsPaused)
 							{
-								FileSize = fileToUpload.FileSize,
-								LastModifiedUTC = fileToUpload.LastModifiedUTC,
-								Checksum = fileToUpload.Checksum,
-							};
-
-						try
-						{
-							runningState.State = UploadThreadState.ProcessingUpload_OpeningFile;
-
-							using (var stream = File.OpenRead(fileToUpload.SourcePath))
-							{
-								fileToUpload.FileSize = stream.Length;
-
-								_uploadThreadCancellation[threadIndex] = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-								var localCancellationToken = _uploadThreadCancellation[threadIndex]?.Token ?? cancellationToken;
-
-								_uploadThreadStatus[threadIndex] = new UploadStatus(
-									fileToUpload.Path,
-									fileToUpload.FileSize,
-									() =>
-									{
-										VerboseDiagnosticOutput("[UP{0}] (post-completion action) Returning file to the intake queue: {1}", threadIndex, fileToUpload.Path);
-
-										BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
-									});
-
-								int partCount = (int)((fileToUpload.FileSize + _parameters.FilePartSize - 1) / _parameters.FilePartSize);
-
-								if (partCount == 1)
-								{
-									runningState.State = UploadThreadState.ProcessingUpload_UploadingEntireFile;
-
-									try
-									{
-										runningState.PerformingUpload = true;
-
-										_storage.UploadFile(
-											PlaceInContentPath(fileToUpload.Path),
-											stream,
-											out newFileState.ContentKey,
-											progress =>
-											{
-												progress.TotalBytes = fileToUpload.FileSize;
-												_uploadThreadStatus[threadIndex]!.Progress = progress;
-											},
-											localCancellationToken);
-									}
-									finally
-									{
-										runningState.PerformingUpload = false;
-									}
-								}
+								if (_networkThreadsPaused)
+									runningState.State = UploadThreadState.Paused;
 								else
+									runningState.State = UploadThreadState.Idle;
+
+								Monitor.Wait(_uploadQueueSync);
+
+								if (_stopping)
+									return;
+							}
+
+							fileToUpload = _uploadQueue[_uploadQueue.Count - 1];
+							_uploadQueue.RemoveAt(_uploadQueue.Count - 1);
+
+							uploadQueueSize = _uploadQueue.Count;
+						}
+
+						if (_pauseQueuingUploads && (uploadQueueSize < _parameters.QueueLowWaterMark))
+						{
+							// Unthrottle.
+							lock (_backupQueueSync)
+								Monitor.PulseAll(_backupQueueSync);
+						}
+
+						using (fileToUpload)
+						{
+							runningState.State = UploadThreadState.ProcessingUpload;
+							runningState.File = fileToUpload;
+
+							var existingUploadOfPath = _uploadThreadStatus.FirstOrDefault(status => (status != null) && (status.Path == fileToUpload.Path) && !status.IsCompleted);
+
+							if (existingUploadOfPath != null)
+							{
+								NonQuietDiagnosticOutput("[UP{0}] Ignoring upload action because another thread is already uploading this path: {0}", fileToUpload.Path);
+								existingUploadOfPath.RecheckAfterUploadCompletes();
+								continue;
+							}
+
+							NonQuietDiagnosticOutput("[UP{0}] Uploading: {1}", threadIndex, fileToUpload.Path);
+							VerboseDiagnosticOutput("[UP{0}] Source path: {1}", threadIndex, fileToUpload.SourcePath);
+
+							VerboseDiagnosticOutput("[UP{0}] Building File State structure", threadIndex);
+
+							var newFileState =
+								new FileState()
 								{
-									runningState.State = UploadThreadState.ProcessingUpload_UploadingFileInParts;
+									FileSize = fileToUpload.FileSize,
+									LastModifiedUTC = fileToUpload.LastModifiedUTC,
+									Checksum = fileToUpload.Checksum,
+								};
 
-									var existingFileState = _remoteFileStateCache.GetFileState(fileToUpload.Path);
+							try
+							{
+								runningState.State = UploadThreadState.ProcessingUpload_OpeningFile;
 
-									if (existingFileState != null)
-										newFileState.ContentKey = existingFileState.ContentKey;
+								using (var stream = File.OpenRead(fileToUpload.SourcePath))
+								{
+									fileToUpload.FileSize = stream.Length;
 
-									var partsOnServer = _remoteFileStateCache.EnumerateFileParts(fileToUpload.Path).ToList();
+									_uploadThreadCancellation[threadIndex] = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-									var partByPartNumber = partsOnServer.ToDictionary(part => part.PartNumber);
+									var localCancellationToken = _uploadThreadCancellation[threadIndex]?.Token ?? cancellationToken;
 
-									var partsToUpload = new List<int>();
-
-									long totalBytesToUpload = 0;
-
-									string contentPath = PlaceInContentPath(fileToUpload.Path);
-
-									for (int partNumber = 1; partNumber <= partCount; partNumber++)
-									{
-										long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
-										int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
-
-										var partStream = new Substream(stream, partOffset, partLength);
-
-										if (!partByPartNumber.TryGetValue(partNumber, out var partState)
-										 || (partState.Checksum != checksum.ComputeChecksum(partStream)))
+									_uploadThreadStatus[threadIndex] = new UploadStatus(
+										fileToUpload.Path,
+										fileToUpload.FileSize,
+										() =>
 										{
-											partsToUpload.Add(partNumber);
-											totalBytesToUpload += partLength;
+											VerboseDiagnosticOutput("[UP{0}] (post-completion action) Returning file to the intake queue: {1}", threadIndex, fileToUpload.Path);
 
-											try
-											{
-												runningState.PerformingDeletion = true;
-												runningState.PartNumber = partNumber;
+											BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
+										});
 
-												_storage.DeleteFilePart(
-													contentPath,
-													partNumber,
-													localCancellationToken);
-											}
-											catch (FileNotFoundException) { }
-											finally
-											{
-												runningState.PerformingDeletion = false;
-												runningState.PartNumber = 0;
-											}
-										}
-										else
-										{
-											// Remove this part number, since it doesn't need to be uploaded, otherwise the
-											// cleanup code after the upload loop will delete the part.
-											partByPartNumber.Remove(partNumber);
-										}
-									}
+									int partCount = (int)((fileToUpload.FileSize + _parameters.FilePartSize - 1) / _parameters.FilePartSize);
 
-									long totalBytesTransferred = 0;
-
-									foreach (int partNumber in partsToUpload)
+									if (partCount == 1)
 									{
-										runningState.PartNumber = partNumber;
-
-										long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
-										int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
-
-										var partStream = new Substream(stream, partOffset, partLength);
-
-										VerboseDiagnosticOutput("[UP{0}] Uploading part {1} of file {2}", threadIndex, partNumber, fileToUpload.Path);
+										runningState.State = UploadThreadState.ProcessingUpload_UploadingEntireFile;
 
 										try
 										{
 											runningState.PerformingUpload = true;
 
-											_storage.UploadFilePart(
-												contentPath,
-												partStream,
-												partNumber,
-												newContentKey =>
-												{
-													if (newFileState.ContentKey != newContentKey)
-													{
-														VerboseDiagnosticOutput("[UP{0}] Received content key for file: {1}", threadIndex, newContentKey);
-														VerboseDiagnosticOutput("[UP{0}] => {1}", threadIndex, newContentKey);
-
-														try
-														{
-															newFileState.ContentKey = newContentKey;
-															newFileState.IsInParts = true;
-
-															_remoteFileStateCache.UpdateFileState(
-																fileToUpload.Path,
-																newFileState);
-														}
-														catch (TaskCanceledException exception)
-														{
-															_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
-															throw;
-														}
-													}
-												},
+											_storage.UploadFile(
+												PlaceInContentPath(fileToUpload.Path),
+												stream,
+												out newFileState.ContentKey,
 												progress =>
 												{
-													progress.BytesTransferred += totalBytesTransferred;
-
-													if (progress.BytesTransferred > totalBytesToUpload)
-														totalBytesToUpload = progress.BytesTransferred;
-
-													progress.TotalBytes = totalBytesToUpload;
-
+													progress.TotalBytes = fileToUpload.FileSize;
 													_uploadThreadStatus[threadIndex]!.Progress = progress;
 												},
 												localCancellationToken);
@@ -1905,115 +1798,243 @@ namespace DQD.RealTimeBackup.Agent
 										{
 											runningState.PerformingUpload = false;
 										}
-
-										if (!partByPartNumber.TryGetValue(partNumber, out var partState))
-											partState = newFileState.CreatePartState(partNumber);
-
-										partStream.Position = 0;
-
-										partState.Checksum = checksum.ComputeChecksum(partStream);
-
-										_remoteFileStateCache.UpdateFileState(
-											fileToUpload.Path,
-											partState);
-
-										partByPartNumber.Remove(partNumber);
-
-										totalBytesTransferred += partLength;
 									}
-
-									runningState.State = UploadThreadState.ProcessingUpload_DeletingUnneededParts;
-
-									foreach (var unneededPartNumber in partByPartNumber.Keys)
+									else
 									{
-										runningState.PartNumber = unneededPartNumber;
+										runningState.State = UploadThreadState.ProcessingUpload_UploadingFileInParts;
 
-										VerboseDiagnosticOutput("[UP{0}] Deleting part {0} of file {1}", unneededPartNumber, fileToUpload.Path);
+										var existingFileState = _remoteFileStateCache.GetFileState(fileToUpload.Path);
 
-										try
+										if (existingFileState != null)
+											newFileState.ContentKey = existingFileState.ContentKey;
+
+										var partsOnServer = _remoteFileStateCache.EnumerateFileParts(fileToUpload.Path).ToList();
+
+										var partByPartNumber = partsOnServer.ToDictionary(part => part.PartNumber);
+
+										var partsToUpload = new List<int>();
+
+										long totalBytesToUpload = 0;
+
+										string contentPath = PlaceInContentPath(fileToUpload.Path);
+
+										for (int partNumber = 1; partNumber <= partCount; partNumber++)
 										{
-											runningState.PerformingDeletion = true;
+											long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
+											int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
 
-											_storage.DeleteFilePart(
-												contentPath,
-												unneededPartNumber,
-												localCancellationToken);
+											var partStream = new Substream(stream, partOffset, partLength);
+
+											if (!partByPartNumber.TryGetValue(partNumber, out var partState)
+											|| (partState.Checksum != checksum.ComputeChecksum(partStream)))
+											{
+												partsToUpload.Add(partNumber);
+												totalBytesToUpload += partLength;
+
+												try
+												{
+													runningState.PerformingDeletion = true;
+													runningState.PartNumber = partNumber;
+
+													_storage.DeleteFilePart(
+														contentPath,
+														partNumber,
+														localCancellationToken);
+												}
+												catch (FileNotFoundException) { }
+												finally
+												{
+													runningState.PerformingDeletion = false;
+													runningState.PartNumber = 0;
+												}
+											}
+											else
+											{
+												// Remove this part number, since it doesn't need to be uploaded, otherwise the
+												// cleanup code after the upload loop will delete the part.
+												partByPartNumber.Remove(partNumber);
+											}
 										}
-										finally
+
+										long totalBytesTransferred = 0;
+
+										foreach (int partNumber in partsToUpload)
 										{
-											runningState.PerformingDeletion = false;
+											runningState.PartNumber = partNumber;
+
+											long partOffset = (partNumber - 1) * (long)_parameters.FilePartSize;
+											int partLength = (int)Math.Min(fileToUpload.FileSize - partOffset, _parameters.FilePartSize);
+
+											var partStream = new Substream(stream, partOffset, partLength);
+
+											VerboseDiagnosticOutput("[UP{0}] Uploading part {1} of file {2}", threadIndex, partNumber, fileToUpload.Path);
+
+											try
+											{
+												runningState.PerformingUpload = true;
+
+												_storage.UploadFilePart(
+													contentPath,
+													partStream,
+													partNumber,
+													newContentKey =>
+													{
+														if (newFileState.ContentKey != newContentKey)
+														{
+															VerboseDiagnosticOutput("[UP{0}] Received content key for file: {1}", threadIndex, newContentKey);
+															VerboseDiagnosticOutput("[UP{0}] => {1}", threadIndex, newContentKey);
+
+															try
+															{
+																newFileState.ContentKey = newContentKey;
+																newFileState.IsInParts = true;
+
+																_remoteFileStateCache.UpdateFileState(
+																	fileToUpload.Path,
+																	newFileState);
+															}
+															catch (TaskCanceledException exception)
+															{
+																_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
+																throw;
+															}
+														}
+													},
+													progress =>
+													{
+														progress.BytesTransferred += totalBytesTransferred;
+
+														if (progress.BytesTransferred > totalBytesToUpload)
+															totalBytesToUpload = progress.BytesTransferred;
+
+														progress.TotalBytes = totalBytesToUpload;
+
+														_uploadThreadStatus[threadIndex]!.Progress = progress;
+													},
+													localCancellationToken);
+											}
+											finally
+											{
+												runningState.PerformingUpload = false;
+											}
+
+											if (!partByPartNumber.TryGetValue(partNumber, out var partState))
+												partState = newFileState.CreatePartState(partNumber);
+
+											partStream.Position = 0;
+
+											partState.Checksum = checksum.ComputeChecksum(partStream);
+
+											_remoteFileStateCache.UpdateFileState(
+												fileToUpload.Path,
+												partState);
+
+											partByPartNumber.Remove(partNumber);
+
+											totalBytesTransferred += partLength;
 										}
 
-										_remoteFileStateCache.RemoveFileStateForPart(fileToUpload.Path, unneededPartNumber);
+										runningState.State = UploadThreadState.ProcessingUpload_DeletingUnneededParts;
+
+										foreach (var unneededPartNumber in partByPartNumber.Keys)
+										{
+											runningState.PartNumber = unneededPartNumber;
+
+											VerboseDiagnosticOutput("[UP{0}] Deleting part {0} of file {1}", unneededPartNumber, fileToUpload.Path);
+
+											try
+											{
+												runningState.PerformingDeletion = true;
+
+												_storage.DeleteFilePart(
+													contentPath,
+													unneededPartNumber,
+													localCancellationToken);
+											}
+											finally
+											{
+												runningState.PerformingDeletion = false;
+											}
+
+											_remoteFileStateCache.RemoveFileStateForPart(fileToUpload.Path, unneededPartNumber);
+										}
 									}
+
+									_uploadThreadStatus[threadIndex]!.MarkCompleted();
 								}
-
-								_uploadThreadStatus[threadIndex]!.MarkCompleted();
 							}
-						}
-						catch (TaskCanceledException)
-						{
-							OnDiagnosticOutput("Upload action was cancelled for path: {0}", fileToUpload.Path);
+							catch (TaskCanceledException)
+							{
+								OnDiagnosticOutput("Upload action was cancelled for path: {0}", fileToUpload.Path);
 
-							// Trigger recheck if requested.
-							_uploadThreadStatus[threadIndex]?.MarkCompleted();
+								// Trigger recheck if requested.
+								_uploadThreadStatus[threadIndex]?.MarkCompleted();
 
-							break;
-						}
-						catch (Exception exception)
-						{
-							if (!IsTransientError(exception))
-								_errorLogger.LogError("Upload task failed, returning file to the intake queue\n\nPath: " + fileToUpload.Path, ErrorLogger.Summary.ImportantBackupError, exception);
+								break;
+							}
+							catch (Exception exception)
+							{
+								if (!IsTransientError(exception))
+									_errorLogger.LogError("Upload task failed, returning file to the intake queue\n\nPath: " + fileToUpload.Path, ErrorLogger.Summary.ImportantBackupError, exception);
 
-							BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
+								BeginQueuePathForOpenFilesCheck(fileToUpload.Path);
 
-							continue;
-						}
-						finally
-						{
-							runningState.PartNumber = 0;
+								continue;
+							}
+							finally
+							{
+								runningState.PartNumber = 0;
 
-							_uploadThreadStatus[threadIndex] = null;
+								_uploadThreadStatus[threadIndex] = null;
+
+								try
+								{
+									_uploadThreadCancellation[threadIndex]?.Dispose();
+								}
+								catch {}
+
+								_uploadThreadCancellation[threadIndex] = null;
+							}
+
+							runningState.State = UploadThreadState.ProcessingUpload_RegisteringFileStateChange;
+
+							VerboseDiagnosticOutput("[UP{0}] Registering file state change", threadIndex);
 
 							try
 							{
-								_uploadThreadCancellation[threadIndex]?.Dispose();
+								_remoteFileStateCache.UpdateFileState(
+									fileToUpload.Path,
+									newFileState);
 							}
-							catch {}
-
-							_uploadThreadCancellation[threadIndex] = null;
-						}
-
-						runningState.State = UploadThreadState.ProcessingUpload_RegisteringFileStateChange;
-
-						VerboseDiagnosticOutput("[UP{0}] Registering file state change", threadIndex);
-
-						try
-						{
-							_remoteFileStateCache.UpdateFileState(
-								fileToUpload.Path,
-								newFileState);
-						}
-						catch (TaskCanceledException exception)
-						{
-							_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
+							catch (TaskCanceledException exception)
+							{
+								_errorLogger.LogError("A remote file state cache upload operation was cancelled. This may result in consistency errors.", ErrorLogger.Summary.ImportantBackupError, exception);
+							}
 						}
 					}
 				}
-			}
-			catch (Exception e)
-			{
-				runningState.State = UploadThreadState.Crashed;
-				runningState.Exception = e;
+				catch (Exception e)
+				{
+					runningState.State = UploadThreadState.Crashed;
+					runningState.Exception = e;
 
-				throw;
+					throw;
+				}
+				finally
+				{
+					if (runningState.State != UploadThreadState.Crashed)
+						runningState.State = UploadThreadState.Stopped;
+
+					exited?.Release();
+				}
 			}
 			finally
 			{
-				if (runningState.State != UploadThreadState.Crashed)
-					runningState.State = UploadThreadState.Stopped;
-
-				exited?.Release();
+				if (!_stopping)
+				{
+					Thread.Sleep(TimeSpan.FromSeconds(5));
+					StartUploadThread(threadIndex);
+				}
 			}
 		}
 

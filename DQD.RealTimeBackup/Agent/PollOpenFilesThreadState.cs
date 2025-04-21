@@ -7,6 +7,7 @@ public enum PollOpenFilesThreadState
 	CollectingWait,
 	EnumeratingHandles,
 	InspectingFiles,
+	PromotingFiles_ObtainingLock,
 	PromotingFiles,
 	Stopped,
 	Crashed,

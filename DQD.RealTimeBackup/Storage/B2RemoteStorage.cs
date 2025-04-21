@@ -920,11 +920,16 @@ namespace DQD.RealTimeBackup.Storage
 		}
 
 		public void DeleteFile(string serverPath, CancellationToken cancellationToken)
+			=> DeleteFile(serverPath, cancellationToken, null);
+
+		public void DeleteFile(string serverPath, CancellationToken cancellationToken, Action<int>? progressCallback)
 		{
 			var contentKey = DownloadFileString(serverPath, cancellationToken);
 
 			if (contentKey != null)
 			{
+				progressCallback?.Invoke(0);
+
 				try
 				{
 					DeleteFileDirect(serverPath, cancellationToken);
@@ -949,8 +954,13 @@ namespace DQD.RealTimeBackup.Storage
 
 				try
 				{
+					progressCallback?.Invoke(1);
+
 					while (DeleteFileDirect(contentKey + "-" + partNumber, cancellationToken))
+					{
 						partNumber++;
+						progressCallback?.Invoke(partNumber);
+					}
 				}
 				catch (Exception e)
 				{
