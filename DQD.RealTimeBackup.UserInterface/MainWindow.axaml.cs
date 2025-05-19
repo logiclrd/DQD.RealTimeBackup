@@ -64,6 +64,12 @@ namespace DQD.RealTimeBackup.UserInterface
 				Topmost = false;
 		}
 
+		void cmdQuit_Click(object? sender, RoutedEventArgs e)
+		{
+			if (Application.Current is App app)
+				app.ExitCommand.Execute(default);
+		}
+
 		void tbNotifications_IsCheckedChanged(object? sender, RoutedEventArgs e)
 		{
 			var statsRow = grdRoot.RowDefinitions[1];

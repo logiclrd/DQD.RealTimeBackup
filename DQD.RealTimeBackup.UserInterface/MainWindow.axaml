@@ -28,6 +28,8 @@
             <controls:StatisticsListControl Name="slcStatistics" Margin="20 0 0 0" />
         </StackPanel>
 
+        <Button Name="cmdQuit" Click="cmdQuit_Click" HotKey="Ctrl+Q" IsVisible="False">Quit</Button>
+
         <StackPanel Name="spUploads" Margin="20 0 20 20" Grid.ColumnSpan="2" Grid.Row="1" />
 
         <local:Icon Grid.Column="2" VerticalAlignment="Top" Margin="30" />
