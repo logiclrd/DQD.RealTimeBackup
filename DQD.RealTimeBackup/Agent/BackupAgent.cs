@@ -1557,7 +1557,7 @@ namespace DQD.RealTimeBackup.Agent
 		void StartUploadThreads()
 		{
 			_uploadThreadCount = _parameters.UploadThreadCount;
-			_uploadThreadsExited = new Semaphore(initialCount: 0, maximumCount: _uploadThreadCount);
+			_uploadThreadsExited = new Semaphore(initialCount: _uploadThreadCount, maximumCount: _uploadThreadCount);
 
 			_cancelUploadsCancellationTokenSource = new CancellationTokenSource();
 			_uploadThreadCancellation = new CancellationTokenSource[_uploadThreadCount];
@@ -1570,6 +1570,11 @@ namespace DQD.RealTimeBackup.Agent
 
 		void StartUploadThread(int threadIndex)
 		{
+			bool allowedToStart = _uploadThreadsExited?.WaitOne(TimeSpan.FromMilliseconds(100)) ?? false;
+
+			if (!allowedToStart)
+				throw new Exception("Failed to start upload thread because according to the semaphore, there are already the maximum number running");
+
 			var thread = new Thread(() => UploadThreadProc(threadIndex, _cancelUploadsCancellationTokenSource!.Token));
 
 			thread.Name = "Upload Thread #" + threadIndex;
