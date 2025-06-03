@@ -1,15 +1,15 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
+
 using DQD.RealTimeBackup.ActivityMonitor;
 using DQD.RealTimeBackup.Agent;
 using DQD.RealTimeBackup.FileSystem;
 using DQD.RealTimeBackup.Interop;
 using DQD.RealTimeBackup.StateCache;
+using DQD.RealTimeBackup.Utility;
 
 namespace DQD.RealTimeBackup;
 
@@ -31,6 +31,7 @@ public class RunningState
 		serializerOptions.IncludeFields = true;
 		serializerOptions.WriteIndented = true;
 		serializerOptions.Converters.Add(new JsonStringEnumConverter());
+		serializerOptions.Converters.Add(new JsonExceptionConverter());
 
 		return JsonSerializer.Serialize(this, serializerOptions);
 	}

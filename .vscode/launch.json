@@ -27,6 +27,12 @@
 			"args": [ "/VERBOSE", "/DISABLEFAN" ],
 		},
 		{
+			"type": "coreclr",
+			"request": "attach",
+			"name": "Attach to existing daemon",
+			"processId": "${command:pickProcess}"
+		},
+		{
 			"type": "dotnet",
 			"request": "launch",
 			"name": "Start File Activity Trace",

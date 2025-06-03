@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 
@@ -53,6 +55,8 @@ namespace DQD.RealTimeBackup.UserInterface
 			BeginConnectToBackupService();
 
 			MainWindow = default!;
+
+			HotKeyManager.SetHotKey(ExitCommand, new KeyGesture(Key.Q, KeyModifiers.Control));
 		}
 
 		public override void OnFrameworkInitializationCompleted()
