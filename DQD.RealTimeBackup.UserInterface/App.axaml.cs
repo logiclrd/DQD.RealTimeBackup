@@ -23,6 +23,8 @@ namespace DQD.RealTimeBackup.UserInterface
 {
 	public partial class App : Application
 	{
+		public new static App? Current => (App?)Application.Current;
+
 		public override void Initialize()
 		{
 			DataContext = this;
@@ -55,8 +57,6 @@ namespace DQD.RealTimeBackup.UserInterface
 			BeginConnectToBackupService();
 
 			MainWindow = default!;
-
-			HotKeyManager.SetHotKey(ExitCommand, new KeyGesture(Key.Q, KeyModifiers.Control));
 		}
 
 		public override void OnFrameworkInitializationCompleted()

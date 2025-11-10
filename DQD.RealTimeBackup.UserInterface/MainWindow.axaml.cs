@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -38,7 +39,14 @@ namespace DQD.RealTimeBackup.UserInterface
 			var app = (App)Application.Current!;
 
 			app.MainWindow = this;
-		}
+
+			KeyBindings.Add(
+				new KeyBinding()
+				{
+					Gesture = new KeyGesture(Key.Q, KeyModifiers.Control),
+					Command = App.Current!.ExitCommand,
+				});
+        }
 
 		Timer _refreshTimer;
 		BridgeClient? _bridgeClient;
