@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 
 using DQD.RealTimeBackup.Diagnostics;
 using DQD.RealTimeBackup.Utility;
@@ -140,6 +141,33 @@ namespace DQD.RealTimeBackup.FileSystem
 			}
 		}
 
+		protected internal TOutput ExecuteZFSCommandOutput<TOutput>(string command)
+			where TOutput : JSON.CommandOutput
+		{
+			ZFSDebugLog.WriteLine("Running and capturing output: zfs {0}", command);
+
+			var psi = new ProcessStartInfo();
+
+			psi.FileName = _parameters.ZFSBinaryPath;
+			psi.Arguments = command;
+			psi.RedirectStandardOutput = true;
+			psi.RedirectStandardError = true;
+
+			using (var process = Process.Start(psi)!)
+			{
+				var stdout = new UTF8FromTextReaderStream(process.StandardOutput);
+
+				var output = JsonSerializer.Deserialize<TOutput>(
+					stdout,
+					JSON.Deserializer.CreateOptions());
+
+				if (output == null)
+					throw new Exception("Process output deserialized to null");
+
+				return output;
+			}
+		}
+
 		public IEnumerable<ZFSVolume> EnumerateSnapshots()
 		{
 			ZFSDebugLog.WriteLine("Enumerating snapshots");
@@ -254,29 +282,35 @@ namespace DQD.RealTimeBackup.FileSystem
 		{
 			ZFSDebugLog.WriteLine("Enumerating volumes");
 
-			foreach (string line in ExecuteZFSCommandOutput("list -Hp"))
+			var output = ExecuteZFSCommandOutput<JSON.List>("list -Hpj");
+
+			foreach (var dataset in output.Datasets.Values)
 			{
-				string[] parts = line.Split('\t');
+				if (dataset.Name == null)
+					continue;
 
 				// 'zfs list' yields an entry for the pool itself, which includes a mount point but which isn't
-				// the actual volume. No error is given creating snapshots on this device (named simply "bpool"
-				// or "rpool") but the snapshot isn't meaningful and doesn't appear in /.zfs or /boot/.zfs.
+				// the actual volume. No error is given creating snapshots on this device (usually named simply
+				// "bpool" or "rpool") but the snapshot isn't meaningful and doesn't appear in /.zfs or
+				// /boot/.zfs.
 				//
 				// As far as I can tell, the only way to distinguish these entries is by the presence of
 				// path separator characters in the device name. "bpool" and "rpool" and the like are to be
 				// avoided.
+				if (dataset.Name.IndexOf('/') < 0)
+					continue;
 
-				if (parts[0].IndexOf('/') < 0)
+				if (dataset.Type != JSON.DataSetType.FileSystem)
 					continue;
 
 				var volume =
 					new ZFSVolume()
 					{
-						DeviceName = parts[0],
-						UsedBytes = long.Parse(parts[1]),
-						AvailableBytes = long.Parse(parts[2]),
-						ReferencedBytes = long.Parse(parts[3]),
-						MountPoint = parts[4],
+						DeviceName = dataset.Name,
+						UsedBytes = dataset.GetInt64Property(JSON.DataSetProperties.UsedBytes),
+						AvailableBytes = dataset.GetInt64Property(JSON.DataSetProperties.AvailableBytes),
+						ReferencedBytes = dataset.GetInt64Property(JSON.DataSetProperties.ReferencedBytes),
+						MountPoint = dataset.GetStringProperty(JSON.DataSetProperties.MountPoint),
 					};
 
 				ZFSDebugLog.WriteLine("- {0} at {1}", volume.DeviceName, volume.MountPoint);
