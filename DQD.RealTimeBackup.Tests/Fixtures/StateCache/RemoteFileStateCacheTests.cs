@@ -493,7 +493,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 					byte[] contentBytes = new byte[content.Length];
 
-					content.Read(contentBytes, 0, contentBytes.Length);
+					content.ReadExactly(contentBytes, 0, contentBytes.Length);
 
 					uploads.Add((serverPath, contentBytes));
 				});
@@ -559,7 +559,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 						byte[] contentBytes = new byte[content.Length];
 
-						content.Read(contentBytes, 0, contentBytes.Length);
+						content.ReadExactly(contentBytes, 0, contentBytes.Length);
 
 						uploads.Add((serverPath, contentBytes));
 					});
@@ -704,7 +704,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 						byte[] contentBytes = new byte[content.Length];
 
-						content.Read(contentBytes, 0, contentBytes.Length);
+						content.ReadExactly(contentBytes, 0, contentBytes.Length);
 
 						uploads.Add((serverPath, contentBytes));
 					});
@@ -861,7 +861,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 						byte[] contentBytes = new byte[content.Length];
 
-						content.Read(contentBytes, 0, contentBytes.Length);
+						content.ReadExactly(contentBytes, 0, contentBytes.Length);
 
 						uploads.Add((serverPath, contentBytes));
 					});
@@ -1046,7 +1046,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 						byte[] contentBytes = new byte[content.Length];
 
-						content.Read(contentBytes, 0, contentBytes.Length);
+						content.ReadExactly(contentBytes, 0, contentBytes.Length);
 
 						uploads.Add((serverPath, contentBytes));
 					});
@@ -1187,7 +1187,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.StateCache
 
 						byte[] contentBytes = new byte[content.Length];
 
-						content.Read(contentBytes, 0, contentBytes.Length);
+						content.ReadExactly(contentBytes, 0, contentBytes.Length);
 
 						uploads.Add((serverPath, contentBytes));
 					});
