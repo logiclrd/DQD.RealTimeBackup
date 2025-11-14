@@ -1,13 +1,17 @@
 using System;
-using System.Data;
 using System.IO;
 using System.Text;
-using DQD.RealTimeBackup.Utility;
+
 using FluentAssertions;
+
 using NUnit.Framework;
+
+using DQD.RealTimeBackup.Utility;
 
 namespace DQD.RealTimeBackup.Tests.Fixtures.Utility
 {
+#pragma warning disable CA2022 // We need to explicitly test .Read, a warning telling us to not use .Read isn't helpful :-)
+
 	public class UTF8FromTextReaderStreamTests
 	{
 		static string SourceText = new StreamReader(
@@ -189,4 +193,6 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.Utility
 			numRead.Should().Be(0);
 		}
 	}
+
+#pragma warning restore CA2022
 }
