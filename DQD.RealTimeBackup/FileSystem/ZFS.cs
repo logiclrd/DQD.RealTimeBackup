@@ -116,31 +116,6 @@ namespace DQD.RealTimeBackup.FileSystem
 			}
 		}
 
-		protected internal IEnumerable<string> ExecuteZFSCommandOutput(string command)
-		{
-			ZFSDebugLog.WriteLine("Running and capturing output: zfs {0}", command);
-
-			var psi = new ProcessStartInfo();
-
-			psi.FileName = _parameters.ZFSBinaryPath;
-			psi.Arguments = command;
-			psi.RedirectStandardOutput = true;
-			psi.RedirectStandardError = true;
-
-			using (var process = Process.Start(psi)!)
-			{
-				while (true)
-				{
-					string? line = process.StandardOutput.ReadLine();
-
-					if (line == null)
-						break;
-
-					yield return line;
-				}
-			}
-		}
-
 		protected internal TOutput ExecuteZFSCommandOutput<TOutput>(string command)
 			where TOutput : JSON.CommandOutput
 		{
@@ -172,28 +147,17 @@ namespace DQD.RealTimeBackup.FileSystem
 		{
 			ZFSDebugLog.WriteLine("Enumerating snapshots");
 
-			foreach (string line in ExecuteZFSCommandOutput("list -Hp -t snapshot"))
+			var output = ExecuteZFSCommandOutput<JSON.List>("list -pj -t snapshot");
+
+			foreach (var dataset in output.Datasets.Values)
 			{
-				string[] parts = line.Split('\t');
-
-				// 'zfs list' yields an entry for the pool itself, which includes a mount point but which isn't
-				// the actual volume. No error is given creating snapshots on this device (named simply "bpool"
-				// or "rpool") but the snapshot isn't meaningful and doesn't appear in /.zfs or /boot/.zfs.
-				//
-				// As far as I can tell, the only way to distinguish these entries is by the presence of
-				// path separator characters in the device name. "bpool" and "rpool" and the like are to be
-				// avoided.
-
-				if (parts[0].IndexOf('/') < 0)
-					continue;
-
 				var volume =
 					new ZFSVolume()
 					{
-						DeviceName = parts[0],
-						UsedBytes = long.Parse(parts[1]),
+						DeviceName = dataset.Name,
+						UsedBytes = dataset.GetInt64Property(JSON.DataSetProperties.UsedBytes),
 						AvailableBytes = -1,
-						ReferencedBytes = long.Parse(parts[3]),
+						ReferencedBytes = dataset.GetInt64Property(JSON.DataSetProperties.ReferencedBytes),
 						MountPoint = null,
 					};
 
@@ -282,7 +246,7 @@ namespace DQD.RealTimeBackup.FileSystem
 		{
 			ZFSDebugLog.WriteLine("Enumerating volumes");
 
-			var output = ExecuteZFSCommandOutput<JSON.List>("list -Hpj");
+			var output = ExecuteZFSCommandOutput<JSON.List>("list -pj");
 
 			foreach (var dataset in output.Datasets.Values)
 			{

@@ -22,9 +22,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 	[TestFixture]
 	public class ZFSTests
 	{
-		[TestCase("version", "zfs")]
-		[TestCase("list", "MOUNTPOINT")]
-		public void ExecuteZFSCommandOutput_should_work(string command, string shouldContainSubstring)
+		public void ExecuteZFSCommandOutput_should_work()
 		{
 			// Arrange
 			var parameters = new OperatingParameters();
@@ -35,26 +33,26 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			var sut = new ZFS(parameters, errorLogger, timer);
 
 			// Act
-			var output = sut.ExecuteZFSCommandOutput(command).ToList();
+			var output = sut.ExecuteZFSCommandOutput<DQD.RealTimeBackup.FileSystem.JSON.List>("list -pj");
 
 			// Assert
-			output.Should().NotBeEmpty();
+			output.OutputVersion.Should().NotBeNull();
+			output.OutputVersion!.MajorVersion.Should().Be(0);
+			output.OutputVersion!.MinorVersion.Should().BeGreaterThanOrEqualTo(1);
+
+			output.Datasets.Should().HaveCountGreaterThan(0);
+
+			foreach (var dataset in output.Datasets)
+			{
+				dataset.Key.Should().NotBeNullOrWhiteSpace();
+				dataset.Value.Should().NotBeNull();
+				dataset.Value.DataSet.Should().NotBeNullOrWhiteSpace();
+				dataset.Value.Type.Should().NotBe(RealTimeBackup.FileSystem.JSON.DataSetType.Unknown);
+			}
 
 			errorLogger.DidNotReceive().LogError(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception>());
 			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
 			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
-
-			bool found = false;
-
-			foreach (var line in output)
-			{
-				found = (line.IndexOf(shouldContainSubstring) >= 0);
-
-				if (found)
-					break;
-			}
-
-			found.Should().BeTrue();
 		}
 
 		[Test]
@@ -153,7 +151,7 @@ namespace DQD.RealTimeBackup.Tests.Fixtures.FileSystem
 			timer.DidNotReceive().ScheduleAction(Arg.Any<DateTime>(), Arg.Any<Action>());
 			timer.DidNotReceive().ScheduleAction(Arg.Any<TimeSpan>(), Arg.Any<Action>());
 		}
-		
+
 		[Test]
 		public void EnumerateVolumes_should_return_results()
 		{
