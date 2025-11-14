@@ -46,7 +46,7 @@ namespace DQD.RealTimeBackup.UserInterface
 					Gesture = new KeyGesture(Key.Q, KeyModifiers.Control),
 					Command = App.Current!.ExitCommand,
 				});
-        }
+		}
 
 		Timer _refreshTimer;
 		BridgeClient? _bridgeClient;

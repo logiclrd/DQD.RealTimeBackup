@@ -226,7 +226,7 @@ namespace DQD.RealTimeBackup.UserInterface.Controls
 					int acronymStart = builder.Length;
 
 					while ((i < name.Length)
-				      && ((i + 1 >= name.Length) || (char.IsUpper(name, i + 1) || (name[i + 1] == '_'))))
+					    && ((i + 1 >= name.Length) || (char.IsUpper(name, i + 1) || (name[i + 1] == '_'))))
 					{
 						builder!.Append(name[i]);
 						i++;
