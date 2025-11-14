@@ -2084,24 +2084,19 @@ namespace DQD.RealTimeBackup.Agent
 
 			foreach (var snapshot in _zfs.EnumerateSnapshots())
 			{
-				if (snapshot.DeviceName != null)
+				if ((snapshot.DeviceName != null) && (snapshot.SnapshotName != null))
 				{
 					NonQuietDiagnosticOutput("* {0}", snapshot.DeviceName);
 
-					var parts = snapshot.DeviceName.Split('@', count: 2);
-
-					string deviceName = parts.First();
-					string snapshotName = parts.Last();
-
-					if (snapshotName.StartsWith("RTB-") && long.TryParse(snapshotName.Substring(4), out var timestampValue))
+					if (snapshot.SnapshotName.StartsWith("RTB-") && long.TryParse(snapshot.SnapshotName.Substring(4), out var timestampValue))
 					{
-						var volumeZFS = _zfsInstanceByMountPoint.FirstOrDefault(item => item.ZFS.DeviceName == deviceName).ZFS;
+						var volumeZFS = _zfsInstanceByMountPoint.FirstOrDefault(item => item.ZFS.DeviceName == snapshot.DataSet).ZFS;
 
 						if (volumeZFS != null)
 						{
 							NonQuietDiagnosticOutput("  => This looks like one of ours");
 
-							using (volumeZFS.AttachToSnapshot(snapshotName))
+							using (volumeZFS.AttachToSnapshot(snapshot.SnapshotName))
 								NonQuietDiagnosticOutput("  => Requesting deletion");;
 						}
 					}

@@ -155,10 +155,12 @@ namespace DQD.RealTimeBackup.FileSystem
 					new ZFSVolume()
 					{
 						DeviceName = dataset.Name,
+						DataSet = dataset.DataSet,
 						UsedBytes = dataset.GetInt64Property(JSON.DataSetProperties.UsedBytes),
 						AvailableBytes = -1,
 						ReferencedBytes = dataset.GetInt64Property(JSON.DataSetProperties.ReferencedBytes),
 						MountPoint = null,
+						SnapshotName = dataset.SnapshotName,
 					};
 
 				ZFSDebugLog.WriteLine("- {0}", volume.DeviceName);
@@ -271,10 +273,12 @@ namespace DQD.RealTimeBackup.FileSystem
 					new ZFSVolume()
 					{
 						DeviceName = dataset.Name,
+						DataSet = dataset.Name,
 						UsedBytes = dataset.GetInt64Property(JSON.DataSetProperties.UsedBytes),
 						AvailableBytes = dataset.GetInt64Property(JSON.DataSetProperties.AvailableBytes),
 						ReferencedBytes = dataset.GetInt64Property(JSON.DataSetProperties.ReferencedBytes),
 						MountPoint = dataset.GetStringProperty(JSON.DataSetProperties.MountPoint),
+						SnapshotName = null,
 					};
 
 				ZFSDebugLog.WriteLine("- {0} at {1}", volume.DeviceName, volume.MountPoint);
